@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Status Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
+
+:root{
+  --bg:#000;
+  --bg2:#0a0a0a;
+  --bg3:#111;
+  --surface:#161616;
+  --surface2:#1e1e1e;
+  --border:rgba(255,255,255,0.07);
+  --border2:rgba(255,255,255,0.12);
+  --text:#e8e8e8;
+  --text-muted:#555;
+  --text-dim:#888;
+  --green:#22c55e;
+  --green-dim:rgba(34,197,94,0.12);
+  --green-border:rgba(34,197,94,0.25);
+  --white-glow:rgba(255,255,255,0.06);
+}
+
+html,body{height:100%;overflow:hidden;background:var(--bg);}
+body{color:var(--text);}
+
+/* ── SCANLINE TEXTURE ── */
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);
+}
+
+/* ── GLOW SPOTS ── */
+.glow-spot{
+  position:fixed;border-radius:50%;pointer-events:none;z-index:0;
+  filter:blur(130px);opacity:0.06;
+}
+.glow1{width:600px;height:600px;top:-150px;left:-150px;background:#fff;}
+.glow2{width:400px;height:400px;bottom:-100px;right:-80px;background:#fff;opacity:0.03;}
+
+/* ── PAGES ── */
+#pages{
+  height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory;
+  scroll-behavior:smooth;position:relative;z-index:10;scrollbar-width:none;
+}
+#pages::-webkit-scrollbar{display:none;}
+.page{
+  height:100vh;scroll-snap-align:start;
+  display:flex;align-items:center;justify-content:center;
+  padding:80px 20px 40px;position:relative;overflow:hidden;
+}
+.page-content{width:100%;max-width:520px;will-change:transform,opacity;}
+.page.fade-in .page-content{animation:fadeUp 0.45s cubic-bezier(0.22,1,0.36,1) both;}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(22px);}
+  to{opacity:1;transform:translateY(0);}
+}
+
+/* ── NAV ── */
+nav{
+  position:fixed;width:100%;top:0;left:0;z-index:500;
+  padding:14px 20px;
+}
+.nav-inner{
+  display:flex;justify-content:space-between;align-items:center;
+  width:100%;max-width:860px;margin:0 auto;
+  padding:10px 18px;border-radius:14px;
+  background:rgba(16,16,16,0.92);
+  backdrop-filter:blur(40px);
+  border:1px solid var(--border2);
+  box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;
+}
+.nav-logo{
+  font-size:0.9rem;font-weight:800;letter-spacing:0.5px;color:#fff;
+  display:flex;align-items:center;gap:8px;
+}
+.nav-logo-dot{
+  width:7px;height:7px;border-radius:50%;background:var(--green);
+  box-shadow:0 0 8px var(--green);animation:blink 2.5s ease infinite;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+.nav-links{display:flex;align-items:center;gap:2px;}
+nav a{
+  color:var(--text-dim);text-decoration:none;
+  font-size:0.8rem;font-weight:500;padding:6px 12px;border-radius:8px;
+  transition:all 0.2s;
+}
+nav a:hover{color:var(--text);background:var(--white-glow);}
+.nav-cta{
+  background:var(--white-glow) !important;
+  border:1px solid var(--border2) !important;
+  color:#fff !important;font-weight:600 !important;
+}
+.nav-cta:hover{background:rgba(255,255,255,0.1) !important;border-color:rgba(255,255,255,0.2) !important;}
+
+/* ── PAGE DOTS ── */
+#page-dots{
+  position:fixed;right:18px;top:50%;transform:translateY(-50%);
+  z-index:500;display:flex;flex-direction:column;gap:8px;
+}
+.dot{
+  width:5px;height:5px;border-radius:50%;
+  background:var(--text-muted);cursor:pointer;transition:all 0.3s ease;
+}
+.dot.active{
+  background:#fff;height:18px;border-radius:3px;
+  box-shadow:0 0 8px rgba(255,255,255,0.3);
+}
+
+/* ── CARD ── */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:20px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.6),0 1px 0 rgba(255,255,255,0.04) inset;
+  position:relative;overflow:hidden;
+}
+.card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);
+}
+
+/* ── HERO ── */
+.hero-page{text-align:center;padding:44px 36px;}
+
+.status-badge{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:5px 14px;border-radius:40px;margin-bottom:28px;
+  background:var(--green-dim);border:1px solid var(--green-border);
+  color:var(--green);font-size:0.73rem;font-weight:600;letter-spacing:0.5px;
+}
+
+.hero-icon{
+  width:76px;height:76px;border-radius:20px;
+  background:var(--surface2);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:2rem;margin:0 auto 22px;
+  box-shadow:0 0 0 1px rgba(255,255,255,0.03),0 20px 40px rgba(0,0,0,0.5);
+}
+
+.hero h1{
+  font-size:clamp(1.7rem,4.5vw,2.6rem);font-weight:900;
+  letter-spacing:-1px;line-height:1.1;
+  color:#fff;margin-bottom:10px;
+}
+.hero h1 span{color:var(--text-dim);}
+.hero-sub{
+  color:var(--text-muted);font-size:0.85rem;
+  margin-bottom:26px;line-height:1.6;
+}
+
+.hero-actions{
+  display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-bottom:28px;
+}
+
+.stats-row{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;}
+.stat-chip{
+  display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:9px;
+  background:var(--surface2);border:1px solid var(--border);
+  font-size:0.75rem;
+}
+.stat-chip .s-label{color:var(--text-muted);}
+.stat-chip .s-val{color:var(--text);font-weight:600;}
+
+/* ── BUTTONS ── */
+.btn{
+  padding:11px 24px;border-radius:10px;font-size:0.84rem;font-weight:600;
+  cursor:pointer;transition:all 0.2s;border:1px solid var(--border2);
+  background:var(--surface2);color:var(--text);
+  box-shadow:0 1px 0 rgba(255,255,255,0.04) inset;
+}
+.btn:hover{background:var(--bg3);border-color:rgba(255,255,255,0.18);transform:translateY(-1px);}
+.btn-white{
+  background:#fff;color:#000;border-color:#fff;
+  box-shadow:0 4px 20px rgba(255,255,255,0.08);
+}
+.btn-white:hover{background:#e8e8e8;border-color:#e8e8e8;transform:translateY(-1px);}
+
+/* ── PAIR CARD ── */
+.pair-card{padding:38px 32px;text-align:center;}
+.pair-card h2{font-size:1.35rem;font-weight:800;color:#fff;margin-bottom:5px;}
+.pair-card .sub{color:var(--text-muted);font-size:0.81rem;margin-bottom:22px;}
+
+.glass-input{
+  width:100%;padding:13px 18px;border-radius:10px;
+  border:1px solid var(--border2);
+  background:var(--bg2);
+  color:#fff;font-size:0.95rem;font-family:'Inter',sans-serif;
+  text-align:center;margin-bottom:12px;outline:none;
+  letter-spacing:1px;transition:all 0.2s;
+}
+.glass-input::placeholder{color:var(--text-muted);}
+.glass-input:focus{
+  border-color:rgba(255,255,255,0.22);
+  background:var(--bg3);
+  box-shadow:0 0 0 3px rgba(255,255,255,0.04);
+}
+
+.pair-hint{color:var(--text-muted);font-size:0.73rem;margin-top:12px;line-height:1.6;}
+
+/* ── CODE BOX ── */
+.code-box{
+  margin-top:16px;padding:18px 20px;border-radius:12px;
+  background:var(--bg2);border:1px solid var(--border2);
+  font-size:1.9rem;font-weight:900;letter-spacing:6px;color:#fff;
+  font-family:monospace;animation:fadeUp 0.35s ease;
+  cursor:pointer;user-select:all;position:relative;transition:all 0.2s;
+}
+.code-box:hover{background:var(--surface2);border-color:rgba(255,255,255,0.2);}
+.code-box::after{
+  content:'tap to copy';position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);
+  font-size:0.66rem;letter-spacing:1px;color:var(--text-muted);
+  font-family:'Inter',sans-serif;font-weight:500;
+}
+.code-status{margin-top:28px;font-size:0.79rem;color:var(--text-muted);line-height:1.6;}
+
+/* ── COPY TOAST ── */
+#copy-toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(16px);
+  background:var(--surface);border:1px solid var(--border2);
+  color:#fff;font-size:0.81rem;font-weight:600;
+  padding:10px 22px;border-radius:40px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  z-index:9999;opacity:0;pointer-events:none;
+  transition:all 0.28s cubic-bezier(0.22,1,0.36,1);
+}
+#copy-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* ── ABOUT ── */
+.about-card{padding:38px 32px;text-align:center;}
+.about-card h2{font-size:1.35rem;font-weight:800;color:#fff;margin-bottom:12px;}
+.about-card p{color:var(--text-muted);line-height:1.85;font-size:0.88rem;}
+.tag-row{display:flex;gap:8px;justify-content:center;margin-top:20px;flex-wrap:wrap;}
+.tag{
+  padding:6px 14px;border-radius:7px;font-size:0.76rem;font-weight:600;
+  background:var(--surface2);border:1px solid var(--border);color:var(--text-dim);
+}
+
+/* ── FEAT GRID ── */
+.feat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;}
+.feat-item{
+  padding:16px 14px;border-radius:12px;
+  background:var(--bg2);border:1px solid var(--border);
+  transition:all 0.25s;
+}
+.feat-item:hover{background:var(--surface);border-color:var(--border2);transform:translateY(-2px);}
+.feat-icon{font-size:1.2rem;margin-bottom:7px;}
+.feat-name{font-size:0.82rem;font-weight:700;color:var(--text);margin-bottom:2px;}
+.feat-desc{font-size:0.71rem;color:var(--text-muted);}
+
+/* ── PROJECTS ── */
+.proj-slider{display:flex;gap:9px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;}
+.proj-slider::-webkit-scrollbar{display:none;}
+.proj-card{
+  min-width:120px;padding:20px 14px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--border);
+  text-align:center;flex-shrink:0;transition:all 0.22s;cursor:default;
+}
+.proj-card:hover{background:var(--surface2);border-color:var(--border2);transform:translateY(-3px);}
+.proj-icon{font-size:1.4rem;margin-bottom:8px;}
+.proj-name{font-size:0.77rem;font-weight:700;color:var(--text-dim);}
+
+/* ── CONTACT ── */
+.contact-card{padding:38px 32px;text-align:center;}
+.contact-card h2{font-size:1.35rem;font-weight:800;color:#fff;margin-bottom:10px;}
+.contact-card p{color:var(--text-muted);font-size:0.85rem;margin-bottom:20px;line-height:1.6;}
+
+/* ── DASH ── */
+.dash-card{padding:38px 32px;text-align:center;}
+.dash-card h2{font-size:1.35rem;font-weight:800;color:#fff;margin-bottom:6px;}
+.dash-card .sub{color:var(--text-muted);font-size:0.84rem;margin-bottom:20px;}
+
+/* ── SECTION TITLE ── */
+.section-title{font-size:1.4rem;font-weight:900;color:#fff;text-align:center;margin-bottom:4px;letter-spacing:-0.5px;}
+.section-sub{text-align:center;color:var(--text-muted);font-size:0.84rem;margin-bottom:20px;}
+
+/* ── DIVIDER ── */
+.divider{height:1px;background:var(--border);margin:20px 0;}
+
+/* ── FOOTER ── */
+.footer-page{display:flex;align-items:center;justify-content:center;text-align:center;}
+.footer-text{color:var(--text-muted);font-size:0.76rem;}
+.footer-text span{color:var(--text-dim);}
+
+/* ── SPINNER ── */
+.spin{
+  display:inline-block;width:13px;height:13px;
+  border:2px solid rgba(255,255,255,0.1);border-top-color:#fff;
+  border-radius:50%;animation:spin 0.55s linear infinite;
+  margin-right:7px;vertical-align:middle;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── RESPONSIVE ── */
+@media(max-width:600px){
+  .hero h1{font-size:1.7rem;}
+  .feat-grid{grid-template-columns:1fr 1fr;}
+  .pair-card,.about-card,.contact-card,.dash-card{padding:26px 18px;}
+  nav{padding:10px 12px;}
+  .nav-links a:not(.nav-cta){display:none;}
+  .page{padding:72px 12px 28px;}
+  #page-dots{right:8px;}
+}
+</style>
+</head>
+<body>
+
+<div class="glow-spot glow1"></div>
+<div class="glow-spot glow2"></div>
+
+<div id="copy-toast">✓ Copied</div>
+
+<!-- NAV -->
+<nav id="nav">
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <div class="nav-logo-dot"></div>
+      Status Assistant
+    </div>
+    <div class="nav-links">
+      <a href="#" onclick="goPage(1);return false;">Pair</a>
+      <a href="#" onclick="goPage(2);return false;">About</a>
+      <a href="#" onclick="goPage(3);return false;">Dashboard</a>
+      <a href="#" onclick="goPage(5);return false;">Contact</a>
+      <a href="/dashboard" class="nav-cta">Dashboard →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- PAGE DOTS -->
+<div id="page-dots">
+  <div class="dot active" onclick="goPage(0)" title="Home"></div>
+  <div class="dot" onclick="goPage(1)" title="Pair"></div>
+  <div class="dot" onclick="goPage(2)" title="About"></div>
+  <div class="dot" onclick="goPage(3)" title="Dashboard"></div>
+  <div class="dot" onclick="goPage(4)" title="Projects"></div>
+  <div class="dot" onclick="goPage(5)" title="Contact"></div>
+</div>
+
+<!-- PAGES -->
+<div id="pages">
+
+  <!-- PAGE 0 — HERO -->
+  <div class="page fade-in" id="page-0">
+    <div class="page-content">
+      <div class="card hero-page">
+        <div class="status-badge">
+          <div class="nav-logo-dot"></div>
+          Online &amp; Active
+        </div>
+        <div class="hero-icon">🍃</div>
+        <div class="hero">
+          <h1>Status <span>Assistant</span></h1>
+          <p class="hero-sub">WhatsApp bot · Built by Team Dct<br>Powered by Kezu</p>
+          <div class="hero-actions">
+            <button class="btn btn-white" onclick="goPage(1)">Pair Bot</button>
+            <button class="btn" onclick="location.href='/dashboard'">Dashboard →</button>
+          </div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-chip"><span class="s-label">Ping</span><span class="s-val" id="site-ping">—</span></div>
+          <div class="stat-chip"><span class="s-label">Time</span><span class="s-val" id="site-time">—</span></div>
+          <div class="stat-chip"><span class="s-label">Date</span><span class="s-val" id="site-date">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 1 — PAIR -->
+  <div class="page" id="page-1">
+    <div class="page-content">
+      <div class="card pair-card">
+        <h2>Pair Your Number</h2>
+        <p class="sub">Enter your WhatsApp number to get a pairing code</p>
+        <input class="glass-input" type="tel" id="number" placeholder="94 77 xxx xxxx">
+        <button class="btn btn-white" style="width:100%;padding:13px;" onclick="getCode()" id="pair-btn">Get Pairing Code</button>
+        <div id="pairCode"></div>
+        <p class="pair-hint">Tap the code to copy &nbsp;·&nbsp; WhatsApp → Linked Devices → Link with phone number</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2 — ABOUT -->
+  <div class="page" id="page-2">
+    <div class="page-content">
+      <div class="card about-card">
+        <h2>About</h2>
+        <p>Status Assistant is the best WhatsApp bot — given to you for free. Connect and enjoy. Spam bug protection, status save, view-once save, auto-reply and many more features included.</p>
+        <div class="tag-row">
+          <div class="tag">⚡ Fast</div>
+          <div class="tag">🛡️ Protected</div>
+          <div class="tag">🌐 Multi-Number</div>
+          <div class="tag">🆓 Free</div>
+        </div>
+        <div class="divider"></div>
+        <div class="feat-grid">
+          <div class="feat-item"><div class="feat-icon">👁️</div><div class="feat-name">View Once Save</div><div class="feat-desc">Save media before it disappears</div></div>
+          <div class="feat-item"><div class="feat-icon">📥</div><div class="feat-name">Status Save</div><div class="feat-desc">Auto-save status photos &amp; videos</div></div>
+          <div class="feat-item"><div class="feat-icon">🛡️</div><div class="feat-name">Anti Bug</div><div class="feat-desc">Block crash/bug messages</div></div>
+          <div class="feat-item"><div class="feat-icon">🎵</div><div class="feat-name">Downloader</div><div class="feat-desc">Music, video, TikTok &amp; more</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 3 — DASHBOARD PROMO -->
+  <div class="page" id="page-3">
+    <div class="page-content">
+      <div class="card dash-card">
+        <div style="font-size:2rem;margin-bottom:12px;">⚙️</div>
+        <h2>Bot Dashboard</h2>
+        <p class="sub">Manage all bot settings from one place — no coding needed.</p>
+        <div class="feat-grid">
+          <div class="feat-item"><div class="feat-icon">🤖</div><div class="feat-name">Bot Settings</div><div class="feat-desc">Toggles, prefix, work type</div></div>
+          <div class="feat-item"><div class="feat-icon">🛡️</div><div class="feat-name">Protection</div><div class="feat-desc">Anti bug, anti badword</div></div>
+          <div class="feat-item"><div class="feat-icon">💬</div><div class="feat-name">Auto Reply</div><div class="feat-desc">Custom keyword replies</div></div>
+          <div class="feat-item"><div class="feat-icon">👥</div><div class="feat-name">Group Mgmt</div><div class="feat-desc">Antilink, welcome, kick</div></div>
+        </div>
+        <button class="btn btn-white" onclick="location.href='/dashboard'" style="padding:12px 32px;">Open Dashboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 4 — PROJECTS -->
+  <div class="page" id="page-4">
+    <div class="page-content">
+      <p class="section-title">Projects</p>
+      <p class="section-sub">Things we've built</p>
+      <div class="proj-slider">
+        <div class="proj-card"><div class="proj-icon">🤖</div><div class="proj-name">Mini BOT</div></div>
+        <div class="proj-card"><div class="proj-icon">📱</div><div class="proj-name">MD BOT</div></div>
+        <div class="proj-card"><div class="proj-icon">🌐</div><div class="proj-name">Web Site</div></div>
+        <div class="proj-card"><div class="proj-icon">👁️</div><div class="proj-name">Status Views</div></div>
+        <div class="proj-card"><div class="proj-icon">🎵</div><div class="proj-name">Music Bot</div></div>
+      </div>
+      <br>
+      <div class="card" style="padding:20px 22px;margin-top:6px;text-align:center;">
+        <p style="color:var(--text-muted);font-size:0.82rem;line-height:1.7;">More projects coming soon · Built by <span style="color:var(--text);font-weight:700;">Team Dct</span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 5 — CONTACT -->
+  <div class="page" id="page-5">
+    <div class="page-content">
+      <div class="card contact-card">
+        <h2>Contact</h2>
+        <p>Need help or want to reach out? Message us on WhatsApp directly — we're always available.</p>
+        <button class="btn btn-white" onclick="window.open('https://wa.me/94779885727?text=> _*©_𝐃ᴄ̶͟͞ᴛ_𝗖ʀɪᴍɪɴ̶͟͞ᴀʟ_𝐌𝙳_|̶͢|🍃*̶͞_connected')">WhatsApp Us</button>
+        <div style="margin-top:26px;padding-top:20px;border-top:1px solid var(--border);">
+          <p style="color:var(--text-muted);font-size:0.74rem;">© 2026 <span style="color:var(--text-dim);">Status Assistant</span> · Powered by Team Dct</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── PAGE SYSTEM ──
+const pages = document.querySelectorAll('.page');
+const dots  = document.querySelectorAll('.dot');
+let currentPage = 0;
+
+function goPage(idx){
+  if(idx < 0 || idx >= pages.length) return;
+  currentPage = idx;
+  dots.forEach((d,i) => d.classList.toggle('active', i === idx));
+  pages[idx].classList.remove('fade-in');
+  void pages[idx].offsetWidth;
+  pages[idx].classList.add('fade-in');
+  pages[idx].scrollIntoView({ behavior: 'smooth' });
+}
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if(e.isIntersecting && e.intersectionRatio >= 0.6){
+      const idx = parseInt(e.target.id.replace('page-',''));
+      if(idx !== currentPage){
+        currentPage = idx;
+        dots.forEach((d,i) => d.classList.toggle('active', i === idx));
+        e.target.classList.remove('fade-in');
+        void e.target.offsetWidth;
+        e.target.classList.add('fade-in');
+      }
+    }
+  });
+}, { threshold: 0.6 });
+pages.forEach(p => observer.observe(p));
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'ArrowDown' || e.key === 'PageDown') goPage(currentPage + 1);
+  if(e.key === 'ArrowUp'   || e.key === 'PageUp')   goPage(currentPage - 1);
+});
+
+// ── CLOCK ──
+function updateClock(){
+  const now = new Date();
+  document.getElementById('site-time').textContent = now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  document.getElementById('site-date').textContent = now.toLocaleDateString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric'});
+}
+updateClock(); setInterval(updateClock, 1000);
+
+// ── PING ──
+async function checkPing(){
+  try{
+    const t1 = Date.now();
+    await fetch('/code/ping');
+    const ms = Date.now() - t1;
+    const el = document.getElementById('site-ping');
+    el.textContent = ms + ' ms';
+    el.style.color = ms < 200 ? '#22c55e' : ms < 500 ? '#eab308' : '#ef4444';
+  } catch(e){
+    const el = document.getElementById('site-ping');
+    el.textContent = 'offline'; el.style.color = '#ef4444';
+  }
+}
+checkPing(); setInterval(checkPing, 5000);
+
+// ── PAIR CODE ──
+async function getCode(){
+  const num = document.getElementById('number').value.replace(/\s/g,'');
+  const div = document.getElementById('pairCode');
+  const btn = document.getElementById('pair-btn');
+  if(!num){
+    div.innerHTML='<div style="color:#ef4444;font-size:.81rem;margin-top:10px;">⚠️ Please enter your number first</div>';
+    return;
+  }
+  btn.innerHTML='<span class="spin"></span>Connecting…';
+  btn.disabled = true;
+  div.innerHTML = '';
+  try{
+    const r = await fetch('/code/?number=' + encodeURIComponent(num));
+    const data = await r.json();
+    if(data.code){
+      div.innerHTML = `<div class="code-box" onclick="copyCode('${data.code}')">${data.code}</div><p class="code-status">Open WhatsApp → ⋮ → Linked Devices → Link with phone number → Enter this code</p>`;
+    } else {
+      div.innerHTML = `<div style="color:#ef4444;font-size:.81rem;margin-top:10px;">${data.error || 'Failed to get code. Try again.'}</div>`;
+    }
+  } catch(e){
+    div.innerHTML = '<div style="color:#ef4444;font-size:.81rem;margin-top:10px;">Connection error. Try again.</div>';
+  }
+  btn.innerHTML = 'Get Pairing Code';
+  btn.disabled = false;
+}
+
+function copyCode(code){
+  navigator.clipboard.writeText(code).catch(()=>{
+    const ta = document.createElement('textarea');
+    ta.value = code; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+  const t = document.getElementById('copy-toast');
+  t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
