@@ -1,7 +1,7 @@
 {
-  "name": "dew-md-mini",
-  "version": "1.0.0",
-  "description": "dew-md-mini WhatsApp Bot with Multi-Number Support",
+  "name": "status_king-",
+  "version": "2.0.0",
+  "description": "STATUS KING WhatsApp Bot with Multi-Number Support",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
