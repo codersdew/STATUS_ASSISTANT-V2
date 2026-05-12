@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KEZU Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
+
+:root{
+  --bg:#161616;
+  --bg-dark:#111111;
+  --bg-light:#1e1e1e;
+  --card:#1c1c1c;
+  --sh-dark:rgba(0,0,0,0.55);
+  --sh-light:rgba(255,255,255,0.045);
+  --text:#e8e8e8;
+  --text-dim:#aaa;
+  --muted:#555;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.1);
+  --green:#22c55e;
+  --green-dim:rgba(34,197,94,0.12);
+  --red:#ef4444;
+  --red-dim:rgba(239,68,68,0.12);
+  --orange:#f97316;
+  --accent:#fff;
+  --accent2:rgba(255,255,255,0.7);
+  --sidebar:230px;
+}
+
+body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* ── NEUMORPHIC HELPERS ── */
+.neu{
+  background:var(--card);
+  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px var(--sh-light);
+}
+.neu-inset{
+  background:var(--bg-dark);
+  box-shadow:inset 4px 4px 10px var(--sh-dark),inset -4px -4px 10px var(--sh-light);
+}
+.neu-sm{
+  background:var(--card);
+  box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
+}
+
+/* ── SIDEBAR ── */
+.sidebar{
+  position:fixed;left:0;top:0;width:var(--sidebar);height:100vh;
+  background:var(--bg-dark);
+  box-shadow:6px 0 20px rgba(0,0,0,0.4);
+  display:flex;flex-direction:column;
+  z-index:200;padding:22px 14px;transition:transform .3s;
+  overflow-y:auto;scrollbar-width:none;
+}
+.sidebar::-webkit-scrollbar{display:none;}
+
+.logo{display:flex;align-items:center;gap:12px;margin-bottom:28px;padding:0 4px;}
+.logo-icon{
+  width:42px;height:42px;border-radius:14px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;
+  background:var(--card);
+  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
+}
+.logo h2{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:800;letter-spacing:0.5px;line-height:1.25;color:#fff;}
+
+.nav-label{
+  font-size:.6rem;color:var(--muted);letter-spacing:2.5px;
+  padding:0 10px;margin:16px 0 6px;text-transform:uppercase;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;
+  color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:500;
+  transition:.2s;margin-bottom:3px;cursor:pointer;border:none;background:none;
+  width:100%;text-align:left;
+}
+.nav-item:hover{
+  color:var(--text);
+  background:var(--card);
+  box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
+}
+.nav-item.active{
+  background:var(--card);color:#fff;
+  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
+}
+.nav-item svg{width:15px;height:15px;flex-shrink:0;}
+.sidebar-footer{
+  margin-top:auto;padding-top:16px;border-top:1px solid var(--border);
+  font-size:.68rem;color:var(--muted);padding-left:4px;
+}
+
+/* ── MAIN ── */
+.main{margin-left:var(--sidebar);padding:24px 24px 56px;min-height:100vh;}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;gap:12px;flex-wrap:wrap;}
+.topbar-left .page-title{
+  font-family:'Syne',sans-serif;
+  font-size:1.5rem;font-weight:800;color:#fff;
+}
+.topbar-left .page-sub{font-size:.75rem;color:var(--muted);margin-top:3px;letter-spacing:0.5px;}
+
+.status-pill{
+  display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:40px;
+  background:var(--card);font-size:.78rem;color:var(--green);font-weight:600;
+  box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
+}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+.topbar-right{display:flex;align-items:center;gap:10px;}
+
+/* ── NUMBER CARD ── */
+.num-card{
+  border-radius:20px;padding:18px 20px;margin-bottom:20px;
+  background:var(--card);
+  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px var(--sh-light);
+}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:6px;margin-bottom:22px;flex-wrap:wrap;}
+.tab{
+  padding:8px 18px;border-radius:40px;font-size:.8rem;font-weight:600;cursor:pointer;
+  transition:.2s;border:none;
+  background:var(--bg-dark);color:var(--muted);
+  box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
+}
+.tab:hover{color:var(--text-dim);}
+.tab.active{
+  background:var(--card);color:#fff;
+  box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);
+}
+
+/* ── PANELS ── */
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* ── CARDS ── */
+.card{
+  background:var(--card);border-radius:20px;padding:20px;margin-bottom:18px;
+  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px var(--sh-light);
+}
+.card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.card-title{font-size:.92rem;font-weight:700;color:#fff;}
+.card-sub{font-size:.74rem;color:var(--muted);margin-top:3px;}
+
+/* ── GRID ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+
+/* ── STAT MINI ── */
+.stat{
+  padding:18px 18px;border-radius:18px;
+  background:var(--card);
+  box-shadow:5px 5px 14px var(--sh-dark),-5px -5px 14px var(--sh-light);
+  position:relative;overflow:hidden;
+}
+.stat::after{content:'';position:absolute;top:-20px;right:-20px;width:60px;height:60px;border-radius:50%;filter:blur(22px);opacity:.3;}
+.stat.c::after{background:#60a5fa;}
+.stat.p::after{background:#a78bfa;}
+.stat.g::after{background:#22c55e;}
+.stat.o::after{background:#f97316;}
+.stat-label{font-size:.68rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;}
+.stat-val{font-size:1.35rem;font-weight:800;}
+
+/* ── TOGGLE ROW ── */
+.toggle-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 0;border-bottom:1px solid var(--border);
+}
+.toggle-row:last-child{border-bottom:none;}
+.tl{font-size:.85rem;font-weight:600;color:var(--text);}
+.td{font-size:.72rem;color:var(--muted);margin-top:2px;}
+.toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
+.toggle input{opacity:0;width:0;height:0;}
+.toggle-sl{
+  position:absolute;inset:0;border-radius:24px;cursor:pointer;transition:.3s;
+  background:var(--bg-dark);
+  box-shadow:inset 3px 3px 7px var(--sh-dark),inset -3px -3px 7px var(--sh-light);
+}
+.toggle-sl:before{
+  content:'';position:absolute;width:16px;height:16px;
+  left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.3s;
+}
+.toggle input:checked+.toggle-sl:before{transform:translateX(20px);background:var(--green);box-shadow:0 0 8px rgba(34,197,94,0.5);}
+
+/* ── FORM ── */
+.form-row{margin-bottom:14px;}
+label.fl{display:block;font-size:.76rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.3px;}
+input.fi,select.fi,textarea.fi{
+  width:100%;padding:11px 16px;border-radius:14px;border:none;outline:none;
+  background:var(--bg-dark);
+  box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);
+  color:var(--text);font-size:.86rem;font-family:'Inter',sans-serif;
+  transition:.2s;
+}
+input.fi::placeholder,textarea.fi::placeholder{color:var(--muted);}
+input.fi:focus,select.fi:focus,textarea.fi:focus{
+  box-shadow:inset 4px 4px 10px var(--sh-dark),inset -4px -4px 10px var(--sh-light),0 0 0 2px rgba(255,255,255,0.08);
+}
+select.fi option{background:#1c1c1c;color:#fff;}
+textarea.fi{resize:vertical;min-height:80px;}
+
+/* ── BUTTONS ── */
+.btn{
+  padding:9px 20px;border-radius:40px;border:none;font-size:.82rem;font-weight:600;
+  cursor:pointer;transition:.2s;font-family:'Inter',sans-serif;
+  background:var(--card);color:var(--text-dim);
+  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
+}
+.btn:hover{color:#fff;box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);}
+.btn:active{box-shadow:inset 2px 2px 6px var(--sh-dark),inset -2px -2px 6px var(--sh-light);}
+.btn-accent{color:#fff;background:var(--card);}
+.btn-accent:hover{box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);}
+.btn-red{color:var(--red);}
+.btn-green{color:var(--green);}
+.btn-sm{padding:6px 14px;font-size:.76rem;border-radius:30px;}
+
+/* ── NUMBER SELECTOR ── */
+.num-selector{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap;}
+.num-selector input{flex:1;min-width:200px;}
+.num-tag{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;
+  font-size:.78rem;cursor:pointer;color:var(--text-dim);
+  background:var(--bg-dark);
+  box-shadow:2px 2px 6px var(--sh-dark),-2px -2px 6px var(--sh-light);
+}
+.num-tag:hover{color:#fff;}
+
+/* ── BADGE ── */
+.badge{padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:700;letter-spacing:0.5px;}
+.badge-on{background:rgba(34,197,94,0.15);color:var(--green);}
+.badge-off{background:rgba(239,68,68,0.12);color:var(--red);}
+.badge-cyan{background:rgba(255,255,255,0.08);color:var(--text-dim);}
+
+/* ── REPLY LIST ── */
+.reply-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 14px;border-radius:14px;margin-bottom:8px;
+  background:var(--bg-dark);
+  box-shadow:inset 2px 2px 6px var(--sh-dark),inset -2px -2px 6px var(--sh-light);
+}
+.reply-trigger{font-size:.82rem;color:#fff;font-weight:700;}
+.reply-response{font-size:.78rem;color:var(--muted);margin-top:3px;word-break:break-word;}
+
+/* ── BAD WORD TAGS ── */
+.bw-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.bw-tag{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;
+  font-size:.76rem;color:var(--red);
+  background:rgba(239,68,68,0.1);
+}
+.bw-tag button{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;line-height:1;}
+
+/* ── SESSION LIST ── */
+.session-item{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 16px;border-radius:14px;margin-bottom:8px;
+  background:var(--bg-dark);
+  box-shadow:inset 2px 2px 6px var(--sh-dark),inset -2px -2px 6px var(--sh-light);
+}
+.session-num{font-size:.88rem;font-weight:700;color:#fff;}
+.session-status{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--green);}
+
+/* ── CMD TABLE ── */
+.cmd-table{width:100%;border-collapse:collapse;}
+.cmd-table th{font-size:.68rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);}
+.cmd-table td{padding:10px 12px;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.03);}
+.cmd-table tr:last-child td{border-bottom:none;}
+.cmd-table tr:hover td{background:rgba(255,255,255,.015);}
+.cmd-code{
+  font-family:monospace;padding:3px 9px;border-radius:8px;font-size:.79rem;
+  background:var(--bg-dark);color:var(--text-dim);
+  box-shadow:inset 2px 2px 4px var(--sh-dark),inset -2px -2px 4px var(--sh-light);
+}
+
+/* ── TOAST ── */
+.toast{
+  position:fixed;bottom:28px;right:28px;padding:12px 22px;border-radius:40px;
+  background:var(--card);font-size:.82rem;font-weight:600;z-index:999;
+  transition:.3s;max-width:280px;
+  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px var(--sh-light);
+}
+.toast.success{color:var(--green);}
+.toast.error{color:var(--red);}
+
+/* ── BURGER ── */
+.burger{
+  display:none;position:fixed;top:14px;left:14px;z-index:300;cursor:pointer;
+  background:var(--card);border:none;border-radius:12px;padding:8px;
+  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
+  color:var(--text-dim);
+}
+
+/* ── OVERLAY ── */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:150;}
+.overlay.open{display:block;}
+
+/* ── SAVE BAR ── */
+.save-bar{
+  position:fixed;bottom:0;left:var(--sidebar);right:0;padding:14px 28px;
+  background:var(--bg-dark);border-top:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;
+  z-index:100;transform:translateY(100%);transition:.3s;
+  box-shadow:0 -4px 20px rgba(0,0,0,0.3);
+}
+.save-bar.show{transform:translateY(0);}
+@media(max-width:900px){.save-bar{left:0;}}
+
+/* ── SPIN ── */
+.spin{
+  display:inline-block;width:14px;height:14px;
+  border:2px solid rgba(255,255,255,.1);border-top-color:#fff;
+  border-radius:50%;animation:spin .55s linear infinite;
+  vertical-align:middle;margin-right:6px;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── INFO BOX ── */
+.info-box{
+  padding:14px;border-radius:14px;font-size:.78rem;color:var(--muted);line-height:1.7;
+  background:var(--bg-dark);
+  box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);
+}
+.info-box .ib-title{font-size:.76rem;font-weight:700;margin-bottom:6px;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  :root{--sidebar:0px;}
+  .sidebar{transform:translateX(-100%);width:240px;}
+  .sidebar.open{transform:translateX(0);}
+  .main{margin-left:0;padding:18px;padding-top:62px;}
+  .grid2{grid-template-columns:1fr;}
+  .grid4{grid-template-columns:1fr 1fr;}
+  .burger{display:flex;}
+}
+@media(max-width:500px){
+  .grid4{grid-template-columns:1fr;}
+  .tabs{gap:4px;}
+  .tab{padding:7px 13px;font-size:.76rem;}
+}
+</style>
+</head>
+<body>
+
+<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<!-- BURGER -->
+<button class="burger" onclick="openSidebar()">
+  <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+</button>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🌿</div>
+    <h2>KEZU<br>STATUS BOT</h2>
+  </div>
+
+  <div class="nav-label">Menu</div>
+  <button class="nav-item active" onclick="switchTab('overview',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Overview
+  </button>
+  <button class="nav-item" onclick="switchTab('settings',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+    Bot Settings
+  </button>
+  <button class="nav-item" onclick="switchTab('protection',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    Protection
+  </button>
+  <button class="nav-item" onclick="switchTab('autoreply',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+    Auto Reply
+  </button>
+  <button class="nav-item" onclick="switchTab('commands',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    Commands
+  </button>
+  <button class="nav-item" onclick="switchTab('groups',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+    Groups
+  </button>
+  <button class="nav-item" onclick="switchTab('sessions',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Sessions
+  </button>
+  <button class="nav-item" onclick="switchTab('channels',this)">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.8 19.8 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+    Channel Settings
+  </button>
+
+  <div class="nav-label">Links</div>
+  <a class="nav-item" href="/#pair">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+    Pair Bot
+  </a>
+  <a class="nav-item" href="/">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+    Home
+  </a>
+
+  <div class="sidebar-footer">© 2026 KEZU Status Assistant</div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main class="main">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="page-title" id="page-title">Overview</div>
+      <div class="page-sub">KEZU STATUS BOT · Dashboard</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-pill"><div class="dot"></div>Server Online</div>
+      <a href="/#pair" class="btn btn-sm btn-accent">+ Pair Bot</a>
+    </div>
+  </div>
+
+  <!-- NUMBER SELECTOR (global) -->
+  <div class="num-card">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <label class="fl">Enter your paired number to load / edit settings</label>
+        <input class="fi" type="tel" id="global-number" placeholder="94771234567" oninput="onNumberInput()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;flex-wrap:wrap;">
+        <button class="btn btn-accent" onclick="loadConfig()">
+          <span id="load-btn-text">Load Settings</span>
+        </button>
+        <button class="btn" onclick="clearNumber()">Clear</button>
+      </div>
+    </div>
+    <div id="active-sessions-row" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- ═══════════════ OVERVIEW PANEL ═══════════════ -->
+  <div class="panel active" id="panel-overview">
+    <div class="grid4">
+      <div class="stat c">
+        <div class="stat-label">Bot Version</div>
+        <div class="stat-val" style="font-size:1.15rem;color:#60a5fa;">v1.0.0</div>
+      </div>
+      <div class="stat g">
+        <div class="stat-label">Server</div>
+        <div class="stat-val" style="font-size:1.15rem;color:var(--green);">ONLINE</div>
+      </div>
+      <div class="stat p">
+        <div class="stat-label">Uptime</div>
+        <div class="stat-val" id="ov-uptime" style="font-size:.95rem;color:#a78bfa;">00:00:00</div>
+      </div>
+      <div class="stat o">
+        <div class="stat-label">Active Sessions</div>
+        <div class="stat-val" id="ov-sessions" style="color:var(--orange);">—</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Bot Information</div></div></div>
+        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Bot Name</span><span style="font-size:.83rem;font-weight:700;">ᴅᴄᴛ ᴄʀɪᴍɪɴᴀʟ ᴍᴅ</span></div>
+        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Owner</span><span style="font-size:.83rem;font-weight:700;">𝐊ᴇᴢᴜ𝚄 ||🌿</span></div>
+        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Prefix</span><span class="badge badge-cyan">.</span></div>
+        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Port</span><span class="badge badge-cyan">5000</span></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">Loaded Config</div></div>
+        <div id="ov-config-display">
+          <div style="color:var(--muted);font-size:.83rem;text-align:center;padding:20px;">Enter a number above and click <strong style="color:var(--text-dim);">Load Settings</strong> to view config.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="card-title">Quick Actions</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;">
+        <a href="/#pair" class="btn" style="text-align:center;text-decoration:none;display:block;">Pair Bot</a>
+        <button class="btn" onclick="switchTab('settings',document.querySelector('.nav-item:nth-child(3)'))">Bot Settings</button>
+        <button class="btn" onclick="switchTab('protection',document.querySelector('.nav-item:nth-child(4)'))">Protection</button>
+        <button class="btn" onclick="switchTab('autoreply',document.querySelector('.nav-item:nth-child(5)'))">Auto Reply</button>
+        <button class="btn" onclick="switchTab('sessions',document.querySelector('.nav-item:nth-child(7)'))">Sessions</button>
+        <a href="https://wa.me/94779885727" target="_blank" class="btn" style="text-align:center;text-decoration:none;display:block;">Contact Dev</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SETTINGS PANEL ═══════════════ -->
+  <div class="panel" id="panel-settings">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">General Settings</div><div class="card-sub">Core bot behaviour toggles</div></div></div>
+        <div class="toggle-row">
+          <div><div class="tl">Auto View Status</div><div class="td">Automatically views contacts' statuses</div></div>
+          <label class="toggle"><input type="checkbox" id="s-auto-view" onchange="markDirty()"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="tl">Auto Like Status</div><div class="td">Automatically reacts to statuses</div></div>
+          <label class="toggle"><input type="checkbox" id="s-auto-like" onchange="markDirty()"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="tl">Auto Recording</div><div class="td">Show recording indicator while active</div></div>
+          <label class="toggle"><input type="checkbox" id="s-auto-rec" onchange="markDirty()"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="toggle-row">
+          <div><div class="tl">Auto Voice Replies</div><div class="td">Reply with voice notes to keywords</div></div>
+          <label class="toggle"><input type="checkbox" id="s-auto-voice" onchange="markDirty()"><div class="toggle-sl"></div></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Work Type & Mode</div><div class="card-sub">Who can use bot commands</div></div></div>
+        <div class="form-row" style="margin-top:4px;">
+          <label class="fl">Work Type</label>
+          <select class="fi" id="s-work-type" onchange="markDirty()">
+            <option value="public">Public — everyone can use commands</option>
+            <option value="private">Private — only owner</option>
+            <option value="inbox">Inbox — DMs only</option>
+            <option value="groups">Groups — group chats only</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="fl">Command Prefix</label>
+          <input class="fi" id="s-prefix" maxlength="3" placeholder="." onchange="markDirty()">
+        </div>
+        <div class="form-row">
+          <label class="fl">Owner Number</label>
+          <input class="fi" id="s-owner" type="tel" placeholder="94771234567" onchange="markDirty()">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-title">Like Emojis</div><div class="card-sub">Comma-separated emojis used for auto-liking statuses</div></div>
+      </div>
+      <input class="fi" id="s-emojis" placeholder="💙, 🩷, 💜, 🤎, 🧡" onchange="markDirty()">
+    </div>
+  </div>
+
+  <!-- ═══════════════ PROTECTION PANEL ═══════════════ -->
+  <div class="panel" id="panel-protection">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Anti Bug</div><div class="card-sub">Delete crash/bug messages automatically</div></div><span id="antibug-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Anti Bug</div><div class="td">Detects crash messages and removes them</div></div>
+          <label class="toggle"><input type="checkbox" id="p-antibug" onchange="markDirty();updateBadge('antibug-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="info-box" style="margin-top:14px;">
+          <div class="ib-title" style="color:var(--orange);">What it detects:</div>
+          <ul style="list-style:disc;padding-left:16px;line-height:1.8;">
+            <li>Messages longer than 5000 characters</li>
+            <li>Malicious contact array messages</li>
+            <li>Messages with crash characters (null bytes etc.)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Anti Badword</div><div class="card-sub">Delete bad word messages in chats</div></div><span id="antibadword-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Anti Badword</div><div class="td">Deletes messages containing bad words</div></div>
+          <label class="toggle"><input type="checkbox" id="p-antibadword" onchange="markDirty();updateBadge('antibadword-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div style="margin-top:14px;">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">Custom bad words (one per line)</div>
+          <textarea class="fi" id="p-badwords" rows="4" placeholder="badword1&#10;badword2&#10;badword3" onchange="markDirty()"></textarea>
+          <div class="bw-tags" id="bw-preview"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px;">WhatsApp Commands</div>
+      <table class="cmd-table">
+        <thead><tr><th>Command</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:var(--muted)">Toggle anti bug protection</td></tr>
+          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:var(--muted)">Toggle anti badword protection</td></tr>
+          <tr><td><span class="cmd-code">.antibadword add word</span></td><td style="color:var(--muted)">Add a custom bad word</td></tr>
+          <tr><td><span class="cmd-code">.antibadword del word</span></td><td style="color:var(--muted)">Remove a custom bad word</td></tr>
+          <tr><td><span class="cmd-code">.antibadword list</span></td><td style="color:var(--muted)">List custom bad words</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ AUTO REPLY PANEL ═══════════════ -->
+  <div class="panel" id="panel-autoreply">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Auto Reply Settings</div><div class="card-sub">Automated message responses</div></div><span id="autoreply-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Auto Reply</div><div class="td">Bot automatically replies to matched keywords</div></div>
+          <label class="toggle"><input type="checkbox" id="ar-enabled" onchange="markDirty();updateBadge('autoreply-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div style="margin-top:18px;">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px;">Add new auto reply rule:</div>
+          <div class="form-row">
+            <label class="fl">Trigger keyword (what user sends)</label>
+            <input class="fi" id="ar-trigger" placeholder="hello">
+          </div>
+          <div class="form-row">
+            <label class="fl">Response (what bot replies)</label>
+            <textarea class="fi" id="ar-response" placeholder="Hi there! How can I help you?"></textarea>
+          </div>
+          <button class="btn btn-accent" onclick="addAutoReply()" style="width:100%;">+ Add Reply Rule</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div><div class="card-title">Reply Rules</div><div class="card-sub" id="ar-count">0 rules configured</div></div>
+          <button class="btn btn-sm btn-red" onclick="clearAllReplies()">Clear All</button>
+        </div>
+        <div id="ar-list">
+          <div style="color:var(--muted);font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet. Add one on the left.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px;">WhatsApp Commands</div>
+      <table class="cmd-table">
+        <thead><tr><th>Command</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:var(--muted)">Toggle auto reply</td></tr>
+          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:var(--muted)">Add a rule (use | to separate trigger from reply)</td></tr>
+          <tr><td><span class="cmd-code">.autoreply del trigger</span></td><td style="color:var(--muted)">Delete a rule by trigger</td></tr>
+          <tr><td><span class="cmd-code">.autoreply list</span></td><td style="color:var(--muted)">List all active auto reply rules</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ COMMANDS PANEL ═══════════════ -->
+  <div class="panel" id="panel-commands">
+    <div class="card">
+      <div class="card-head"><div class="card-title">All Bot Commands</div></div>
+      <table class="cmd-table">
+        <thead><tr><th>Command</th><th>Description</th><th>Access</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cmd-code">.menu</span></td><td style="color:var(--muted)">Show main bot menu</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.alive</span></td><td style="color:var(--muted)">Check if bot is alive</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.ping</span></td><td style="color:var(--muted)">Ping the bot</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.autovoice on/off</span></td><td style="color:var(--muted)">Toggle auto voice replies</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:var(--muted)">Toggle anti bad word filter</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword add &lt;word&gt;</span></td><td style="color:var(--muted)">Add word to bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword del &lt;word&gt;</span></td><td style="color:var(--muted)">Remove word from bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword list</span></td><td style="color:var(--muted)">List custom bad words</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:var(--muted)">Toggle anti bug protection</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:var(--muted)">Toggle auto reply</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:var(--muted)">Add an auto reply rule</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply del &lt;trigger&gt;</span></td><td style="color:var(--muted)">Delete auto reply rule</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply list</span></td><td style="color:var(--muted)">List all auto reply rules</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.my</span></td><td style="color:var(--muted)">Send owner personal card</td><td><span class="badge badge-cyan">All</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ GROUPS PANEL ═══════════════ -->
+  <div class="panel" id="panel-groups">
+
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <label class="fl">Paired number (to fetch groups list)</label>
+          <input class="fi" id="grp-number" type="tel" placeholder="94771234567">
+        </div>
+        <button class="btn btn-accent" onclick="loadGroupsList()">Fetch Groups</button>
+      </div>
+      <div id="grp-list-row" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-head">
+        <div><div class="card-title">Load Group Settings</div><div class="card-sub">Enter a group JID to manage its settings</div></div>
+        <button class="btn btn-sm btn-accent" onclick="loadGroupSettings()"><span id="grp-load-text">Load</span></button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:240px;">
+          <label class="fl">Group JID (e.g. 1234567890-1234567890@g.us)</label>
+          <input class="fi" id="grp-jid" placeholder="120363xxxxxxxxx@g.us" oninput="grpDirty=false">
+        </div>
+      </div>
+      <div id="grp-status" style="margin-top:10px;font-size:.78rem;color:var(--muted);"></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Anti Link</div><div class="card-sub">Delete messages containing links</div></div><span id="grp-antilink-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Anti Link</div><div class="td">Admins are exempt from this rule</div></div>
+          <label class="toggle"><input type="checkbox" id="grp-antilink" onchange="grpMarkDirty();updateBadge('grp-antilink-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="info-box" style="margin-top:12px;">Detects: http/https links, wa.me, t.me, bit.ly and WhatsApp group invite links.</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Anti Spam</div><div class="card-sub">Warn members who send 5+ messages in 5s</div></div><span id="grp-antispam-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Anti Spam</div><div class="td">Admins are exempt from this rule</div></div>
+          <label class="toggle"><input type="checkbox" id="grp-antispam" onchange="grpMarkDirty();updateBadge('grp-antispam-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="info-box" style="margin-top:12px;">Warns members who send 5 or more messages within 5 seconds.</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Welcome Message</div><div class="card-sub">Greet new members when they join</div></div><span id="grp-welcome-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Welcome</div></div>
+          <label class="toggle"><input type="checkbox" id="grp-welcome" onchange="grpMarkDirty();updateBadge('grp-welcome-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="form-row" style="margin-top:14px;">
+          <label class="fl">Custom welcome message (optional)</label>
+          <textarea class="fi" id="grp-welcome-msg" rows="3" placeholder="Welcome to the group! 🎉 We're glad to have you." onchange="grpMarkDirty()"></textarea>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">Goodbye Message</div><div class="card-sub">Farewell members when they leave</div></div><span id="grp-goodbye-badge" class="badge badge-off">OFF</span></div>
+        <div class="toggle-row">
+          <div><div class="tl">Enable Goodbye</div></div>
+          <label class="toggle"><input type="checkbox" id="grp-goodbye" onchange="grpMarkDirty();updateBadge('grp-goodbye-badge',this.checked)"><div class="toggle-sl"></div></label>
+        </div>
+        <div class="form-row" style="margin-top:14px;">
+          <label class="fl">Custom goodbye message (optional)</label>
+          <textarea class="fi" id="grp-goodbye-msg" rows="3" placeholder="Goodbye! We'll miss you. 👋" onchange="grpMarkDirty()"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <div style="flex:1;font-size:.9rem;font-weight:700;color:#fff;">Save Group Settings</div>
+        <button class="btn btn-green" id="grp-save-btn" onclick="saveGroupSettings()">Save Group Settings</button>
+        <button class="btn" onclick="discardGroupChanges()">Discard</button>
+      </div>
+      <div id="grp-save-status" style="font-size:.78rem;color:var(--muted);"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:14px;">Group WhatsApp Commands</div>
+      <table class="cmd-table">
+        <thead><tr><th>Command</th><th>Description</th><th>Access</th></tr></thead>
+        <tbody>
+          <tr><td><span class="cmd-code">.antilink on/off</span></td><td style="color:var(--muted)">Toggle anti link in group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.antispam on/off</span></td><td style="color:var(--muted)">Toggle anti spam in group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.welcome on/off</span></td><td style="color:var(--muted)">Toggle welcome messages</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.welcome msg &lt;text&gt;</span></td><td style="color:var(--muted)">Set custom welcome message</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.goodbye on/off</span></td><td style="color:var(--muted)">Toggle goodbye messages</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.goodbye msg &lt;text&gt;</span></td><td style="color:var(--muted)">Set custom goodbye message</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.kick</span></td><td style="color:var(--muted)">Kick a member (reply or provide number)</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.promote</span></td><td style="color:var(--muted)">Promote member to admin</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.demote</span></td><td style="color:var(--muted)">Demote admin to member</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.mute</span></td><td style="color:var(--muted)">Mute group (only admins can send)</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.unmute</span></td><td style="color:var(--muted)">Unmute group (everyone can send)</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.tagall &lt;msg&gt;</span></td><td style="color:var(--muted)">Tag all members with a message</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.groupinfo</span></td><td style="color:var(--muted)">Show group info and enabled features</td><td><span class="badge badge-cyan">All</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══════════════ CHANNEL SETTINGS PANEL ═══════════════ -->
+  <div class="panel" id="panel-channels">
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head">
+          <div><div class="card-title">📡 Auto Follow</div><div class="card-sub">Instantly follow a channel with ALL connected bots</div></div>
+        </div>
+        <div class="form-row">
+          <label class="fl">Channel JID</label>
+          <input class="fi" id="ch-follow-jid" placeholder="120363402094635383@newsletter" oninput="this.value=this.value.trim()">
+        </div>
+        <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;">Enter the channel JID. All active sessions will follow at once.</div>
+        <button class="btn btn-accent" onclick="channelFollowAll()" style="width:100%;" id="ch-follow-btn">📡 Follow with All Bots</button>
+        <div id="ch-follow-result" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div><div class="card-title">💬 Channel Auto React</div><div class="card-sub">All bots follow & auto-react to every new channel post</div></div>
+        </div>
+        <div class="form-row">
+          <label class="fl">Channel JID</label>
+          <input class="fi" id="ch-react-jid" placeholder="120363402094635383@newsletter" oninput="this.value=this.value.trim()">
+        </div>
+        <div class="form-row">
+          <label class="fl">Select Emoji(s) to React With</label>
+          <div id="ch-emoji-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+          <input class="fi" id="ch-react-custom" placeholder="Or type custom emoji: 🔥,💯,🎉" style="margin-top:6px;">
+        </div>
+        <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;">Selected emojis will be applied in rotation for every new post.</div>
+        <button class="btn btn-green" onclick="channelReactAll()" style="width:100%;" id="ch-react-btn">💬 Apply React to All Bots</button>
+        <div id="ch-react-result" style="margin-top:14px;"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-title">Active React Configs</div><div class="card-sub">Channels currently set for auto-reaction</div></div>
+        <button class="btn btn-sm btn-accent" onclick="loadReactList()">↻ Refresh</button>
+      </div>
+      <div id="ch-react-list">
+        <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0;">Click Refresh to load configs.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════ SESSIONS PANEL ═══════════════ -->
+  <div class="panel" id="panel-sessions">
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-title">Active Sessions</div><div class="card-sub">Currently connected bot numbers</div></div>
+        <button class="btn btn-sm btn-accent" onclick="loadSessions()">Refresh</button>
+      </div>
+      <div id="sessions-list"><div style="color:var(--muted);font-size:.85rem;text-align:center;padding:30px 0;">Loading sessions…</div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Connect All Bots</div></div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px;">Reconnect all saved session numbers from the database.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-accent" onclick="connectAll()">Reconnect All</button>
+        <a href="/code/reconnect" target="_blank" class="btn">Open Reconnect API</a>
+      </div>
+      <div id="connect-result" style="margin-top:12px;font-size:.82rem;color:var(--muted);"></div>
+    </div>
+    <div class="card" style="border:1px solid rgba(239,68,68,0.15);">
+      <div class="card-head">
+        <div><div class="card-title" style="color:var(--red);">Format All Sessions</div><div class="card-sub">Delete all sessions permanently from the database</div></div>
+      </div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:16px;">This will disconnect and erase <strong style="color:var(--text-dim);">all</strong> paired bot sessions from MongoDB. This action cannot be undone.</p>
+      <button class="btn btn-red" onclick="openFormatModal()">Format All Sessions</button>
+    </div>
+  </div>
+
+<!-- FORMAT MODAL -->
+<div id="format-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.75);backdrop-filter:blur(10px);align-items:center;justify-content:center;">
+  <div style="background:var(--card);border:1px solid rgba(239,68,68,0.25);border-radius:24px;padding:30px 26px;max-width:360px;width:90%;position:relative;box-shadow:8px 8px 24px rgba(0,0,0,0.6),-8px -8px 24px rgba(255,255,255,0.03);">
+    <div style="font-size:1.05rem;font-weight:800;color:var(--red);margin-bottom:6px;">⚠️ Format All Sessions</div>
+    <div style="font-size:.8rem;color:var(--muted);margin-bottom:18px;">Enter the password to confirm. All sessions will be permanently deleted.</div>
+    <label class="fl">Password</label>
+    <input class="fi" type="password" id="format-password" placeholder="Enter password" onkeydown="if(event.key==='Enter')confirmFormat()">
+    <div id="format-error" style="color:var(--red);font-size:.76rem;margin-top:8px;display:none;"></div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn" style="flex:1;" onclick="closeFormatModal()">Cancel</button>
+      <button class="btn btn-red" style="flex:1;" id="format-confirm-btn" onclick="confirmFormat()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- SAVE BAR -->
+<div class="save-bar" id="save-bar">
+  <div style="font-size:.83rem;color:var(--muted);">You have unsaved changes</div>
+  <div style="display:flex;gap:10px;">
+    <button class="btn" onclick="discardChanges()">Discard</button>
+    <button class="btn btn-green" onclick="saveConfig()">Save Settings</button>
+  </div>
+</div>
+
+<script>
+// ─── UPTIME ───────────────────────────────────────────────
+const startTime=Date.now();
+setInterval(()=>{
+  const s=Math.floor((Date.now()-startTime)/1000);
+  document.getElementById('ov-uptime').textContent=
+    `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+},1000);
+
+// ─── SIDEBAR ──────────────────────────────────────────────
+function openSidebar(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('open');
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('open');
+}
+
+// ─── TABS ─────────────────────────────────────────────────
+const panelTitles={overview:'Overview',settings:'Bot Settings',protection:'Protection',autoreply:'Auto Reply',commands:'Commands',groups:'Group Management',sessions:'Sessions',channels:'Channel Settings'};
+function switchTab(id,btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+id).classList.add('active');
+  if(btn)btn.classList.add('active');
+  document.getElementById('page-title').textContent=panelTitles[id]||id;
+  if(id==='sessions')loadSessions();
+  closeSidebar();
+}
+
+// ─── STATE ────────────────────────────────────────────────
+let currentConfig={};
+let isDirty=false;
+
+function markDirty(){
+  isDirty=true;
+  document.getElementById('save-bar').classList.add('show');
+  updateBwPreview();
+}
+
+function clearDirty(){
+  isDirty=false;
+  document.getElementById('save-bar').classList.remove('show');
+}
+
+function updateBadge(id,checked){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.className='badge '+(checked?'badge-on':'badge-off');
+  el.textContent=checked?'ON':'OFF';
+}
+
+// ─── NUMBER INPUT ─────────────────────────────────────────
+function onNumberInput(){
+  const v=document.getElementById('global-number').value.trim();
+  if(!v)clearNumber();
+}
+
+function clearNumber(){
+  document.getElementById('global-number').value='';
+  currentConfig={};
+  clearDirty();
+  resetFormToDefaults();
+  document.getElementById('ov-config-display').innerHTML=`<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;">Enter a number above and click Load Settings.</div>`;
+}
+
+// ─── LOAD CONFIG ──────────────────────────────────────────
+async function loadConfig(){
+  const num=document.getElementById('global-number').value.trim().replace(/\D/g,'');
+  if(!num){showToast('Enter a phone number first','error');return;}
+  const btn=document.getElementById('load-btn-text');
+  btn.innerHTML='<span class="spin"></span>Loading…';
+  try{
+    const r=await fetch('/code/api/config?number='+num);
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    currentConfig=d.config||{};
+    applyConfigToForm(currentConfig);
+    clearDirty();
+    showToast('Config loaded for '+num,'success');
+    renderOvConfig(currentConfig);
+  }catch(e){
+    showToast('Error: '+e.message,'error');
+  }finally{
+    btn.textContent='Load Settings';
+  }
+  try{
+    const r2=await fetch('/code/api/sessions/list');
+    const d2=await r2.json();
+    if(d2.ok){
+      document.getElementById('ov-sessions').textContent=d2.count;
+      renderActiveSessions(d2.sessions);
+    }
+  }catch(e){}
+}
+
+function renderOvConfig(cfg){
+  const items=[
+    ['AUTO_VIEW_STATUS','Auto View Status'],
+    ['AUTO_LIKE_STATUS','Auto Like Status'],
+    ['AUTO_RECORDING','Auto Recording'],
+    ['AUTO_REPLY','Auto Reply'],
+    ['ANTI_BADWORD','Anti Badword'],
+    ['ANTI_BUG','Anti Bug'],
+    ['WORK_TYPE','Work Type'],
+    ['AUTO_VOICE','Auto Voice'],
+  ];
+  let html='';
+  items.forEach(([k,label])=>{
+    const v=cfg[k];
+    if(v===undefined)return;
+    const isOn=v==='on'||v==='true'||v===true;
+    const isOff=v==='off'||v==='false'||v===false;
+    const badgeCls=isOn?'badge-on':isOff?'badge-off':'badge-cyan';
+    html+=`<div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">${label}</span><span class="badge ${badgeCls}">${v}</span></div>`;
+  });
+  document.getElementById('ov-config-display').innerHTML=html||'<div style="color:var(--muted);font-size:.83rem;">No config found.</div>';
+}
+
+function applyConfigToForm(cfg){
+  setCheck('s-auto-view', cfg.AUTO_VIEW_STATUS==='true'||cfg.AUTO_VIEW_STATUS===true||cfg.AUTO_VIEW_STATUS==='on');
+  setCheck('s-auto-like', cfg.AUTO_LIKE_STATUS==='true'||cfg.AUTO_LIKE_STATUS===true||cfg.AUTO_LIKE_STATUS==='on');
+  setCheck('s-auto-rec', cfg.AUTO_RECORDING==='true'||cfg.AUTO_RECORDING===true||cfg.AUTO_RECORDING==='on');
+  setCheck('s-auto-voice', cfg.AUTO_VOICE!=='off');
+  setVal('s-work-type', cfg.WORK_TYPE||'public');
+  setVal('s-prefix', cfg.PREFIX||'.');
+  setVal('s-owner', cfg.OWNER_NUMBER||'');
+  setVal('s-emojis', Array.isArray(cfg.AUTO_LIKE_EMOJI)?cfg.AUTO_LIKE_EMOJI.join(', '):(cfg.AUTO_LIKE_EMOJI||''));
+  const bugOn=cfg.ANTI_BUG==='on';
+  const bwOn=cfg.ANTI_BADWORD==='on';
+  setCheck('p-antibug',bugOn);
+  setCheck('p-antibadword',bwOn);
+  updateBadge('antibug-badge',bugOn);
+  updateBadge('antibadword-badge',bwOn);
+  setVal('p-badwords',(cfg.BAD_WORDS||[]).join('\n'));
+  updateBwPreview();
+  const arOn=cfg.AUTO_REPLY==='on';
+  setCheck('ar-enabled',arOn);
+  updateBadge('autoreply-badge',arOn);
+  renderAutoReplies(cfg.AUTO_REPLIES||{});
+}
+
+function resetFormToDefaults(){
+  setCheck('s-auto-view',false);setCheck('s-auto-like',false);setCheck('s-auto-rec',false);setCheck('s-auto-voice',false);
+  setCheck('p-antibug',false);setCheck('p-antibadword',false);
+  setCheck('ar-enabled',false);
+  setVal('s-work-type','public');setVal('s-prefix','.');setVal('s-owner','');setVal('s-emojis','');setVal('p-badwords','');
+  updateBadge('antibug-badge',false);updateBadge('antibadword-badge',false);updateBadge('autoreply-badge',false);
+  renderAutoReplies({});
+  document.getElementById('bw-preview').innerHTML='';
+}
+
+function setCheck(id,val){const el=document.getElementById(id);if(el)el.checked=!!val;}
+function setVal(id,val){const el=document.getElementById(id);if(el)el.value=val||'';}
+
+// ─── BAD WORD PREVIEW ──────────────────────────────────────
+function updateBwPreview(){
+  const words=document.getElementById('p-badwords').value.split('\n').map(w=>w.trim()).filter(Boolean);
+  const container=document.getElementById('bw-preview');
+  if(!words.length){container.innerHTML='';return;}
+  container.innerHTML=words.map((w,i)=>`<span class="bw-tag">${w}<button onclick="removeBwTag(${i})" title="Remove">×</button></span>`).join('');
+}
+function removeBwTag(idx){
+  const el=document.getElementById('p-badwords');
+  const words=el.value.split('\n').map(w=>w.trim()).filter(Boolean);
+  words.splice(idx,1);
+  el.value=words.join('\n');
+  updateBwPreview();
+  markDirty();
+}
+
+// ─── AUTO REPLIES ─────────────────────────────────────────
+function renderAutoReplies(replies){
+  const entries=Object.entries(replies||{});
+  document.getElementById('ar-count').textContent=`${entries.length} rule${entries.length!==1?'s':''} configured`;
+  if(!entries.length){
+    document.getElementById('ar-list').innerHTML='<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet.</div>';
+    return;
+  }
+  document.getElementById('ar-list').innerHTML=entries.map(([t,r])=>`
+    <div class="reply-item">
+      <div style="flex:1;min-width:0;">
+        <div class="reply-trigger">${escHtml(t)}</div>
+        <div class="reply-response">${escHtml(r)}</div>
+      </div>
+      <button class="btn btn-sm btn-red" style="margin-left:10px;flex-shrink:0;" onclick="removeReply('${escAttr(t)}')">×</button>
+    </div>`).join('');
+}
+
+function addAutoReply(){
+  const trigger=document.getElementById('ar-trigger').value.trim().toLowerCase();
+  const response=document.getElementById('ar-response').value.trim();
+  if(!trigger||!response){showToast('Enter both trigger and response','error');return;}
+  currentConfig.AUTO_REPLIES=currentConfig.AUTO_REPLIES||{};
+  currentConfig.AUTO_REPLIES[trigger]=response;
+  document.getElementById('ar-trigger').value='';
+  document.getElementById('ar-response').value='';
+  renderAutoReplies(currentConfig.AUTO_REPLIES);
+  markDirty();
+  showToast('Reply rule added','success');
+}
+
+function removeReply(trigger){
+  if(!currentConfig.AUTO_REPLIES)return;
+  delete currentConfig.AUTO_REPLIES[trigger];
+  renderAutoReplies(currentConfig.AUTO_REPLIES);
+  markDirty();
+}
+
+function clearAllReplies(){
+  if(!confirm('Clear all auto reply rules?'))return;
+  currentConfig.AUTO_REPLIES={};
+  renderAutoReplies({});
+  markDirty();
+}
+
+// ─── SAVE CONFIG ──────────────────────────────────────────
+async function saveConfig(){
+  const num=document.getElementById('global-number').value.trim().replace(/\D/g,'');
+  if(!num){showToast('Enter a phone number first','error');return;}
+  const emojisRaw=document.getElementById('s-emojis').value;
+  const emojiList=emojisRaw.split(',').map(e=>e.trim()).filter(Boolean);
+  const bwRaw=document.getElementById('p-badwords').value;
+  const bwList=bwRaw.split('\n').map(w=>w.trim()).filter(Boolean);
+  const cfg={
+    AUTO_VIEW_STATUS: document.getElementById('s-auto-view').checked?'true':'false',
+    AUTO_LIKE_STATUS: document.getElementById('s-auto-like').checked?'true':'false',
+    AUTO_RECORDING: document.getElementById('s-auto-rec').checked?'true':'false',
+    AUTO_VOICE: document.getElementById('s-auto-voice').checked?'on':'off',
+    WORK_TYPE: document.getElementById('s-work-type').value,
+    PREFIX: document.getElementById('s-prefix').value||'.',
+    OWNER_NUMBER: document.getElementById('s-owner').value.replace(/\D/g,'')||undefined,
+    AUTO_LIKE_EMOJI: emojiList.length?emojiList:undefined,
+    ANTI_BUG: document.getElementById('p-antibug').checked?'on':'off',
+    ANTI_BADWORD: document.getElementById('p-antibadword').checked?'on':'off',
+    BAD_WORDS: bwList,
+    AUTO_REPLY: document.getElementById('ar-enabled').checked?'on':'off',
+    AUTO_REPLIES: currentConfig.AUTO_REPLIES||{},
+  };
+  Object.keys(cfg).forEach(k=>cfg[k]===undefined&&delete cfg[k]);
+  try{
+    const r=await fetch('/code/api/config',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({number:num,config:cfg})
+    });
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    currentConfig={...currentConfig,...cfg};
+    clearDirty();
+    renderOvConfig(currentConfig);
+    showToast('Settings saved successfully!','success');
+  }catch(e){
+    showToast('Save failed: '+e.message,'error');
+  }
+}
+
+function discardChanges(){
+  const num=document.getElementById('global-number').value.trim().replace(/\D/g,'');
+  if(num&&Object.keys(currentConfig).length){applyConfigToForm(currentConfig);}
+  else{resetFormToDefaults();}
+  clearDirty();
+}
+
+// ─── SESSIONS ─────────────────────────────────────────────
+async function loadSessions(){
+  document.getElementById('sessions-list').innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:30px 0;"><span class="spin"></span>Loading…</div>';
+  try{
+    const r=await fetch('/code/api/sessions/list');
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error);
+    document.getElementById('ov-sessions').textContent=d.count;
+    renderActiveSessions(d.sessions);
+    if(!d.sessions.length){
+      document.getElementById('sessions-list').innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:30px 0;">No active sessions.</div>';
+      return;
+    }
+    document.getElementById('sessions-list').innerHTML=d.sessions.map(n=>`
+      <div class="session-item">
+        <div>
+          <div class="session-num">${n}</div>
+          <div class="session-status"><div class="dot"></div>Active</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-accent" onclick="document.getElementById('global-number').value='${n}';loadConfig();">Load Config</button>
+          <button class="btn btn-sm btn-red" onclick="forceReconnect('${n}',this)">⟳ Reconnect</button>
+        </div>
+      </div>`).join('');
+  }catch(e){
+    document.getElementById('sessions-list').innerHTML=`<div style="color:var(--red);font-size:.85rem;text-align:center;padding:20px;">Error: ${e.message}</div>`;
+  }
+}
+
+function renderActiveSessions(sessions){
+  const row=document.getElementById('active-sessions-row');
+  if(!sessions||!sessions.length){row.innerHTML='';return;}
+  row.innerHTML=sessions.map(n=>`<span class="num-tag" onclick="document.getElementById('global-number').value='${n}';loadConfig();">${n}</span>`).join('');
+}
+
+async function connectAll(){
+  document.getElementById('connect-result').textContent='Connecting…';
+  try{
+    const r=await fetch('/code/connect-all');
+    const d=await r.json();
+    document.getElementById('connect-result').textContent=JSON.stringify(d,null,2);
+  }catch(e){
+    document.getElementById('connect-result').textContent='Error: '+e.message;
+  }
+}
+
+async function forceReconnect(number, btn){
+  const orig=btn.innerHTML;
+  btn.disabled=true;
+  btn.innerHTML='⟳ Reconnecting…';
+  try{
+    const r=await fetch('/code/api/session/force-reconnect',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({number})
+    });
+    const d=await r.json();
+    if(d.ok){btn.innerHTML='✅ Started';btn.style.color='var(--green)';}
+    else{btn.innerHTML='❌ '+d.error;btn.style.color='var(--red)';}
+  }catch(e){
+    btn.innerHTML='❌ Error';btn.style.color='var(--red)';
+  }
+  setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;btn.style.color='';},4000);
+}
+
+// ─── FORMAT ALL SESSIONS ──────────────────────────────────
+function openFormatModal(){
+  document.getElementById('format-modal').style.display='flex';
+  document.getElementById('format-password').value='';
+  document.getElementById('format-error').style.display='none';
+  setTimeout(()=>document.getElementById('format-password').focus(),100);
+}
+function closeFormatModal(){document.getElementById('format-modal').style.display='none';}
+async function confirmFormat(){
+  const pw=document.getElementById('format-password').value;
+  const errEl=document.getElementById('format-error');
+  const btn=document.getElementById('format-confirm-btn');
+  errEl.style.display='none';
+  btn.innerHTML='<span class="spin"></span>Formatting…';
+  btn.disabled=true;
+  try{
+    const r=await fetch('/code/api/sessions/format-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    closeFormatModal();
+    showToast('All sessions formatted successfully!','success');
+    loadSessions();
+  }catch(e){
+    errEl.textContent=e.message==='Wrong password'?'Incorrect password. Try again.':e.message;
+    errEl.style.display='block';
+  }finally{
+    btn.innerHTML='Confirm';btn.disabled=false;
+  }
+}
+document.getElementById('format-modal').addEventListener('click',function(e){if(e.target===this)closeFormatModal();});
+
+// ─── GROUP MANAGEMENT ─────────────────────────────────────
+let grpDirty=false;
+let currentGrpSettings={};
+
+function grpMarkDirty(){grpDirty=true;document.getElementById('grp-save-status').textContent='You have unsaved changes.';document.getElementById('grp-save-status').style.color='var(--orange)';}
+
+async function loadGroupsList(){
+  const num=document.getElementById('grp-number').value.trim().replace(/\D/g,'');
+  if(!num){showToast('Enter your paired number first','error');return;}
+  document.getElementById('grp-list-row').innerHTML='<span class="spin"></span>';
+  try{
+    const r=await fetch('/code/api/groups/list?number='+num);
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    const row=document.getElementById('grp-list-row');
+    if(!d.groups.length){row.innerHTML='<span style="font-size:.82rem;color:var(--muted);">No groups found for this number.</span>';return;}
+    row.innerHTML=d.groups.map(g=>`
+      <span class="num-tag" title="${escHtml(g.jid)}" onclick="document.getElementById('grp-jid').value='${escAttr(g.jid)}';loadGroupSettings();" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        ${escHtml(g.name||g.jid)} <span style="color:var(--muted);font-size:.7rem;">(${g.participants})</span>
+      </span>`).join('');
+    showToast(`${d.groups.length} groups loaded`,'success');
+  }catch(e){
+    document.getElementById('grp-list-row').innerHTML=`<span style="color:var(--red);font-size:.82rem;">${e.message}</span>`;
+  }
+}
+
+async function loadGroupSettings(){
+  const jid=document.getElementById('grp-jid').value.trim();
+  if(!jid){showToast('Enter a group JID first','error');return;}
+  const loadText=document.getElementById('grp-load-text');
+  loadText.innerHTML='<span class="spin"></span>';
+  try{
+    const r=await fetch('/code/api/group?jid='+encodeURIComponent(jid));
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    currentGrpSettings=d.settings||{};
+    applyGroupSettingsToForm(currentGrpSettings);
+    grpDirty=false;
+    document.getElementById('grp-status').textContent='✅ Settings loaded for: '+jid;
+    document.getElementById('grp-status').style.color='var(--green)';
+    document.getElementById('grp-save-status').textContent='';
+    showToast('Group settings loaded','success');
+  }catch(e){
+    document.getElementById('grp-status').textContent='❌ '+e.message;
+    document.getElementById('grp-status').style.color='var(--red)';
+  }finally{
+    loadText.textContent='Load';
+  }
+}
+
+function applyGroupSettingsToForm(s){
+  const al=s.ANTI_LINK==='on';const as=s.ANTI_SPAM==='on';
+  const wl=s.WELCOME==='on';const gb=s.GOODBYE==='on';
+  setCheck('grp-antilink',al);updateBadge('grp-antilink-badge',al);
+  setCheck('grp-antispam',as);updateBadge('grp-antispam-badge',as);
+  setCheck('grp-welcome',wl);updateBadge('grp-welcome-badge',wl);
+  setCheck('grp-goodbye',gb);updateBadge('grp-goodbye-badge',gb);
+  setVal('grp-welcome-msg',s.WELCOME_MSG||'');
+  setVal('grp-goodbye-msg',s.GOODBYE_MSG||'');
+}
+
+function discardGroupChanges(){
+  applyGroupSettingsToForm(currentGrpSettings);
+  grpDirty=false;
+  document.getElementById('grp-save-status').textContent='';
+}
+
+async function saveGroupSettings(){
+  const jid=document.getElementById('grp-jid').value.trim();
+  if(!jid){showToast('Enter a group JID first','error');return;}
+  const settings={
+    ANTI_LINK: document.getElementById('grp-antilink').checked?'on':'off',
+    ANTI_SPAM: document.getElementById('grp-antispam').checked?'on':'off',
+    WELCOME: document.getElementById('grp-welcome').checked?'on':'off',
+    WELCOME_MSG: document.getElementById('grp-welcome-msg').value.trim()||undefined,
+    GOODBYE: document.getElementById('grp-goodbye').checked?'on':'off',
+    GOODBYE_MSG: document.getElementById('grp-goodbye-msg').value.trim()||undefined,
+  };
+  Object.keys(settings).forEach(k=>settings[k]===undefined&&delete settings[k]);
+  try{
+    const r=await fetch('/code/api/group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid,settings})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    currentGrpSettings=settings;
+    grpDirty=false;
+    document.getElementById('grp-save-status').textContent='✅ Group settings saved!';
+    document.getElementById('grp-save-status').style.color='var(--green)';
+    showToast('Group settings saved!','success');
+  }catch(e){
+    showToast('Save failed: '+e.message,'error');
+  }
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+let _tTimer;
+function showToast(msg,type='success'){
+  let t=document.querySelector('.toast');
+  if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}
+  t.textContent=msg;t.className='toast '+type;t.style.opacity='1';
+  clearTimeout(_tTimer);
+  _tTimer=setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},2800);
+}
+
+// ─── HELPERS ──────────────────────────────────────────────
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function escAttr(s){return String(s).replace(/'/g,"\\'");}
+
+// ─── CHANNEL SETTINGS ─────────────────────────────────────
+const CH_EMOJIS=['❤️','🔥','💯','👍','😍','🎉','💪','🙏','😂','🥰','💀','🤩','👏','🌟','💥','🎶','🏆','✨','🤣','😎'];
+let chSelectedEmojis=new Set();
+
+function initEmojiGrid(){
+  const grid=document.getElementById('ch-emoji-grid');
+  if(!grid)return;
+  grid.innerHTML=CH_EMOJIS.map(e=>`
+    <span onclick="toggleEmoji('${e}',this)" title="${e}"
+      style="cursor:pointer;font-size:1.4rem;padding:6px 10px;border-radius:10px;border:2px solid transparent;transition:.15s;user-select:none;"
+      data-emoji="${e}">${e}</span>`).join('');
+}
+
+function toggleEmoji(emoji,el){
+  if(chSelectedEmojis.has(emoji)){
+    chSelectedEmojis.delete(emoji);
+    el.style.border='2px solid transparent';
+    el.style.background='none';
+  } else {
+    chSelectedEmojis.add(emoji);
+    el.style.border='2px solid rgba(255,255,255,0.3)';
+    el.style.background='rgba(255,255,255,0.07)';
+    el.style.borderRadius='10px';
+  }
+}
+
+function getSelectedEmojis(){
+  const custom=document.getElementById('ch-react-custom').value.trim();
+  const customArr=custom?custom.split(',').map(e=>e.trim()).filter(Boolean):[];
+  return [...chSelectedEmojis,...customArr];
+}
+
+function chResultHtml(data,type){
+  if(!data.results||!data.results.length) return `<div style="color:var(--muted);font-size:.82rem;">No active sessions.</div>`;
+  const rows=data.results.map(r=>{
+    const color=r.status==='followed'||r.status==='followed+react_set'?'var(--green)':r.status==='error'?'var(--red)':'var(--muted)';
+    const icon=r.status==='followed'||r.status==='followed+react_set'?'✅':r.status==='error'?'❌':'⚠️';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:12px;background:var(--bg-dark);margin-bottom:6px;">
+      <span style="font-size:.82rem;font-weight:600;">${r.number}</span>
+      <span style="font-size:.8rem;color:${color};">${icon} ${r.status}${r.reason?' ('+r.reason+')':''}</span>
+    </div>`;
+  }).join('');
+  return `<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">✅ ${data.succeeded}/${data.total} succeeded</div>${rows}`;
+}
+
+async function channelFollowAll(){
+  const jid=document.getElementById('ch-follow-jid').value.trim();
+  if(!jid){showToast('Enter a channel JID','error');return;}
+  const btn=document.getElementById('ch-follow-btn');
+  const res=document.getElementById('ch-follow-result');
+  btn.innerHTML='<span class="spin"></span> Following…';btn.disabled=true;res.innerHTML='';
+  try{
+    const r=await fetch('/code/api/channel/follow-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    res.innerHTML=chResultHtml(d,'follow');
+    showToast(`Followed! ${d.succeeded}/${d.total} bots succeeded`,'success');
+  }catch(e){
+    res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;
+    showToast('Error: '+e.message,'error');
+  }finally{
+    btn.innerHTML='📡 Follow with All Bots';btn.disabled=false;
+  }
+}
+
+async function channelReactAll(){
+  const jid=document.getElementById('ch-react-jid').value.trim();
+  if(!jid){showToast('Enter a channel JID','error');return;}
+  const emojis=getSelectedEmojis();
+  if(!emojis.length){showToast('Select at least one emoji','error');return;}
+  const btn=document.getElementById('ch-react-btn');
+  const res=document.getElementById('ch-react-result');
+  btn.innerHTML='<span class="spin"></span> Applying…';btn.disabled=true;res.innerHTML='';
+  try{
+    const r=await fetch('/code/api/channel/react-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid,emojis})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    res.innerHTML=chResultHtml(d,'react');
+    showToast(`React set! ${d.succeeded}/${d.total} bots succeeded`,'success');
+    loadReactList();
+  }catch(e){
+    res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;
+    showToast('Error: '+e.message,'error');
+  }finally{
+    btn.innerHTML='💬 Apply React to All Bots';btn.disabled=false;
+  }
+}
+
+async function loadReactList(){
+  const el=document.getElementById('ch-react-list');
+  el.innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;"><span class="spin"></span> Loading…</div>';
+  try{
+    const r=await fetch('/code/api/channel/react-list');
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    if(!d.list||!d.list.length){
+      el.innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0;">No active react configs yet.</div>';
+      return;
+    }
+    el.innerHTML=d.list.map(item=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:14px;background:var(--bg-dark);margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:.82rem;font-weight:700;color:#fff;word-break:break-all;">${escHtml(item.jid)}</div>
+          <div style="font-size:1.1rem;margin-top:4px;">${(item.emojis||[]).join(' ')}</div>
+        </div>
+        <button class="btn btn-sm btn-red" onclick="removeReactConfig('${escAttr(item.jid)}')">Remove</button>
+      </div>`).join('');
+  }catch(e){
+    el.innerHTML=`<div style="color:var(--red);font-size:.82rem;text-align:center;padding:20px;">❌ ${e.message}</div>`;
+  }
+}
+
+async function removeReactConfig(jid){
+  if(!confirm('Remove react config for '+jid+'?'))return;
+  try{
+    const r=await fetch('/code/api/channel/react-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid})});
+    const d=await r.json();
+    if(!d.ok)throw new Error(d.error||'Failed');
+    showToast('React config removed','success');
+    loadReactList();
+  }catch(e){
+    showToast('Error: '+e.message,'error');
+  }
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+(async()=>{
+  try{
+    const r=await fetch('/code/api/sessions/list');
+    const d=await r.json();
+    if(d.ok){document.getElementById('ov-sessions').textContent=d.count;renderActiveSessions(d.sessions);}
+  }catch(e){}
+  initEmojiGrid();
+})();
+</script>
+</body>
+</html>
