@@ -1235,6 +1235,119 @@ function setupCommandHandlers(socket, number) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
 
+          case 'pair': {
+    try {
+        const axios = require('axios');
+        const { generateWAMessageFromContent, proto } = require('dct-dev-private-baileys');
+
+        let text = (msg.message?.conversation || 
+                    msg.message?.extendedTextMessage?.text || 
+                    msg.message?.imageMessage?.caption || 
+                    msg.message?.videoMessage?.caption || '').trim();
+
+        let number = text.replace(/[^0-9]/g, '');
+
+        if (!number) {
+            await socket.sendMessage(sender, { react: { text: '⚠️', key: msg.key } });
+            return await socket.sendMessage(sender, {
+                text: `
+│ ❌ *No Number Detected*
+│
+│ 📝 *Usage:* .pair 94771234567
+│ 💡 *Tip:* Enter number with country code!`
+            }, { quoted: msg });
+        }
+
+        const loadingEmojis = ['👁️‍🗨️', '💞', '🫀', '🔐', '🔓', '✅'];
+        for (const emoji of loadingEmojis) {
+            await socket.sendMessage(sender, { react: { text: emoji, key: msg.key } });
+            await new Promise(resolve => setTimeout(resolve, 200)); // Sleep function
+        }
+
+        const apiUrl = `https://statusassistant-11969787fc03.herokuapp.com/code?number=${encodeURIComponent(number)}`;
+        
+        const response = await axios.get(apiUrl);
+        const result = response.data;
+
+        if (!result || !result.code) {
+            throw new Error('API ERR ❗.');
+        }
+
+        const pairCode = result.code;
+
+        // 5. Success Reaction
+        await socket.sendMessage(sender, { react: { text: '🔑', key: msg.key } });
+
+        // 6. 🎨 FANCY INTERACTIVE MESSAGE (Button Message)
+        const msgParams = generateWAMessageFromContent(sender, {
+            viewOnceMessage: {
+                message: {
+                    messageContextInfo: {
+                        deviceListMetadata: {},
+                        deviceListMetadataVersion: 2
+                    },
+                    interactiveMessage: proto.Message.InteractiveMessage.create({
+                        body: proto.Message.InteractiveMessage.Body.create({
+                            text: `『 ⚜️ *PAIRING SUCCESS* ⚜️ 』
+
+┃  👤 *User:* ${msg.pushName || 'Guest'}
+┃  📱 *Number:* +${number}
+┃  🔑 *YOUR CODE:*
+┃  『  *${pairCode}* 』
+┃  ⏳ *Expires in 60 seconds*
+┃  *⚙️ INSTRUCTIONS:*
+┃  ✒ Tap "COPY CODE" button
+┃  ✒ Go to WhatsApp Settings
+┃  ✒ Select "Linked Devices"
+┃  ✒ Paste code & Enjoy!`
+                        }),
+                        footer: proto.Message.InteractiveMessage.Footer.create({
+                            text: "👻 status assistant."
+                        }),
+                        header: proto.Message.InteractiveMessage.Header.create({
+                            title: "",
+                            subtitle: "status assistant 🩵",
+                            hasMediaAttachment: false
+                        }),
+                        nativeFlowMessage: proto.Message.InteractiveMessage.NativeFlowMessage.create({
+                            buttons: [
+                                {
+                                    name: "cta_copy",
+                                    buttonParamsJson: JSON.stringify({
+                                        display_text: "🍻 COPY CODE",
+                                        id: "copy_code_btn",
+                                        copy_code: pairCode
+                                    })
+                                },
+                                {
+                                    name: "cta_url",
+                                    buttonParamsJson: JSON.stringify({
+                                        display_text: "👻 BOT URL",
+                                        url: "https://statusassistant-11969787fc03.herokuapp.com/#pair",
+                                        merchant_url: "https://statusassistant-11969787fc03.herokuapp.com/#pair"
+                                    })
+                                }
+                            ]
+                        })
+                    })
+                }
+            }
+        }, { quoted: msg });
+
+        await socket.relayMessage(sender, msgParams.message, { messageId: msgParams.key.id });
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await socket.sendMessage(sender, { text: pairCode }, { quoted: msg });
+
+    } catch (err) {
+        console.error("❌ Pair Error:", err);
+        await socket.sendMessage(sender, { react: { text: '❌', key: msg.key } });
+        
+        await socket.sendMessage(sender, {
+            text: `❌ *PAIRING FAILED*\n\nReason: ${err.message || 'API Connection Error'}\n\nPlease try again later.`
+        }, { quoted: msg });
+    }
+    break;
+          }
           case 'day': {
     const frames = [
         '🌑',
