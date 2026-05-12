@@ -44,7 +44,7 @@ const config = {
   PREFIX: '.',
   MAX_RETRIES: 3,
   GROUP_INVITE_LINK: 'xxxxxxxxxxx',
-  KEZU_IMG: 'https://i.ibb.co/fz5qRm3n/006858c04843.jpg',
+  KEZU_IMG: 'https://files.catbox.moe/begcjv.png',
   NEWSLETTER_JID: '000000000000000@newsletter',
   OTP_EXPIRY: 300000,
   WORK_TYPE: 'public',
@@ -53,11 +53,11 @@ const config = {
   BOT_NAME: '🤖 Status Assistant',
   BOT_VERSION: '1.0.0V',
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿',
-  IMAGE_PATH: 'https://i.ibb.co/fz5qRm3n/006858c04843.jpg',
+  IMAGE_PATH: 'https://files.catbox.moe/begcjv.png',
   BOT_FOOTER: '> *🤖 Status Assistant*',
   API_YTMP3_URL: 'https://ytmp3-download-api.vercel.app',
   API_YTMP4_URL: 'https://malmi-lakiya-api.vercel.app',
-  BUTTON_IMAGES: { ALIVE: 'https://i.ibb.co/fz5qRm3n/006858c04843.jpg' }
+  BUTTON_IMAGES: { ALIVE: 'https://files.catbox.moe/begcjv.png' }
 };
 // ---------------- MONGO SETUP ----------------
 // ────────────────────────────────────────────────
@@ -2046,7 +2046,7 @@ break;
       userCfg = await loadUserConfigFromMongo(cleanNumber) || {};
     }
 
-    const MENU_IMG = userCfg.logo || "https://i.ibb.co/fz5qRm3n/006858c04843.jpg";
+    const MENU_IMG = userCfg.logo || "https://files.catbox.moe/begcjv.png";
     const OWNER_NAME = '𝐊ᴇᴢᴜ𝚄 ||🌿';
     const BOT_NAME = userCfg.botName || BOT_NAME_FANCY;
   // --- 📅 TIME & GREETING ENGINE ---
@@ -2110,7 +2110,7 @@ if (videoNoteEnabled) {
 │ 📅 *Date*    » ${dateStr}
 │ 🕐 *Time*    » ${timeStr}
 ╰──────────────────╯
-> https://kezu-bc597f548bc3.herokuapp.com
+> 💦 KEZU KOLLA
 ❰❰ _✦ ${randomQuote} ✦_ ❱❱
 
 > 🌿 *Select an option below*
@@ -4320,7 +4320,7 @@ case 'bots': {
     }
 
     const botName = "🤖 Status Assistant";
-    const defaultLogo = "https://files.catbox.moe/g6ywiw.jpeg";
+    const defaultLogo = "https://files.catbox.moe/begcjv.png";
     const configLogo = cfg.logo || (typeof config !== 'undefined' ? config.KEZU_IMG : null);
 
     // Animation 2: Security Check
@@ -4490,7 +4490,7 @@ END:VCARD`
           body: `📍 𝐏𝐨𝐰𝐞𝐫𝐞𝐝 𝐁𝐲 🤖 Status Assistant`,
           previewType: "PHOTO",
           thumbnailUrl: String(imagePayload.url || defaultLogo), 
-          sourceUrl: "https://whatsapp.com/channel/0029Va8f3smKWEKkKufO",
+          sourceUrl: "https://whatsapp.com/channel/00O",
           mediaType: 1,
           renderLargerThumbnail: true
         }
@@ -4793,8 +4793,8 @@ case 'owner': {
     const ownerNumber = '94711214607';
     const ownerName = '𝐊ᴇᴢᴜ𝚄 ||🌿';
     const botName = '🤖 Status Assistant';
-    const ownerImage = 'https://i.ibb.co/fz5qRm3n/006858c04843.jpg';
-    const websiteUrl = 'https://kezu-bc597f548bc3.herokuapp.com/#pair';
+    const ownerImage = 'https://files.catbox.moe/begcjv.png';
+    const websiteUrl = 'https://statusassistant-11969787fc03.herokuapp.com/#pair';
     
     // Time Calculation
     const timeNow = new Date().toLocaleTimeString('en-US', { 
