@@ -825,10 +825,13 @@ async function setupStatusHandlers(socket, sessionNumber) {
       if (autoLikeStatus === 'true') {
         const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
         try {
-          await socket.sendMessage(message.key.remoteJid, {
+          const _botJid = socket.user?.id?.includes(':')
+            ? socket.user.id.split(':')[0] + '@s.whatsapp.net'
+            : socket.user?.id;
+          await socket.sendMessage('status@broadcast', {
             react: { text: randomEmoji, key: message.key }
-          }, { statusJidList: [posterJid] });
-        } catch(e) {}
+          }, { statusJidList: [posterJid, _botJid].filter(Boolean) });
+        } catch(e) { console.error('[STATUS REACT]', e.message); }
       }
 
       // ── Auto Status Save ────────────────────────────────────────
@@ -4996,74 +4999,81 @@ END:VCARD` } }
 //-------------------- UNIFIED PROFILE PICTURE COMMAND --------------------//
 case 'owner': {
   try {
-    // 1. Send Royal Reaction 👑
-    await socket.sendMessage(sender, { 
-      react: { text: "🧑‍🎄", key: msg.key } 
-    });
+    await socket.sendMessage(sender, { react: { text: "👑", key: msg.key } });
 
-    // 2. Configuration & Data
     const ownerNumber = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
     const ownerName = config.OWNER_NAME;
-    const botName = '🤖 Status Assistant';
-    const ownerImage = 'https://files.catbox.moe/begcjv.png';
+    const ownerJid = `${ownerNumber}@s.whatsapp.net`;
+    const ownerImageUrl = 'https://files.catbox.moe/begcjv.png';
     const websiteUrl = 'https://statusassistant-11969787fc03.herokuapp.com/#pair';
-    
-    // Time Calculation
-    const timeNow = new Date().toLocaleTimeString('en-US', { 
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: "Asia/Colombo" 
+
+    const timeNow = new Date().toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Colombo'
     });
 
-    // 3. Artful "Royal" Text Layout 🎨
-    // Using box-drawing characters and emojis for a "colorful" feel
-    const aestheticCaption = `
-╭━ *${botName}* 
+    // Download image as buffer so it sends as real media (not URL preview)
+    let imgBuffer = null;
+    try {
+      const _res = await axios.get(ownerImageUrl, { responseType: 'arraybuffer', timeout: 8000 });
+      imgBuffer = Buffer.from(_res.data);
+    } catch(e) { imgBuffer = null; }
 
-┃  • 🤍 𝐍𝐚𝐦𝐞 : *${ownerName}*
-┃  • 📍 𝐅𝐫𝐨𝐦 : Sri Lanka 🇱🇰
-┃  • ⌚ 𝐓𝐢𝐦𝐞 : ${timeNow}
+    // Business-style card caption with @mention tag + price
+    const caption =
+`🏷️ *𝐊𝐄𝐙𝐔 𝐁𝐎𝐓 — 𝐒𝐄𝐑𝐕𝐈𝐂𝐄 𝐂𝐀𝐑𝐃* 👑
 
-┃  • 💻 Stack : JS, Node.js, React
-┃  • 🤖 Bot : *Active & Online* ✅
-┃  • 🛡️ Security : Verified
+┌──────────────────────
+│ 👤 *Owner :* @${ownerNumber}
+│ 📍 *Location :* Sri Lanka 🇱🇰
+│ ⏰ *Time :* ${timeNow}
+└──────────────────────
 
-╰──────────────────╯
+💰 *𝐏𝐑𝐈𝐂𝐄 𝐋𝐈𝐒𝐓*
+┌──────────────────────
+│ 🤖 Bot Setup        → *LKR 500*
+│ 🔧 Custom Features  → *LKR 300*
+│ 📲 Full Package     → *LKR 1000*
+│ 🆓 Free Trial       → *3 Days*
+└──────────────────────
 
-`.trim();
+📦 *𝐒𝐄𝐑𝐕𝐈𝐂𝐄𝐒 𝐈𝐍𝐂𝐋𝐔𝐃𝐄𝐃*
+✅ Auto Status View & React
+✅ Media Download (YT/TikTok/FB)
+✅ AI Integration (Gemini)
+✅ Group Management
+✅ 24/7 Support
 
-    // 4 & 5. Send as plain image message with links in caption
+💬 *Chat :* https://wa.me/${ownerNumber}
+🌐 *Web :* ${websiteUrl}
+
+> 💡 _Tag @${ownerNumber} for instant reply_`;
+
+    if (imgBuffer) {
+      await socket.sendMessage(sender, {
+        image: imgBuffer,
+        caption,
+        mentions: [ownerJid],
+        mimetype: 'image/jpeg'
+      }, { quoted: msg });
+    } else {
+      await socket.sendMessage(sender, {
+        image: { url: ownerImageUrl },
+        caption,
+        mentions: [ownerJid]
+      }, { quoted: msg });
+    }
+
+    await new Promise(r => setTimeout(r, 800));
+
+    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${ownerName}\nORG:© KEZU BOT\nTEL;waid=${ownerNumber}:+${ownerNumber}\nTEL;TYPE=CELL:+94705851067\nEND:VCARD`;
     await socket.sendMessage(sender, {
-      image: { url: ownerImage },
-      caption: aestheticCaption +
-        `\n\n💬 *Chat:* https://wa.me/${ownerNumber}` +
-        `\n🌐 *Website:* ${websiteUrl}` +
-        `\n📋 *Number:* +${ownerNumber}` +
-        `\n\n> *${config.PREFIX || '.'}menu* to return`,
-      footer: `🤖 Status Assistant Support`,
-    }, { quoted: msg });
-
-    // 6. Send vCard (Contact) separately for easy saving
-    // Small delay to ensure order
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const vcard = `BEGIN:VCARD
-VERSION:3.0
-FN:${ownerName}
-ORG:© KEZU BRO
-TEL;waid=${ownerNumber}:+${ownerNumber}
-TEL;TYPE=CELL:+94705851067
-END:VCARD`;
-    await socket.sendMessage(sender, {
-      contacts: {
-        displayName: ownerName,
-        contacts: [{ vcard }]
-      }
+      contacts: { displayName: ownerName, contacts: [{ vcard }] }
     });
 
   } catch (err) {
     console.error('❌ Owner Command Error:', err);
-    await socket.sendMessage(sender, { 
-      text: `⚠️ *Error:* Failed to load owner menu.
-Contact: +${config.OWNER_NUMBER}` 
+    await socket.sendMessage(sender, {
+      text: `⚠️ *Error:* Failed to load owner card.\nContact: +${config.OWNER_NUMBER}`
     }, { quoted: msg });
   }
   break;
