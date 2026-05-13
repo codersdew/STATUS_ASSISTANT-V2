@@ -1237,6 +1237,88 @@ function setupCommandHandlers(socket, number) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
 
+          case 'csong': {
+  try {
+    const sanitizedNum = (number || '').replace(/[^0-9]/g, '');
+    const cfg2 = await loadUserConfigFromMongo(sanitizedNum) || {};
+    const botName2 = cfg2.botName || BOT_NAME_FANCY;
+
+    const argText = (args.join(' ') || '').trim();
+    const commaIdx = argText.indexOf(',');
+    if (commaIdx === -1) {
+      await socket.sendMessage(sender, {
+        text: `❌ *Wrong Usage!*\n\n*Usage:* \`.csong <channelJid>,<song title or YouTube URL>\`\n*Example:* \`.csong 120363402094635383@newsletter,Shape of You Ed Sheeran\`\n\n> *© 𝐃ᴄᴛ 𝗖ʀɪᴍɪɴᴀʟ 𝐌𝙳 ||🍃*`
+      }, { quoted: msg });
+      break;
+    }
+
+    let channelJid = argText.slice(0, commaIdx).trim();
+    const query = argText.slice(commaIdx + 1).trim();
+
+    if (!channelJid.endsWith('@newsletter')) {
+      if (/^\d+$/.test(channelJid)) channelJid = `${channelJid}@newsletter`;
+    }
+    if (!channelJid.endsWith('@newsletter')) {
+      await socket.sendMessage(sender, { text: `❌ Invalid channel JID. Must end with @newsletter.` }, { quoted: msg });
+      break;
+    }
+    if (!query) {
+      await socket.sendMessage(sender, { text: `❌ Please provide a song title or YouTube URL after the comma.` }, { quoted: msg });
+      break;
+    }
+
+    await socket.sendMessage(sender, { react: { text: '🔍', key: msg.key } });
+    await socket.sendMessage(sender, { text: `🔍 *Searching song:* _${query}_...` }, { quoted: msg });
+
+    let data;
+    if (query.match(/(youtube\.com|youtu\.be)/)) {
+      const match = query.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
+      const videoId = match ? match[1] : null;
+      if (!videoId) throw new Error('Invalid YouTube URL');
+      data = await yts({ videoId });
+    } else {
+      const result = await yts(query);
+      if (!result.videos || result.videos.length === 0) throw new Error('No results found');
+      data = result.videos[0];
+    }
+
+    if (!data) throw new Error('No results');
+
+    const videoId = data.videoId;
+    const apiUrl = `${config.API_YTMP3_URL}/api/ytmp3?url=https://youtu.be/${videoId}`;
+    const res = await axios.get(apiUrl, { timeout: 25000 });
+
+    if (res.data.status !== 'success') throw new Error(res.data.message || 'Download API error');
+
+    const downloadLink = res.data.data.download_url;
+    const songTitle = res.data.data.title || data.title;
+    const thumbnail = res.data.data.thumbnail || data.thumbnail;
+
+    let thumbBuffer = null;
+    try {
+      const thumbRes = await axios.get(thumbnail, { responseType: 'arraybuffer' });
+      thumbBuffer = await sharp(thumbRes.data).resize(300, 300, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 1 } }).jpeg().toBuffer();
+    } catch(e) {}
+
+    await socket.sendMessage(channelJid, {
+      audio: { url: downloadLink },
+      mimetype: 'audio/mpeg',
+      fileName: `${songTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`,
+      jpegThumbnail: thumbBuffer
+    });
+
+    await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+    await socket.sendMessage(sender, {
+      text: `✅ *Song sent to channel!*\n\n🎵 *Title:* ${songTitle}\n📡 *Channel:* \`${channelJid}\`\n\n> *© 𝗖ʜᴀɴɴᴇʟ 𝘀ᴏɴɢ 𝘀ᴇɴᴅᴇʀ*`
+    }, { quoted: msg });
+
+  } catch(e) {
+    console.error('csong error:', e);
+    await socket.sendMessage(sender, { react: { text: '❌', key: msg.key } });
+    await socket.sendMessage(sender, { text: `❌ *csong Error:* ${e.message}` }, { quoted: msg });
+  }
+  break;
+          }
           case 'pair': {
     try {
         const axios = require('axios');
