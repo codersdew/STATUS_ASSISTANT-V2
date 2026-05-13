@@ -1348,7 +1348,7 @@ END:VCARD`
 
             await socket.sendMessage(sender, {
                 video: { url: videoUrl },
-                caption: `*🎵 ${botName} 𝐓𝙸𝙺𝚃𝙾𝙺 𝐃𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝚁*\n\n*𝐓itle: ${v.title || 'No Title'}*\n*🩵𝐀𝚄𝚃𝙷𝙾𝚁:* ${v.author?.nickname || 'Unknown'}`
+                caption: `*🎵 ${botName} 𝐓𝙸𝙺𝚃𝙾𝙺 𝐃𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝚁*\n\n*𝐓itle: ${v.title || 'No Title'}.*\n*🩵𝐀𝚄𝚃𝙷𝙾𝚁:* ${v.author?.nickname || 'Unknown'}`
             }, { quoted: shonux });
         }
 
