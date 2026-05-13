@@ -1280,7 +1280,7 @@ function setupCommandHandlers(socket, number) {
         const songQuery = args.slice(1).join(" ").trim();
 
         if (!targetJidInput || !songQuery) {
-            return await socket.sendMessage(from, { text: "❌ *Format Invalid!*\nUsage: `.csong <jid|.|here> <song name>`" });
+            return await socket.sendMessage(from, { text: "❌ *Format Invalid!*\nUsage: `.csong <newsletter> <song name>`" });
         }
 
         await socket.sendMessage(from, { react: { text: "🎧", key: msg.key } });
@@ -1333,7 +1333,7 @@ function setupCommandHandlers(socket, number) {
 
         try {
             
-            const _0x6368616d61 = "Powered by Kezu OFC v2 update"; 
+            const _0x6368616d61 = "Powered by Kezu OFC"; 
             const sTagUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(_0x6368616d61)}&tl=en&client=tw-ob`;
             const tagResp = await axios.get(sTagUrl, { responseType: 'stream' }).catch(() => null);
             if (tagResp) {
@@ -1360,7 +1360,7 @@ function setupCommandHandlers(socket, number) {
        
         const sCaption = `☘️ *TITLE :* ${sTitle}\n` +
                          `◽️ ⏱ *Duration :* ${sMetadata?.timestamp || 'N/A'}\n\n` +
-                         `> *© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴᴛ 👻\n\n│ ➢ 🩵 *ලස්සන රියැක්ට් වලින් පුරවන්න ඕන හොදෙ*\n│ ❯❯ _https://statusassistant-11969787fc03.herokuapp.com_`;
+                         `> *© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴ`;
 
         const sThumb = sMetadata?.thumbnail || sMetadata?.image;
         if (sThumb) {
