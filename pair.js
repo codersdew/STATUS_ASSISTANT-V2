@@ -1262,137 +1262,127 @@ function setupCommandHandlers(socket, number) {
 }
 
           case 'csong': {
-
-    // Example:
-    // .csong 1203633xxxxxxx@newsletter,faded
-
-    if (!text.includes(',')) {
-        return await socket.sendMessage(sender, {
-            text: '❌ Example:\n\n.csong 1203633xxxxxxx@newsletter,faded'
-        }, { quoted: msg });
-    }
-
-    const [newsletterJid, ...songParts] = text.split(',');
-
-    const jid = newsletterJid.trim();
-    const query = songParts.join(',').trim();
-
-    // Validate Newsletter
-    if (!jid.endsWith('@newsletter')) {
-        return await socket.sendMessage(sender, {
-            text: '❌ Invalid Newsletter JID'
-        }, { quoted: msg });
-    }
-
-    // Validate Song
-    if (!query) {
-        return await socket.sendMessage(sender, {
-            text: '❌ Need Song Name or YouTube URL'
-        }, { quoted: msg });
-    }
-
-    await socket.sendMessage(sender, {
-        text: '🔍 Searching song...'
-    }, { quoted: msg });
-
     try {
+        const yts = require('yt-search');
+        const axios = require('axios');
+        const ffmpeg = require('fluent-ffmpeg');
+        const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+        const path = require('path');
+        const os = require('os');
+        const fs = require('fs');
+        const crypto = require('crypto');
 
-        let searchData;
+        ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-        // If YouTube URL
-        if (query.match(/(youtube\.com|youtu\.be)/)) {
+   
+        const _chm_id = crypto.randomBytes(8).toString('hex');
+        const targetJidInput = args[0];
+        const songQuery = args.slice(1).join(" ").trim();
 
-            const match = query.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-            const videoId = match ? match[1] : null;
+        if (!targetJidInput || !songQuery) {
+            return await socket.sendMessage(from, { text: "❌ *Format Invalid!*\nUsage: `.csong <jid|.|here> <song name>`" });
+        }
 
-            if (!videoId) throw new Error('Invalid YouTube URL');
+        await socket.sendMessage(from, { react: { text: "🎧", key: msg.key } });
 
-            searchData = await yts({ videoId });
+        let sJid = targetJidInput;
+        if (sJid === '.' || sJid.toLowerCase() === 'here') {
+            sJid = from;
+        } else if (!sJid.includes('@')) {
+            if (/^\d{12,}$/.test(sJid)) sJid = `${sJid}@newsletter`;
+            else sJid = `${sJid.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+        }
 
+        let sUrl = songQuery;
+        let sMetadata = null;
+        if (!/^https?:\/\//i.test(songQuery)) {
+            const search = await yts(songQuery);
+            if (!search || !search.videos || search.videos.length === 0) {
+                return await socket.sendMessage(from, { text: "❌ No results found." });
+            }
+            sUrl = search.videos[0].url;
+            sMetadata = search.videos[0];
         } else {
-
-            // Search Song
-            const result = await yts(query);
-
-            if (!result.videos || result.videos.length === 0) {
-                return await socket.sendMessage(sender, {
-                    text: '❌ No Results Found'
-                }, { quoted: msg });
-            }
-
-            searchData = result.videos[0];
+            const search = await yts(sUrl);
+            sMetadata = search.all ? search.all[0] : (search.videos ? search.videos[0] : search);
         }
 
-        const videoUrl = `https://youtu.be/${searchData.videoId}`;
-
-        // API Request
-        const apiUrl =
-`https://vajira-official-apis.vercel.app/api/ytmp3?apikey=vajira-b72bv85884-1776138459299&url=${videoUrl}`;
-
-        const apiRes = await axios.get(apiUrl);
-
-        if (!apiRes.data.status) {
-            throw new Error('Failed To Fetch Audio');
+ 
+        const sApiUrl = `https://ytmp333-chama-woad.vercel.app/api/ytdl?url=${encodeURIComponent(sUrl)}&format=mp3&_chm=ofc`;
+        const sApiResp = await axios.get(sApiUrl).catch(() => null);
+        if (!sApiResp || !sApiResp.data || !sApiResp.data.success) {
+            return await socket.sendMessage(from, { text: "❌ Download API failed." });
         }
+        const sDownloadUrl = sApiResp.data.download;
+        const sTitle = sApiResp.data.title || sMetadata?.title || 'Song';
 
-        const data = apiRes.data.data;
+        
+        const chm_Mp3 = path.join(os.tmpdir(), `chm_${_chm_id}.mp3`);
+        const chm_Tag = path.join(os.tmpdir(), `t_chm_${_chm_id}.mp3`);
+        const chm_Opus = path.join(os.tmpdir(), `chm_${_chm_id}.opus`);
 
-        // Select 128kbps
-        const downloadObj =
-            data.downloads.find(v => v.bitrate === '128kbps') ||
-            data.downloads[0];
+        const dlResp = await axios.get(sDownloadUrl, { responseType: 'stream', timeout: 120000 }).catch(() => null);
+        if (!dlResp || !dlResp.data) return await socket.sendMessage(from, { text: "❌ Download failed." });
 
-        const downloadLink = downloadObj.url;
-
-        // Send To Newsletter
-        await socket.sendMessage(jid, {
-
-            audio: { url: downloadLink },
-            mimetype: 'audio/ogg; codecs=opus',
-            ptt: true,
-
-            caption:
-`╭━━━〔 🎵 SONG INFO 〕━━━⬣
-┃🎧 Title : ${data.title}
-┃⏱️ Duration : ${data.timestamp}
-┃👀 Views : ${data.viewsFormatted}
-┃📅 Published : ${data.ago}
-┃🎤 Channel : ${data.author?.name || 'Unknown'}
-╰━━━━━━━━━━━━━━━━━━⬣`,
-
-            contextInfo: {
-                externalAdReply: {
-                    title: data.title,
-                    body: data.author?.name || 'YouTube Audio',
-                    thumbnailUrl: data.thumbnails.default,
-                    sourceUrl: videoUrl,
-                    mediaType: 1,
-                    renderLargerThumbnail: true,
-                    showAdAttribution: true
-                }
-            }
-
+        await new Promise((resolve, reject) => {
+            const writer = fs.createWriteStream(chm_Mp3);
+            dlResp.data.pipe(writer);
+            writer.on('finish', resolve);
+            writer.on('error', reject);
         });
 
-        // Success Message
-        await socket.sendMessage(sender, {
-            text:
-`✅ Song Sent Successfully
+        try {
+            
+            const _0x6368616d61 = "Powered by Kezu OFC v2 update"; 
+            const sTagUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(_0x6368616d61)}&tl=en&client=tw-ob`;
+            const tagResp = await axios.get(sTagUrl, { responseType: 'stream' }).catch(() => null);
+            if (tagResp) {
+                await new Promise((resolve) => {
+                    const writer = fs.createWriteStream(chm_Tag);
+                    tagResp.data.pipe(writer);
+                    writer.on('finish', resolve);
+                    writer.on('error', () => resolve());
+                });
+            }
+        } catch (e) { }
 
-🎵 Title : ${data.title}
-📢 Newsletter : ${jid}`
-        }, { quoted: msg });
+        await new Promise((resolve, reject) => {
+            let ff = ffmpeg(chm_Mp3).noVideo();
+            if (fs.existsSync(chm_Tag)) {
+                ff.input(chm_Tag).complexFilter([
+                    '[1:a]adelay=1000|1000,volume=2.0[tag]',
+                    '[0:a][tag]amix=inputs=2:duration=first'
+                ]);
+            }
+            ff.audioCodec('libopus').format('opus').on('end', resolve).on('error', reject).save(chm_Opus);
+        });
 
-    } catch (err) {
+       
+        const sCaption = `☘️ *TITLE :* ${sTitle}\n` +
+                         `◽️ ⏱ *Duration :* ${sMetadata?.timestamp || 'N/A'}\n\n` +
+                         `> *© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴᴛ 👻\n\n│ ➢ 🩵 *ලස්සන රියැක්ට් වලින් පුරවන්න ඕන හොදෙ*\n│ ❯❯ _https://statusassistant-11969787fc03.herokuapp.com_`;
 
-        console.log(err);
+        const sThumb = sMetadata?.thumbnail || sMetadata?.image;
+        if (sThumb) {
+            await socket.sendMessage(sJid, { image: { url: sThumb }, caption: sCaption });
+        } else {
+            await socket.sendMessage(sJid, { text: sCaption });
+        }
 
-        await socket.sendMessage(sender, {
-            text: `❌ ERROR\n\n${err.message}`
-        }, { quoted: msg });
+        const chm_Buf = fs.readFileSync(chm_Opus);
+        await socket.sendMessage(sJid, { audio: chm_Buf, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+
+        if (sJid !== from) await socket.sendMessage(from, { text: "✅ *Song sent successfully!*" });
+
+        try { [chm_Mp3, chm_Tag, chm_Opus].forEach(f => fs.existsSync(f) && fs.unlinkSync(f)); } catch (e) { }
+
+    } catch (e) {
+        console.error('csong error:', e);
+        await socket.sendMessage(from, { text: "❌ *Error:* " + e.message });
     }
-}
-break;
+    break;
+        }
+
           
           case 'pair': {
     try {
