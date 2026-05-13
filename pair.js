@@ -1237,6 +1237,30 @@ function setupCommandHandlers(socket, number) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
 
+          case 'jid': {
+    const sanitized = (number || '').replace(/[^0-9]/g, '');
+    const cfg = await loadUserConfigFromMongo(sanitized) || {};
+    const botName = cfg.botName || '© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴᴛ'; // dynamic bot name
+
+    const userNumber = sender.split('@')[0]; 
+
+    // Reaction
+    await socket.sendMessage(sender, { 
+        react: { text: "👻", key: msg.key } 
+    });
+
+    // Fake contact quoting for meta style
+    const shonux = {
+      key: { remoteJid: "status@broadcast", participant: "0@s.whatsapp.net", fromMe: false, id: "META_FAKE_ID" },
+      message: { contactMessage: { displayName: botName, vcard: `BEGIN:VCARD\nVERSION:3.0\nN:${botName};;;;\nFN:${botName}\nORG:Meta Platforms\nEND:VCARD` } }
+    };
+
+    await socket.sendMessage(sender, {
+        text: `*✅ 𝐂hat 𝐉ID:* ${sender}\n*♻️ 𝐘our 𝐍umber:* +${userNumber}`,
+    }, { quoted: shonux });
+    break;
+}
+
           case 'csong': {
   try {
     const sanitizedNum = (number || '').replace(/[^0-9]/g, '');
@@ -1524,18 +1548,18 @@ case 'ytmp3':
 
         const desc = `☘️ *𝗦𝗢𝗡𝗚* : _${apiData.title}_     
 ╭─────────────────┄┄
-💠⏱️ *𝗗ᴜʀᴀᴛɪᴏɴ ➟* _${apiData.timestamp}_
-💠👀 *𝗩ɪᴇᴡꜱ ➟* _${apiData.viewsFormatted}_
-💠📅 *𝗣ᴜʙʟɪꜱʜᴇᴅ ➟* _${apiData.ago}_
-💠🎤 *𝗖ʜᴀɴɴᴇʟ ➟* _${apiData.author?.name || 'N/A'}_
-╰──────────────────┉┉
+│🩵⏱️ *𝗗ᴜʀᴀᴛɪᴏɴ ➟* _${apiData.timestamp}_
+│🩵👀 *𝗩ɪᴇᴡꜱ ➟* _${apiData.viewsFormatted}_
+│🩵📅 *𝗣ᴜʙʟɪꜱʜᴇᴅ ➟* _${apiData.ago}_
+│🩵🎤 *𝗖ʜᴀɴɴᴇʟ ➟* _${apiData.author?.name || 'N/A'}_
+╰─────────────────┄┄
 *⬇️ 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗 𝗢𝗣𝗧𝗜𝗢𝗡𝗦*
 
 *🔢 𝗥ᴇᴘʟʏ ᴡɪᴛʜ ᴀ 𝗡ᴜᴍʙᴇʀ 👇*
-
-*01 🎧 ❯❯ ᴀᴜᴅɪᴏ (ᴍᴘ3)*
-*02 📁 ❯❯ ᴅᴏᴄᴜᴍᴇɴᴛ (ғɪʟᴇ)*
-*03 🎤 ❯❯ ᴠᴏɪᴄᴇ (ᴘᴛᴛ)*
+──────────────────────
+*01 🎧 ✰❯ 𝗔ᴜᴅɪᴏ (ᴍᴘ3)*
+*02 📁 ✰❯ 𝗗ᴏᴄᴜᴍᴇɴᴛ (ғɪʟᴇ)*
+*03 🎤 ✰❯ 𝗩ᴏɪᴄᴇ (ᴘᴛᴛ)*
 `;
 
         const sentMsg = await socket.sendMessage(sender, {
