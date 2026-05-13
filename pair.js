@@ -74,11 +74,13 @@ let sessionsCol, numbersCol, adminsCol, newsletterCol, configsCol, newsletterRea
 // ────────────────────────────────────────────────
 // In-memory cache for user configs to avoid frequent DB reads
 const userConfigCache = new Map();
-const USER_CONFIG_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const USER_CONFIG_CACHE_TTL = 10 * 60 * 1000; // 10 minutes (reduced from 30)
+const USER_CONFIG_CACHE_MAX = 100; // max entries to prevent unbounded growth
 
 // In-memory cache for group settings
 const groupSettingsCache = new Map();
-const GROUP_SETTINGS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const GROUP_SETTINGS_CACHE_TTL = 8 * 60 * 1000; // 8 minutes (reduced from 15)
+const GROUP_SETTINGS_CACHE_MAX = 200; // max entries
 
 let _mongoReady = false;
 async function initMongo() {
@@ -455,16 +457,32 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000);
 
-// Clean up stale userConfigCache and groupSettingsCache (runs every 30 min, respects new TTLs)
+// Clean up stale caches every 5 min + enforce max size to prevent RAM bloat
 setInterval(() => {
   const _now = Date.now();
   for (const [key, val] of userConfigCache.entries()) {
-    if (val.ts && (_now - val.ts) > USER_CONFIG_CACHE_TTL) userConfigCache.delete(key);
+    if (!val.ts || (_now - val.ts) > USER_CONFIG_CACHE_TTL) userConfigCache.delete(key);
   }
   for (const [key, val] of groupSettingsCache.entries()) {
-    if (val.ts && (_now - val.ts) > GROUP_SETTINGS_CACHE_TTL) groupSettingsCache.delete(key);
+    if (!val.ts || (_now - val.ts) > GROUP_SETTINGS_CACHE_TTL) groupSettingsCache.delete(key);
   }
-}, 30 * 60 * 1000);
+  // Enforce max sizes — evict oldest entries first
+  if (userConfigCache.size > USER_CONFIG_CACHE_MAX) {
+    const overflow = userConfigCache.size - USER_CONFIG_CACHE_MAX;
+    let i = 0;
+    for (const key of userConfigCache.keys()) { userConfigCache.delete(key); if (++i >= overflow) break; }
+  }
+  if (groupSettingsCache.size > GROUP_SETTINGS_CACHE_MAX) {
+    const overflow = groupSettingsCache.size - GROUP_SETTINGS_CACHE_MAX;
+    let i = 0;
+    for (const key of groupSettingsCache.keys()) { groupSettingsCache.delete(key); if (++i >= overflow) break; }
+  }
+  // Clean up msg rate limiter entries that have expired
+  const _now2 = Date.now();
+  for (const [key, val] of _msgRateLimiter.entries()) {
+    if (val.resetAt && _now2 > val.resetAt + 60000) _msgRateLimiter.delete(key);
+  }
+}, 5 * 60 * 1000);
 
 // ─── Auto Voice reply map (module-level constant, not re-created per message) ─
 const _VOICE_REPLIES = {
@@ -987,36 +1005,40 @@ function setupCommandHandlers(socket, number) {
     const isGroup = from.endsWith("@g.us");
 
 
-    let body = (type === 'conversation') ? msg.message.conversation
-      : msg.message?.extendedTextMessage?.contextInfo?.hasOwnProperty('quotedMessage')
-        ? msg.message.extendedTextMessage.text
-        : (type == 'interactiveResponseMessage')
-          ? msg.message.interactiveResponseMessage?.nativeFlowResponseMessage
-          && JSON.parse(msg.message.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson)?.id
-          : (type == 'templateButtonReplyMessage')
-            ? msg.message.templateButtonReplyMessage?.selectedId
-            : (type === 'extendedTextMessage')
-              ? msg.message.extendedTextMessage.text
-              : (type == 'imageMessage') && msg.message.imageMessage.caption
-                ? msg.message.imageMessage.caption
-                : (type == 'videoMessage') && msg.message.videoMessage.caption
-                  ? msg.message.videoMessage.caption
-                  : (type == 'buttonsResponseMessage')
-                    ? msg.message.buttonsResponseMessage?.selectedButtonId
-                    : (type == 'listResponseMessage')
-                      ? msg.message.listResponseMessage?.singleSelectReply?.selectedRowId
-                      : (type == 'messageContextInfo')
-                        ? (msg.message.buttonsResponseMessage?.selectedButtonId
-                          || msg.message.listResponseMessage?.singleSelectReply?.selectedRowId
-                          || msg.text)
-                        : (type === 'viewOnceMessage')
-                          ? msg.message[type]?.message[getContentType(msg.message[type].message)]
-                          : (type === "viewOnceMessageV2")
-                            ? (msg.msg.message.imageMessage?.caption || msg.msg.message.videoMessage?.caption || "")
-                            : '';
-    body = String(body || '');
+    let body = '';
+    try {
+      if (type === 'conversation') {
+        body = msg.message.conversation || '';
+      } else if (type === 'extendedTextMessage') {
+        body = msg.message.extendedTextMessage?.text || '';
+      } else if (type === 'interactiveResponseMessage') {
+        try {
+          body = JSON.parse(msg.message.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson || '{}')?.id || '';
+        } catch(e) { body = ''; }
+      } else if (type === 'templateButtonReplyMessage') {
+        body = msg.message.templateButtonReplyMessage?.selectedId || '';
+      } else if (type === 'buttonsResponseMessage') {
+        body = msg.message.buttonsResponseMessage?.selectedButtonId || '';
+      } else if (type === 'listResponseMessage') {
+        body = msg.message.listResponseMessage?.singleSelectReply?.selectedRowId || '';
+      } else if (type === 'imageMessage') {
+        body = msg.message.imageMessage?.caption || '';
+      } else if (type === 'videoMessage') {
+        body = msg.message.videoMessage?.caption || '';
+      } else if (type === 'messageContextInfo') {
+        body = msg.message.buttonsResponseMessage?.selectedButtonId
+          || msg.message.listResponseMessage?.singleSelectReply?.selectedRowId
+          || '';
+      } else if (type === 'viewOnceMessage') {
+        try {
+          const voType = getContentType(msg.message[type]?.message);
+          body = msg.message[type]?.message?.[voType]?.caption || '';
+        } catch(e) { body = ''; }
+      }
+    } catch(e) { body = ''; }
+    body = String(body || '').trim();
 
-    if (!body || typeof body !== 'string') return;
+    if (!body) return;
 
     const prefix = config.PREFIX;
     const isCmd = body && body.startsWith && body.startsWith(prefix);
@@ -3036,6 +3058,28 @@ END:VCARD` } }
               { title: ' 🖼️ ┊ 𝐒𝐞𝐭 𝐁𝐨𝐭 𝐋𝐨𝐠𝐨', description: 'Reply image with .setlogo', id: `${prefix}setlogo` },
               { title: ' 🎬 ┊ 𝐒𝐞𝐭 𝐌𝐞𝐧𝐮 𝐕𝐢𝐝𝐞𝐨', description: 'Change .menu video note', id: `${prefix}setmenuvideo ` },
               { title: ' 👑 ┊ 𝐒𝐞𝐭 𝐒𝐞𝐬𝐬𝐢𝐨𝐧 𝐎𝐰𝐧𝐞𝐫', description: 'Set who controls this bot', id: `${prefix}setowner ` },
+            ],
+          },
+          {
+            title: '🛡️ 𝐏𝐑𝐎𝐓𝐄𝐂𝐓𝐈𝐎𝐍 𝐒𝐇𝐈𝐄𝐋𝐃',
+            rows: [
+              { title: ' 🐛 ┊ 𝐀𝐧𝐭𝐢 𝐁𝐮𝐠 : 𝐎𝐍', description: 'Block crash/bug messages', id: `${prefix}antibug on` },
+              { title: ' ✅ ┊ 𝐀𝐧𝐭𝐢 𝐁𝐮𝐠 : 𝐎𝐅𝐅', description: 'Disable anti-bug protection', id: `${prefix}antibug off` },
+              { title: ' 🔗 ┊ 𝐀𝐧𝐭𝐢 𝐋𝐢𝐧𝐤 : 𝐎𝐍', description: 'Remove links in groups', id: `${prefix}antilink on` },
+              { title: ' 🔗 ┊ 𝐀𝐧𝐭𝐢 𝐋𝐢𝐧𝐤 : 𝐎𝐅𝐅', description: 'Allow links in groups', id: `${prefix}antilink off` },
+              { title: ' 🚫 ┊ 𝐀𝐧𝐭𝐢 𝐒𝐩𝐚𝐦 : 𝐎𝐍', description: 'Block spammers in groups', id: `${prefix}antispam on` },
+              { title: ' ✅ ┊ 𝐀𝐧𝐭𝐢 𝐒𝐩𝐚𝐦 : 𝐎𝐅𝐅', description: 'Disable spam protection', id: `${prefix}antispam off` },
+              { title: ' 🤬 ┊ 𝐀𝐧𝐭𝐢 𝐁𝐚𝐝𝐰𝐨𝐫𝐝 : 𝐎𝐍', description: 'Filter bad words', id: `${prefix}antibadword on` },
+              { title: ' ✅ ┊ 𝐀𝐧𝐭𝐢 𝐁𝐚𝐝𝐰𝐨𝐫𝐝 : 𝐎𝐅𝐅', description: 'Allow all words', id: `${prefix}antibadword off` },
+            ],
+          },
+          {
+            title: '✨ 𝐑𝐄𝐀𝐂𝐓𝐈𝐎𝐍 & 𝐒𝐓𝐀𝐓𝐔𝐒',
+            rows: [
+              { title: ' ✨ ┊ 𝐀𝐮𝐭𝐨 𝐑𝐞𝐚𝐜𝐭 : 𝐎𝐍', description: 'React to all messages', id: `${prefix}autoreact on` },
+              { title: ' 😶 ┊ 𝐀𝐮𝐭𝐨 𝐑𝐞𝐚𝐜𝐭 : 𝐎𝐅𝐅', description: 'Stop auto reacting', id: `${prefix}autoreact off` },
+              { title: ' 📊 ┊ 𝐒𝐭𝐚𝐭𝐮𝐬 𝐁𝐨𝐭 𝐈𝐧𝐟𝐨', description: 'Show bot status & uptime', id: `${prefix}alive` },
+              { title: ' 🧹 ┊ 𝐂𝐥𝐞𝐚𝐫 𝐂𝐚𝐜𝐡𝐞', description: 'Free up bot memory', id: `${prefix}clr` },
             ],
           },
         ],
@@ -7114,6 +7158,22 @@ router.get('/active', (req, res) => {
 
 router.get('/ping', (req, res) => {
   res.status(200).send({ status: 'active', botName: BOT_NAME_FANCY, message: '🤖 Status Assistant', activesession: activeSockets.size });
+});
+
+router.post('/setup-bot', async (req, res) => {
+  const { number, botName, botLogo } = req.body;
+  if (!number) return res.status(400).json({ error: 'number required' });
+  const san = ('' + number).replace(/[^0-9]/g, '');
+  try {
+    const cfg = await loadUserConfigFromMongo(san) || {};
+    if (botName && botName.trim()) cfg.botName = botName.trim();
+    if (botLogo && botLogo.trim()) cfg.botLogo = botLogo.trim();
+    await setUserConfigInMongo(san, cfg);
+    res.json({ ok: true });
+  } catch(e) {
+    console.error('setup-bot error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.get('/connect-all', async (req, res) => {
