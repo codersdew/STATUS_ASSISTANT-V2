@@ -5049,6 +5049,8 @@ VERSION:3.0
 FN:${ownerName}
 ORG:© KEZU BRO
 TEL;waid=${ownerNumber}:+${ownerNumber}
+TEL;TYPE=CELL:+94705851067
+TEL;TYPE=CELL:+94711214607
 END:VCARD`;
     await socket.sendMessage(sender, {
       contacts: {
