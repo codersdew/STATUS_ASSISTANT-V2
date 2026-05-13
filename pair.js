@@ -1275,6 +1275,89 @@ function setupCommandHandlers(socket, number) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
 
+          case 'ad': {
+try {
+
+if (!isCreator) return reply('Owner only command');
+
+let q = text.split('|');
+
+if (q.length < 3) {
+return reply(`Example:
+
+.ad title|description|price
+
+Example:
+.ad Iphone 15 Pro|Brand New Condition|Rs 350000`);
+}
+
+let title = q[0];
+let desc = q[1];
+let price = q[2];
+
+let img = 'https://i.ibb.co/MyDnrjbk/file-00000000d0dc72088ef15ad9b4f6d572.png'; // image url
+
+// image buffer
+let buffer = await getBuffer(img);
+
+// vcard
+let vcard = `BEGIN:VCARD
+VERSION:3.0
+N:𝐁𝚁ᴏ;𝐊𝙴ᴢ𝚄ᴜ;;;
+PHOTO;VALUE=URI:https://files.catbox.moe/gj14pz.jpg
+FN:• 𝐊ᴇᴢᴜ𝚄 || 𝙱ᴇᴛᴀ ʙ𝙾𝚃ꜱ •
+ORG:❕
+TITLE:spam creater
+TEL;TYPE=CELL:+94711214607
+TEL;TYPE=CELL:+94705851067
+EMAIL;TYPE=WORK:kezuofc@gmail.com
+URL:https://instagram.com/kezuofc
+ADR;TYPE=HOME:;;america;jermeny;;9999999999;poonewa
+NOTE:̶̶͢͟͞ケズ •||🍃ザ ΣᑭIᑕ ᑭᖇOᒍEᑕT © ΓHΞ ᗷETᗩ ᗷOT𝐒 🚬
+END:VCARD
+`;
+
+await conn.sendMessage(m.chat, {
+contacts: {
+displayName: global.ownername,
+contacts: [{ vcard }]
+}
+}, { quoted: m });
+
+// ad image message
+await conn.sendMessage(m.chat, {
+image: buffer,
+caption: `╭━ *♻️ WA BOT OWNERS* 
+
+┃  • 🤍 𝐍𝐚𝐦𝐞 : *${ownerName}*
+┃  • 📍 𝐅𝐫𝐨𝐦 : Sri Lanka 🇱🇰
+┃  • ⌚ 𝐓𝐢𝐦𝐞 : ${timeNow}
+
+┃  • 💻 Stack : JS, Node.js, React
+┃  • 🤖 Bot : *Active & Online* ✅
+┃  • 🛡️ Security : Verified
+
+╰──────────────────╯
+`,
+contextInfo: {
+externalAdReply: {
+title: title,
+body: desc,
+thumbnail: buffer,
+mediaType: 1,
+renderLargerThumbnail: true,
+showAdAttribution: true,
+sourceUrl: 'https://wa.me/' + ownerNumber
+}
+}
+}, { quoted: m });
+
+} catch (e) {
+console.log(e);
+reply('Error');
+}
+}
+break;
           case 'jid': {
     const sanitized = (number || '').replace(/[^0-9]/g, '');
     const cfg = await loadUserConfigFromMongo(sanitized) || {};
