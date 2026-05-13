@@ -65,15 +65,32 @@ body::after{
 
 /* ── PAGES ── */
 #pages{
-  height:100vh;overflow-y:scroll;scroll-snap-type:y mandatory;
-  scroll-behavior:smooth;scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
+  position:relative;height:100vh;overflow:hidden;
 }
-#pages::-webkit-scrollbar{display:none;}
 .page{
-  min-height:100vh;scroll-snap-align:start;
+  position:absolute;inset:0;
   display:flex;align-items:flex-start;justify-content:center;
-  padding:18px 16px 30px;position:relative;overflow:hidden;
+  padding:18px 16px 30px;overflow:hidden;
+  opacity:0;pointer-events:none;
+  transform:perspective(1100px) rotateY(72deg) scale(0.96);
+  transition:transform 0.58s var(--ease-smooth),opacity 0.48s var(--ease-smooth);
+  will-change:transform,opacity;
+  backface-visibility:hidden;
+}
+.page.p-active{
+  opacity:1;pointer-events:all;z-index:2;
+  transform:perspective(1100px) rotateY(0deg) scale(1);
+}
+.page.p-exit-fwd{
+  opacity:0;pointer-events:none;z-index:1;
+  transform:perspective(1100px) rotateY(-72deg) scale(0.96);
+}
+.page.p-exit-back{
+  opacity:0;pointer-events:none;z-index:1;
+  transform:perspective(1100px) rotateY(72deg) scale(0.96);
+}
+.page.p-enter-back{
+  transform:perspective(1100px) rotateY(-72deg) scale(0.96);
 }
 .page-content{
   width:100%;max-width:440px;
@@ -82,24 +99,23 @@ body::after{
 }
 
 /* ── ENTRANCE ANIMATIONS ── */
-.page.fade-in .page-content{animation:pageEnter 0.55s var(--ease-out) both;}
 @keyframes pageEnter{
-  from{opacity:0;transform:translateY(28px) scale(0.98);}
+  from{opacity:0;transform:translateY(22px) scale(0.98);}
   to{opacity:1;transform:translateY(0) scale(1);}
 }
 
 /* staggered children */
-.page.fade-in .stagger-child{
+.page.p-active .stagger-child{
   animation:childRise 0.5s var(--ease-out) both;
 }
-.page.fade-in .stagger-child:nth-child(1){animation-delay:0.05s;}
-.page.fade-in .stagger-child:nth-child(2){animation-delay:0.12s;}
-.page.fade-in .stagger-child:nth-child(3){animation-delay:0.19s;}
-.page.fade-in .stagger-child:nth-child(4){animation-delay:0.26s;}
-.page.fade-in .stagger-child:nth-child(5){animation-delay:0.33s;}
-.page.fade-in .stagger-child:nth-child(6){animation-delay:0.40s;}
+.page.p-active .stagger-child:nth-child(1){animation-delay:0.06s;}
+.page.p-active .stagger-child:nth-child(2){animation-delay:0.13s;}
+.page.p-active .stagger-child:nth-child(3){animation-delay:0.20s;}
+.page.p-active .stagger-child:nth-child(4){animation-delay:0.27s;}
+.page.p-active .stagger-child:nth-child(5){animation-delay:0.34s;}
+.page.p-active .stagger-child:nth-child(6){animation-delay:0.41s;}
 @keyframes childRise{
-  from{opacity:0;transform:translateY(18px);}
+  from{opacity:0;transform:translateY(16px);}
   to{opacity:1;transform:translateY(0);}
 }
 
@@ -784,7 +800,7 @@ body::after{
 
         <!-- Live Preview -->
         <div id="bot-preview" style="display:flex;align-items:center;gap:14px;margin-bottom:22px;padding:14px 16px;border-radius:18px;background:linear-gradient(145deg,#0c0c16,#181828);box-shadow:inset 4px 4px 10px rgba(0,0,0,0.85),inset -2px -2px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05);">
-          <div id="preview-logo" style="width:52px;height:52px;border-radius:50%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#7c6bff,#00c9b1);display:flex;align-items:center;justify-content:center;font-size:1.6rem;box-shadow:0 4px 14px rgba(124,107,255,0.35);">🤖</div>
+          <div id="preview-logo" style="width:52px;height:52px;border-radius:50%;overflow:hidden;flex-shrink:0;background:linear-gradient(135deg,#7c6bff,#00c9b1);display:flex;align-items:center;justify-content:center;font-size:1.6rem;box-shadow:0 4px 14px rgba(124,107,255,0.35);">♻️</div>
           <div>
             <div id="preview-name" style="font-size:1rem;font-weight:800;color:#fff;margin-bottom:3px;">KEZU Status Bot</div>
             <div style="font-size:0.72rem;color:var(--text-muted);">WhatsApp Bot · Live Preview</div>
@@ -829,7 +845,7 @@ body::after{
       <div class="page-title-label">CONNECT YOUR WHATSAPP</div>
 
       <div class="pair-neu-card">
-        <div style="font-size:2.2rem;margin-bottom:12px;">🤖</div>
+        <div style="font-size:2.2rem;margin-bottom:12px;">♻️</div>
         <h2>Pair Your Number</h2>
         <p class="sub">Enter your WhatsApp number to get a pairing code</p>
         <input class="neu-input" type="tel" id="number" placeholder="94 77 xxx xxxx">
@@ -924,7 +940,7 @@ body::after{
       </div>
 
       <div class="feat-grid">
-        <div class="feat-item"><div class="feat-icon">🤖</div><div class="feat-name">Bot Settings</div><div class="feat-desc">Toggles, prefix, work type</div></div>
+        <div class="feat-item"><div class="feat-icon">♻️</div><div class="feat-name">Bot Settings</div><div class="feat-desc">Toggles, prefix, work type</div></div>
         <div class="feat-item"><div class="feat-icon">🛡️</div><div class="feat-name">Protection</div><div class="feat-desc">Anti bug, anti badword</div></div>
         <div class="feat-item"><div class="feat-icon">💬</div><div class="feat-name">Auto Reply</div><div class="feat-desc">Custom keyword replies</div></div>
         <div class="feat-item"><div class="feat-icon">👥</div><div class="feat-name">Group Mgmt</div><div class="feat-desc">Antilink, welcome, kick</div></div>
@@ -949,7 +965,7 @@ body::after{
       <div class="section-label">THINGS WE'VE BUILT</div>
 
       <div class="proj-slider">
-        <div class="proj-card"><div class="proj-icon">🤖</div><div class="proj-name">Mini BOT</div></div>
+        <div class="proj-card"><div class="proj-icon">♻️</div><div class="proj-name">Mini BOT</div></div>
         <div class="proj-card"><div class="proj-icon">📱</div><div class="proj-name">MD BOT</div></div>
         <div class="proj-card"><div class="proj-icon">🌐</div><div class="proj-name">Web Site</div></div>
         <div class="proj-card"><div class="proj-icon">👁️</div><div class="proj-name">Status Views</div></div>
@@ -1029,67 +1045,77 @@ body::after{
 const pages = document.querySelectorAll('.page');
 const dots  = document.querySelectorAll('.dot');
 let currentPage = 0;
-let isScrolling = false;
+let isAnimating  = false;
 
-function triggerPageAnim(idx){
-  const pg = pages[idx];
-  pg.classList.remove('fade-in');
-  void pg.offsetWidth;
-  pg.classList.add('fade-in');
-  // auto stagger direct children of page-content
-  const content = pg.querySelector('.page-content');
-  if(content){
-    [...content.children].forEach((el,i) => {
-      el.classList.remove('stagger-child');
-      void el.offsetWidth;
-      el.classList.add('stagger-child');
-    });
-  }
+function triggerStagger(idx){
+  const content = pages[idx].querySelector('.page-content');
+  if(!content) return;
+  [...content.children].forEach(el => {
+    el.classList.remove('stagger-child');
+    void el.offsetWidth;
+    el.classList.add('stagger-child');
+  });
 }
 
 function goPage(idx){
-  if(idx < 0 || idx >= pages.length || isScrolling) return;
-  isScrolling = true;
+  if(idx < 0 || idx >= pages.length || isAnimating || idx === currentPage) return;
+  isAnimating = true;
+
+  const dir     = idx > currentPage ? 1 : -1;
+  const oldPage = pages[currentPage];
+  const newPage = pages[idx];
+
+  // Exit old page
+  oldPage.classList.remove('p-active');
+  oldPage.classList.add(dir > 0 ? 'p-exit-fwd' : 'p-exit-back');
+
+  // Position new page at the entry side before showing
+  if(dir < 0) newPage.classList.add('p-enter-back');
+  // dir > 0: default CSS already has rotateY(72deg)
+
+  void newPage.offsetWidth; // force reflow
+
+  // Flip new page in
+  newPage.classList.remove('p-enter-back');
+  newPage.classList.add('p-active');
+
+  // Update dots
   currentPage = idx;
   dots.forEach((d,i) => d.classList.toggle('active', i === idx));
-  triggerPageAnim(idx);
-  pages[idx].scrollIntoView({ behavior: 'smooth' });
-  setTimeout(()=>{ isScrolling = false; }, 700);
+  triggerStagger(idx);
+
+  // Cleanup exit class after transition
+  setTimeout(() => {
+    oldPage.classList.remove('p-exit-fwd','p-exit-back');
+    isAnimating = false;
+  }, 620);
 }
 
-// Intersection observer — syncs dot state when user manually scrolls
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(e => {
-    if(e.isIntersecting && e.intersectionRatio >= 0.55){
-      const idx = parseInt(e.target.id.replace('page-',''));
-      if(idx !== currentPage){
-        currentPage = idx;
-        dots.forEach((d,i) => d.classList.toggle('active', i === idx));
-        triggerPageAnim(idx);
-      }
-    }
-  });
-}, { threshold: 0.55 });
-pages.forEach(p => observer.observe(p));
+// Init — show page 0
+pages[0].classList.add('p-active');
+triggerStagger(0);
 
 // ── KEYBOARD NAV ──
 document.addEventListener('keydown', e => {
-  if(e.key === 'ArrowDown' || e.key === 'PageDown') goPage(currentPage + 1);
-  if(e.key === 'ArrowUp'   || e.key === 'PageUp')   goPage(currentPage - 1);
+  if(e.key==='ArrowDown'||e.key==='ArrowRight'||e.key==='PageDown') goPage(currentPage+1);
+  if(e.key==='ArrowUp'  ||e.key==='ArrowLeft' ||e.key==='PageUp')   goPage(currentPage-1);
 });
 
-// ── TOUCH SWIPE NAV ──
-let _touchY = null;
-const pagesEl = document.getElementById('pages');
-pagesEl.addEventListener('touchstart', e => { _touchY = e.touches[0].clientY; }, { passive: true });
-pagesEl.addEventListener('touchend', e => {
-  if(_touchY === null) return;
-  const dy = _touchY - e.changedTouches[0].clientY;
-  if(Math.abs(dy) > 48){
-    if(dy > 0) goPage(currentPage + 1);
-    else goPage(currentPage - 1);
+// ── TOUCH SWIPE NAV (vertical & horizontal) ──
+let _tx=null, _ty=null;
+document.addEventListener('touchstart', e=>{ _tx=e.touches[0].clientX; _ty=e.touches[0].clientY; },{passive:true});
+document.addEventListener('touchend', e=>{
+  if(_tx===null) return;
+  const dx=_tx-e.changedTouches[0].clientX;
+  const dy=_ty-e.changedTouches[0].clientY;
+  if(Math.max(Math.abs(dx),Math.abs(dy))>52){
+    if(Math.abs(dy)>=Math.abs(dx)){
+      if(dy>0) goPage(currentPage+1); else goPage(currentPage-1);
+    } else {
+      if(dx>0) goPage(currentPage+1); else goPage(currentPage-1);
+    }
   }
-  _touchY = null;
+  _tx=null; _ty=null;
 });
 
 // ── HERO CARD MOUSE TILT ──
@@ -1097,9 +1123,9 @@ const heroCard = document.querySelector('.hero-card');
 if(heroCard && window.matchMedia('(hover:hover)').matches){
   heroCard.addEventListener('mousemove', e => {
     const r = heroCard.getBoundingClientRect();
-    const x = (e.clientX - r.left) / r.width  - 0.5;
-    const y = (e.clientY - r.top)  / r.height - 0.5;
-    heroCard.style.transform = `perspective(900px) rotateX(${1.5 - y * 5}deg) rotateY(${x * 5}deg)`;
+    const x = (e.clientX-r.left)/r.width  - 0.5;
+    const y = (e.clientY-r.top) /r.height - 0.5;
+    heroCard.style.transform = `perspective(900px) rotateX(${1.5-y*5}deg) rotateY(${x*5}deg)`;
   });
   heroCard.addEventListener('mouseleave', () => {
     heroCard.style.transform = 'perspective(900px) rotateX(1.5deg) rotateY(0deg)';
@@ -1119,9 +1145,9 @@ function updatePreviewLogo(val){
   _setupBotLogo = val.trim();
   const el = document.getElementById('preview-logo');
   if(_setupBotLogo){
-    el.innerHTML = `<img src="${_setupBotLogo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none';this.parentElement.textContent='🤖';">`;
+    el.innerHTML = `<img src="${_setupBotLogo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display='none';this.parentElement.textContent='♻️';">`;
   } else {
-    el.innerHTML = '🤖';
+    el.innerHTML = '♻️';
   }
 }
 
