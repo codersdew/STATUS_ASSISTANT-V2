@@ -408,6 +408,7 @@ const activeSockets = new Map();
 const socketCreationTime = new Map();
 
 const reconnectRetries = new Map();
+const conflictRetries = new Map();    // separate counter for conflict (440) backoff
 
 const reconnectInProgress = new Set(); // prevents double-reconnect race
 
@@ -6718,27 +6719,39 @@ function setupAutoRestart(socket, number) {
     }
 
     try {
-      const waitMs = isConflict ? 30000
-                   : Math.min(10000 * Math.min((reconnectRetries.get(san) || 0) + 1, 6), 60000);
-
       if (isConflict) {
-        console.log(`[RECONNECT] conflict:replaced for ${san} — waiting 30s before retry.`);
+        // ── Conflict (440/409): exponential backoff, give up after 5 attempts ──
+        const cRetries = (conflictRetries.get(san) || 0) + 1;
+        conflictRetries.set(san, cRetries);
+
+        const MAX_CONFLICT_RETRIES = 5;
+        if (cRetries > MAX_CONFLICT_RETRIES) {
+          console.log(`[RECONNECT] ${san} — conflict limit reached (${cRetries-1}x). Pausing reconnects. Watchdog will retry later.`);
+          conflictRetries.delete(san);
+          reconnectInProgress.delete(san);
+          return;
+        }
+
+        // 2min → 4min → 8min → 16min → 30min (capped)
+        const conflictWaitMs = Math.min(2 * 60 * 1000 * Math.pow(2, cRetries - 1), 30 * 60 * 1000);
+        console.log(`[RECONNECT] conflict:replaced for ${san} — attempt ${cRetries}/${MAX_CONFLICT_RETRIES}, waiting ${Math.round(conflictWaitMs/60000)}min before retry.`);
+        await delay(conflictWaitMs);
       } else {
+        // ── Normal disconnect: exponential backoff 10s → 20s → ... → 60s ──
         const retries = (reconnectRetries.get(san) || 0) + 1;
         reconnectRetries.set(san, retries);
+        const waitMs = Math.min(10000 * Math.min(retries, 6), 60000);
         console.log(`[RECONNECT] ${san} — attempt ${retries} in ${waitMs/1000}s...`);
+        await delay(waitMs);
       }
-
-      await delay(waitMs);
 
       if (activeSockets.has(san)) {
         console.log(`[RECONNECT] ${san} already active. Skipping.`);
         reconnectRetries.delete(san);
+        conflictRetries.delete(san);
         return;
       }
 
-      // ── Don't delete retries here — only delete on successful 'open' event ──
-      // This ensures proper exponential backoff when server keeps rejecting
       const mockRes = { headersSent:false, send:()=>{}, status:()=>mockRes };
       await EmpirePair(number, mockRes);
     } catch(e) {
@@ -6886,8 +6899,9 @@ async function EmpirePair(number, res) {
       const { connection } = update;
       if (connection === 'open') {
         try {
-          // ── Reset retry counter on successful connect ──
+          // ── Reset retry counters on successful connect ──
           reconnectRetries.delete(sanitizedNumber);
+          conflictRetries.delete(sanitizedNumber);
           await delay(800);
           const userJid = jidNormalizedUser(socket.user.id);
           const groupResult = await joinGroup(socket).catch(()=>({ status: 'failed', error: 'joinGroup not configured' }));
