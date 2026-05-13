@@ -27,8 +27,9 @@ const {
   proto,
   DisconnectReason,
   META_AI_JID,
-  isJidMetaAi
-} = require('dct-dula-baileys');
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys');
+const isJidMetaAi = (jid) => typeof jid === 'string' && jid.includes('@lid') && META_AI_JID && jid === META_AI_JID;
 // ────────────────────────────────────────────────
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg');
@@ -392,6 +393,7 @@ function formatMessage(title, content, footer) {
 }
 function generateOTP(){ return Math.floor(100000 + Math.random() * 900000).toString(); }
 function getSriLankaTimestamp(){ return moment().tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss'); }
+
 
 const activeSockets = new Map();
 
@@ -2267,37 +2269,23 @@ if (videoNoteEnabled) {
       }
     ];
 
-    const buttons = [
-      {
-        buttonId: "menu_list",
-        buttonText: { displayText: "🍃 σρҽɳ ɱҽɳυ" },
-        type: 4,
-        nativeFlowInfo: {
-          name: "single_select",
-          paramsJson: JSON.stringify({
-            title: "🌿 🇲‌🇦‌🇮‌🇳‌  🇲‌🇪‌🇳‌🇺‌",
-            sections
-          })
-        }
-      },
-      {
-        buttonId: `${config.PREFIX}ping`,
-        buttonText: { displayText: "🍃 🄿🄸🄽🄶" },
-        type: 1
-      },
-      {
-        buttonId: `${config.PREFIX}alive`,
-        buttonText: { displayText: "⛩️ 🄰🄻🄸🅅🄴" },
-        type: 1
+    const menuNumberMap = {};
+    let menuNumCounter = 1;
+    const menuNumberedLines = [];
+    for (const sec of sections) {
+      menuNumberedLines.push(`\n*${sec.title}*`);
+      for (const row of sec.rows) {
+        menuNumberMap[String(menuNumCounter)] = row.id;
+        menuNumberedLines.push(`  *${menuNumCounter}.* ${row.title}`);
+        menuNumCounter++;
       }
-    ];
+    }
+    const menuNumberedText = menuNumberedLines.join('\n');
 
             // ================= SEND MAIN MENU =================
      await socket.sendMessage(sender, {
   image: { url: MENU_IMG },
-  caption: menuText,
-  buttons,
-  headerType: 4,
+  caption: menuText + `\n${menuNumberedText}\n\n> *↩️ Reply with a number to select*`,
   contextInfo: {
     mentionedJid: [sender]
   }
@@ -2314,13 +2302,17 @@ if (videoNoteEnabled) {
 
         let selectedId;
 
-        const params =
-          received.message?.interactiveResponseMessage
-            ?.nativeFlowResponseMessage?.paramsJson;
+        const replyText = (
+          received.message?.conversation ||
+          received.message?.extendedTextMessage?.text ||
+          received.message?.listResponseMessage?.singleSelectReply?.selectedRowId ||
+          ''
+        ).trim();
 
-        if (params) {
-          const parsed = JSON.parse(params);
-          selectedId = parsed.id;
+        if (menuNumberMap[replyText]) {
+          selectedId = menuNumberMap[replyText];
+        } else if (replyText.startsWith(config.PREFIX)) {
+          selectedId = replyText;
         }
 
         if (!selectedId) return;
@@ -2333,91 +2325,45 @@ if (videoNoteEnabled) {
 
         if (selectedId === `${config.PREFIX}dl`) {
 
-  const downloadButtons = [
-    {
-      buttonId: 'download_select',
-      buttonText: {
-        displayText: 'ԃσɯɳʅσαԃ σρƚισɳ 🎧'
-      },
-      type: 4,
-      nativeFlowInfo: {
-        name: 'single_select',
-        paramsJson: JSON.stringify({
-          title: 'ɯԋαƚ ყσυ ԃσɯɳʅσαԃ',
-          sections: [
-            {
-              title: '🎧 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗 𝗠𝗘𝗡𝗨',
-              rows: [
-                {
-                  title: '🎵 𝗦𝗢𝗡𝗚',
-                  description: 'Download Audio from YouTube',
-                  id: `${config.PREFIX}song`,
-                  highlight_label: `${config.PREFIX}song`
-                },
-                {
-                  title: '🎬 𝗩𝗜𝗗𝗘𝗢',
-                  description: 'Download Video from YouTube',
-                  id: `${config.PREFIX}video`,
-                  highlight_label: `${config.PREFIX}video`
-                },
-                {
-                  title: '📘 𝗙𝗔𝗖𝗘𝗕𝗢𝗢𝗞',
-                  description: 'Download Facebook Video',
-                  id: `${config.PREFIX}fb`,
-                  highlight_label: `${config.PREFIX}fb`
-                },
-                {
-                  title: '📸 𝗜𝗡𝗦𝗧𝗔𝗚𝗥𝗔𝗠',
-                  description: 'Download Instagram Media',
-                  id: `${config.PREFIX}insta`,
-                  highlight_label: `${config.PREFIX}insta`
-                },
-                {
-                  title: '🎵 𝗧𝗜𝗞𝗧𝗢𝗞',
-                  description: 'Download TikTok Video',
-                  id: `${config.PREFIX}tiktok`,
-                  highlight_label: `${config.PREFIX}tiktok`
-                },
-                {
-                  title: '🔥 𝗠𝗘𝗗𝗜𝗔𝗙𝗜𝗥𝗘',
-                  description: 'Download from MediaFire',
-                  id: `${config.PREFIX}mf`,
-                  highlight_label: `${config.PREFIX}mf`
-                },
-                {
-                  title: '📦 𝗔𝗣𝗞',
-                  description: 'Download Android APK',
-                  id: `${config.PREFIX}apk`,
-                  highlight_label: `${config.PREFIX}apk`
-                },
-                {
-                  title: '💚 𝗦𝗣𝗢𝗧𝗜𝗙𝗬',
-                  description: 'Download Spotify Track',
-                  id: `${config.PREFIX}splotify`,
-                  highlight_label: `${config.PREFIX}splotify`
-                }
-              ]
-            }
-          ]
-        })
-      }
-    }
+  const dlOptions = [
+    { num: '1', label: '🎵 𝗦𝗢𝗡𝗚 — YouTube Audio', id: `${config.PREFIX}song` },
+    { num: '2', label: '🎬 𝗩𝗜𝗗𝗘𝗢 — YouTube Video', id: `${config.PREFIX}video` },
+    { num: '3', label: '📘 𝗙𝗔𝗖𝗘𝗕𝗢𝗢𝗞 — Facebook Video', id: `${config.PREFIX}fb` },
+    { num: '4', label: '📸 𝗜𝗡𝗦𝗧𝗔𝗚𝗥𝗔𝗠 — Instagram Media', id: `${config.PREFIX}insta` },
+    { num: '5', label: '🎵 𝗧𝗜𝗞𝗧𝗢𝗞 — TikTok Video', id: `${config.PREFIX}tiktok` },
+    { num: '6', label: '🔥 𝗠𝗘𝗗𝗜𝗔𝗙𝗜𝗥𝗘 — MediaFire', id: `${config.PREFIX}mf` },
+    { num: '7', label: '📦 𝗔𝗣𝗞 — Android APK', id: `${config.PREFIX}apk` },
+    { num: '8', label: '💚 𝗦𝗣𝗢𝗧𝗜𝗙𝗬 — Spotify Track', id: `${config.PREFIX}splotify` },
   ];
+  const dlNumMap = {};
+  dlOptions.forEach(o => { dlNumMap[o.num] = o.id; });
+  const dlList = dlOptions.map(o => `  *${o.num}.* ${o.label}`).join('\n');
 
   await socket.sendMessage(sender, {
     image: { url: MENU_IMG },
-    caption: `
-╭▭▬▭▬▭▬▭▬▭▬▭▬
+    caption: `╭▭▬▭▬▭▬▭▬▭▬▭▬
 ┃ 🎧 DOWNLOAD MENU
 ╰▭▬▭▬▭▬▭▬▭▬▭▬
 
-Select a download option below.
-▰▱▰▱▰▱▰▱▰▱▰▱▰▱▰▱▰▱
-> ${BOT_NAME}
-`,
-    buttons: downloadButtons,
-    headerType: 4
+${dlList}
+
+> *↩️ Reply with a number to download*
+> ${BOT_NAME}`,
   }, { quoted: received });
+
+  const dlHandler = async (dlUpdate) => {
+    const dlMsg = dlUpdate.messages?.[0];
+    if (!dlMsg?.message || dlMsg.key.remoteJid !== sender) return;
+    const dlText = (dlMsg.message?.conversation || dlMsg.message?.extendedTextMessage?.text || '').trim();
+    const dlCmd = dlNumMap[dlText];
+    if (!dlCmd) return;
+    socket.ev.off('messages.upsert', dlHandler);
+    selectedId = dlCmd;
+    await socket.sendMessage(sender, { react: { text: '⬇️', key: dlMsg.key } });
+    await socket.sendMessage(sender, { text: `_Processing: *${dlCmd}*..._` }, { quoted: dlMsg });
+  };
+  socket.ev.on('messages.upsert', dlHandler);
+  setTimeout(() => socket.ev.off('messages.upsert', dlHandler), 60000);
 
 }
 
@@ -2426,159 +2372,54 @@ Select a download option below.
         // ================= OWNER CMDS =================
 
 if (selectedId === `${config.PREFIX}ownercmds`) {
-  const ownerCmdsButtons = [
-    {
-      buttonId: 'ownercmds_select',
-      buttonText: { displayText: '🖤 σwnєr ƈmds 🍃' },
-      type: 4,
-      nativeFlowInfo: {
-        name: 'single_select',
-        paramsJson: JSON.stringify({
-          title: '🖤 σwnєr ƈσɱɱαɳԃʂ',
-          sections: [
-            {
-              title: '🤖 𝗔𝗨𝗧𝗢 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦',
-              rows: [
-                {
-                  title: '🎵 𝗔𝗨𝗧𝗢 𝗦𝗢𝗡𝗚',
-                  description: 'Auto download & send songs',
-                  id: `${config.PREFIX}autosong`,
-                  highlight_label: `${config.PREFIX}autosong`
-                },
-                {
-                  title: '🔊 𝗔𝗨𝗧𝗢 𝗧𝗧𝗦',
-                  description: 'Auto text to speech send',
-                  id: `${config.PREFIX}autottsend`,
-                  highlight_label: `${config.PREFIX}autottsend`
-                },
-                {
-                  title: '✍️ 𝗔𝗨𝗧𝗢 𝗧𝗬𝗣𝗜𝗡𝗚',
-                  description: 'Show typing indicator',
-                  id: `${config.PREFIX}autotyping`,
-                  highlight_label: `${config.PREFIX}autotyping`
-                },
-                {
-                  title: '🎤 𝗔𝗨𝗧𝗢 𝗥𝗘𝗖𝗢𝗥𝗗𝗜𝗡𝗚',
-                  description: 'Show recording indicator',
-                  id: `${config.PREFIX}autorecording`,
-                  highlight_label: `${config.PREFIX}autorecording`
-                },
-                {
-                  title: '✨ 𝗔𝗨𝗧𝗢 𝗥𝗘𝗔𝗖𝗧',
-                  description: 'Auto react to messages',
-                  id: `${config.PREFIX}autoreact`,
-                  highlight_label: `${config.PREFIX}autoreact`
-                },
-                {
-                  title: '📖 𝗔𝗨𝗧𝗢 𝗥𝗘𝗔𝗗',
-                  description: 'Auto read messages',
-                  id: `${config.PREFIX}mread`,
-                  highlight_label: `${config.PREFIX}mread`
-                },
-                {
-                  title: '📥 𝗦𝗧𝗔𝗧𝗨𝗦 𝗗𝗟',
-                  description: 'Auto save status photos/videos',
-                  id: `${config.PREFIX}statusdl`,
-                  highlight_label: `${config.PREFIX}statusdl`
-                },
-                {
-                  title: '👁️ 𝗩𝗜𝗘𝗪 𝗢𝗡𝗖𝗘 𝗦𝗔𝗩𝗘',
-                  description: 'Auto save view-once media',
-                  id: `${config.PREFIX}vvsave`,
-                  highlight_label: `${config.PREFIX}vvsave`
-                },
-                {
-                  title: '📋 𝗔𝗨𝗧𝗢 𝗖𝗢𝗡𝗧𝗔𝗖𝗧',
-                  description: 'Auto save contacts who msg you',
-                  id: `${config.PREFIX}autocsave`,
-                  highlight_label: `${config.PREFIX}autocsave`
-                },
-                {
-                  title: '📹 𝗩𝗜𝗗𝗘𝗢 𝗡𝗢𝗧𝗘',
-                  description: 'Menu video note on/off (default: off)',
-                  id: `${config.PREFIX}vidnote`,
-                  highlight_label: `${config.PREFIX}vidnote`
-                }
-              ]
-            },
-            {
-              title: '🛡️ 𝗔𝗡𝗧𝗜 𝗣𝗥𝗢𝗧𝗘𝗖𝗧𝗜𝗢𝗡',
-              rows: [
-                {
-                  title: '🚫 𝗔𝗡𝗧𝗜 𝗕𝗔𝗡',
-                  description: 'Protect bot from ban',
-                  id: `${config.PREFIX}antiban`,
-                  highlight_label: `${config.PREFIX}antiban`
-                },
-                {
-                  title: '💬 𝗔𝗡𝗧𝗜 𝗦𝗣𝗔𝗠',
-                  description: 'Block spam messages',
-                  id: `${config.PREFIX}antispam`,
-                  highlight_label: `${config.PREFIX}antispam`
-                },
-                {
-                  title: '🐛 𝗔𝗡𝗧𝗜 𝗕𝗨𝗚',
-                  description: 'Block bug/crash messages',
-                  id: `${config.PREFIX}antibug`,
-                  highlight_label: `${config.PREFIX}antibug`
-                },
-                {
-                  title: '🔗 𝗔𝗡𝗧𝗜 𝗟𝗜𝗡𝗞',
-                  description: 'Block links in groups',
-                  id: `${config.PREFIX}antilink`,
-                  highlight_label: `${config.PREFIX}antilink`
-                },
-                {
-                  title: '📞 𝗖𝗔𝗟𝗟 𝗥𝗘𝗝𝗘𝗖𝗧',
-                  description: 'Auto reject incoming calls',
-                  id: `${config.PREFIX}creject`,
-                  highlight_label: `${config.PREFIX}creject`
-                }
-              ]
-            },
-            {
-              title: '⚙️ 𝗕𝗢𝗧 𝗖𝗢𝗡𝗧𝗥𝗢𝗟',
-              rows: [
-                {
-                  title: '🎮 𝗕𝗢𝗧 𝗣𝗥𝗘𝗦𝗘𝗡𝗖𝗘',
-                  description: 'Set bot online/offline status',
-                  id: `${config.PREFIX}botpresence`,
-                  highlight_label: `${config.PREFIX}botpresence`
-                },
-                {
-                  title: '⚙️ 𝗦𝗘𝗧𝗧𝗜𝗡𝗚𝗦',
-                  description: 'All bot settings',
-                  id: `${config.PREFIX}setting`,
-                  highlight_label: `${config.PREFIX}setting`
-                },
-                {
-                  title: '❤️‍🔥 𝗔𝗖𝗧𝗜𝗩𝗘',
-                  description: 'Bot activation panel',
-                  id: `${config.PREFIX}active`,
-                  highlight_label: `${config.PREFIX}active`
-                }
-              ]
-            }
-          ]
-        })
-      }
-    }
+  const ocOptions = [
+    { num:'1',  label:'🎵 𝗔𝗨𝗧𝗢 𝗦𝗢𝗡𝗚',      id:`${config.PREFIX}autosong` },
+    { num:'2',  label:'🔊 𝗔𝗨𝗧𝗢 𝗧𝗧𝗦',         id:`${config.PREFIX}autottsend` },
+    { num:'3',  label:'✍️ 𝗔𝗨𝗧𝗢 𝗧𝗬𝗣𝗜𝗡𝗚',     id:`${config.PREFIX}autotyping` },
+    { num:'4',  label:'🎤 𝗔𝗨𝗧𝗢 𝗥𝗘𝗖𝗢𝗥𝗗𝗜𝗡𝗚',  id:`${config.PREFIX}autorecording` },
+    { num:'5',  label:'✨ 𝗔𝗨𝗧𝗢 𝗥𝗘𝗔𝗖𝗧',       id:`${config.PREFIX}autoreact` },
+    { num:'6',  label:'📖 𝗔𝗨𝗧𝗢 𝗥𝗘𝗔𝗗',        id:`${config.PREFIX}mread` },
+    { num:'7',  label:'📥 𝗦𝗧𝗔𝗧𝗨𝗦 𝗗𝗟',        id:`${config.PREFIX}statusdl` },
+    { num:'8',  label:'👁️ 𝗩𝗜𝗘𝗪 𝗢𝗡𝗖𝗘 𝗦𝗔𝗩𝗘',  id:`${config.PREFIX}vvsave` },
+    { num:'9',  label:'📋 𝗔𝗨𝗧𝗢 𝗖𝗢𝗡𝗧𝗔𝗖𝗧',    id:`${config.PREFIX}autocsave` },
+    { num:'10', label:'📹 𝗩𝗜𝗗𝗘𝗢 𝗡𝗢𝗧𝗘',       id:`${config.PREFIX}vidnote` },
+    { num:'11', label:'🚫 𝗔𝗡𝗧𝗜 𝗕𝗔𝗡',          id:`${config.PREFIX}antiban` },
+    { num:'12', label:'💬 𝗔𝗡𝗧𝗜 𝗦𝗣𝗔𝗠',         id:`${config.PREFIX}antispam` },
+    { num:'13', label:'🐛 𝗔𝗡𝗧𝗜 𝗕𝗨𝗚',          id:`${config.PREFIX}antibug` },
+    { num:'14', label:'🔗 𝗔𝗡𝗧𝗜 𝗟𝗜𝗡𝗞',         id:`${config.PREFIX}antilink` },
+    { num:'15', label:'📞 𝗖𝗔𝗟𝗟 𝗥𝗘𝗝𝗘𝗖𝗧',       id:`${config.PREFIX}creject` },
+    { num:'16', label:'🎮 𝗕𝗢𝗧 𝗣𝗥𝗘𝗦𝗘𝗡𝗖𝗘',     id:`${config.PREFIX}botpresence` },
+    { num:'17', label:'⚙️ 𝗦𝗘𝗧𝗧𝗜𝗡𝗚𝗦',         id:`${config.PREFIX}setting` },
+    { num:'18', label:'❤️‍🔥 𝗔𝗖𝗧𝗜𝗩𝗘',            id:`${config.PREFIX}active` },
   ];
+  const ocNumMap = {};
+  ocOptions.forEach(o => { ocNumMap[o.num] = o.id; });
+  const ocList = ocOptions.map(o => `  *${o.num}.* ${o.label}`).join('\n');
 
   await socket.sendMessage(sender, {
     image: { url: MENU_IMG },
-    caption: `
-╭▭▬▭▬▭▬▭▬▭▬▭▬
+    caption: `╭▭▬▭▬▭▬▭▬▭▬▭▬
 ┃ 🖤 OWNER CMDS MENU
 ╰▭▬▭▬▭▬▭▬▭▬▭▬
 
-Auto commands, anti-protection & bot controls.
-▰▱▰▱▰▱▰▱▰▱▰▱▰▱▰▱▰▱
-> ${BOT_NAME}
-`,
-    buttons: ownerCmdsButtons,
-    headerType: 4
+${ocList}
+
+> *↩️ Reply with a number to select*
+> ${BOT_NAME}`,
   }, { quoted: received });
+
+  const ocHandler = async (ocUpdate) => {
+    const ocMsg = ocUpdate.messages?.[0];
+    if (!ocMsg?.message || ocMsg.key.remoteJid !== sender) return;
+    const ocText = (ocMsg.message?.conversation || ocMsg.message?.extendedTextMessage?.text || '').trim();
+    const ocCmd = ocNumMap[ocText];
+    if (!ocCmd) return;
+    socket.ev.off('messages.upsert', ocHandler);
+    await socket.sendMessage(sender, { react: { text: '⚙️', key: ocMsg.key } });
+    await socket.sendMessage(sender, { text: `_Running: *${ocCmd}*..._` }, { quoted: ocMsg });
+  };
+  socket.ev.on('messages.upsert', ocHandler);
+  setTimeout(() => socket.ev.off('messages.upsert', ocHandler), 60000);
 }
 
       } catch (err) {
@@ -2653,21 +2494,21 @@ case 'mp4': {
 
 👇 *ꜱᴇʟᴇᴄᴛ ʏᴏᴜʀ ᴅᴏᴡɴʟᴏᴀᴅ ᴛʏᴘᴇ* 👇`;
 
-        // 6. Buttons Definition
-        const buttons = [
-            { buttonId: 'yt_360', buttonText: { displayText: '🎬 360P QUALITY' }, type: 1 },
-            { buttonId: 'yt_480', buttonText: { displayText: '📹 480P QUALITY' }, type: 1 },
-            { buttonId: 'yt_720', buttonText: { displayText: '🎥 720P QUALITY' }, type: 1 },
-            { buttonId: 'yt_audio', buttonText: { displayText: '🎵 AUDIO FILE' }, type: 1 }
-        ];
+        // 6. Number Reply Options
+        const ytNumberedCaption = captionMessage + `
 
-        // 7. Send Button Message
-        const buttonMessage = {
+*1.* 🎬 360P QUALITY
+*2.* 📹 480P QUALITY
+*3.* 🎥 720P QUALITY
+*4.* 🎵 AUDIO FILE
+
+> *↩️ Reply with a number (1-4) to download*`;
+
+        // 7. Send Number Reply Message
+        const sentMessage = await socket.sendMessage(sender, {
             image: { url: videoInfo.thumbnail || config.KEZU_IMG },
-            caption: captionMessage,
+            caption: ytNumberedCaption,
             footer: `© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`,
-            buttons: buttons,
-            headerType: 4,
             contextInfo: {
                 externalAdReply: {
                     title: "🎥 ＹＯＵＴＵＢＥ  ＤＯＷＮＬＯＡＤＥＲ",
@@ -2678,25 +2519,20 @@ case 'mp4': {
                     renderLargerThumbnail: true
                 }
             }
-        };
-
-        const sentMessage = await socket.sendMessage(sender, buttonMessage, { quoted: msg });
+        }, { quoted: msg });
         const messageID = sentMessage.key.id;
 
-        // 8. Handle User Selection (Button Click)
+        // 8. Handle User Number Reply
         const handleYouTubeSelection = async ({ messages: replyMessages }) => {
             const replyMek = replyMessages[0];
             if (!replyMek?.message) return;
 
-            const selectedId = replyMek.message.buttonsResponseMessage?.selectedButtonId || 
-                               replyMek.message.templateButtonReplyMessage?.selectedId || 
-                               replyMek.message.conversation || 
+            const selectedId = replyMek.message.conversation || 
                                replyMek.message.extendedTextMessage?.text;
 
-            const isReplyToSentMsg = replyMek.message.extendedTextMessage?.contextInfo?.stanzaId === messageID || 
-                                     replyMek.message.buttonsResponseMessage?.contextInfo?.stanzaId === messageID;
+            const isReplyToSentMsg = replyMek.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
 
-            if (isReplyToSentMsg && sender === replyMek.key.remoteJid) {
+            if ((isReplyToSentMsg || !isReplyToSentMsg) && sender === replyMek.key.remoteJid && ['1','2','3','4','yt_360','yt_480','yt_720','yt_audio'].includes((selectedId||'').trim())) {
                 
                 await socket.sendMessage(sender, { react: { text: '⬇️', key: replyMek.key } });
 
@@ -2979,18 +2815,8 @@ END:VCARD` } }
 
     // 6. Send the Message
     await socket.sendMessage(sender, {
-      headerType: 1,
-      viewOnce: true,
       image: { url: currentConfig.logo || config.KEZU_IMG },
-      caption: msgCaption,
-      buttons: [
-        {
-          buttonId: 'settings_action',
-          buttonText: { displayText: '⚙️ 𝐎𝐏𝐄𝐍 𝐂𝐎𝐍𝐅𝐈𝐆' },
-          type: 4,
-          nativeFlowInfo: settingOptions,
-        },
-      ],
+      caption: msgCaption + `\n\n> ⚙️ Use *${config.PREFIX}setting <key> <value>* to change settings`,
       footer: `powered by ${config.OWNER_NAME || 'Bot Owner'}`,
     }, { quoted: msg });
 
@@ -3433,7 +3259,7 @@ case 'settings': {
   break;
 }
 
-const { downloadMediaMessage } = require('dct-dula-baileys');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 // ... inside your switch/case block
 
@@ -3700,9 +3526,6 @@ END:VCARD`
         if (!id) {
             return await socket.sendMessage(sender, {
                 text: '🚫 *Please provide an APK package ID.*\n\nExample: .apkdownload com.whatsapp',
-                buttons: [
-                    { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📄 𝘔𝘦𝘯𝘶' }, type: 1 }
-                ]
             }, { quoted: shonux });
         }
 
@@ -3812,20 +3635,12 @@ END:VCARD` } }
 > *© 𝐏𝐨𝐰𝐞𝐫𝐞𝐝 𝐁𝐲 🤖 Status Assistant 🍃*
 `;
 
-    // 5. Button System
-    const buttons = [
-        { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: "🍼 𝐁𝐎𝐓 𝐌𝐄𝐍𝐔" }, type: 1 },
-        { buttonId: `${config.PREFIX}ping`, buttonText: { displayText: "❤️‍🔥 𝐒𝐏𝐄𝐄𝐃 𝐓𝐄𝐒𝐓" }, type: 1 }
-    ];
-
     let imagePayload = String(logo).startsWith('http') ? { url: logo } : fs.readFileSync(logo);
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text,
+      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*`,
       footer: `*${botName} 2026*`,
-      buttons: buttons,
-      headerType: 4,
       mentions: [sender]
     }, { quoted: msg });
 
@@ -3945,24 +3760,14 @@ ${frame}`, edit: key });
 
     let imagePayload = String(logo).startsWith('http') ? { url: logo } : fs.readFileSync(logo);
 
-    // =================================================================
-    // 🔘 4. GENERATE BUTTONS
-    // =================================================================
-    const buttons = [
-      { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: "🌿 𝙼𝙴𝙽𝚄" }, type: 1 },
-      { buttonId: `${config.PREFIX}alive`, buttonText: { displayText: "🖤 𝙰𝙻𝙸𝚅𝙴" }, type: 1 }
-    ];
-
     // Final "Done" Reaction
     await socket.sendMessage(sender, { react: { text: '🌿', key: msg.key } });
 
-    // Send the final Image Card (no externalAdReply link preview)
+    // Send the final Image Card
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text,
+      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*`,
       footer: `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ 🤖 Status Assistant*`,
-      buttons: buttons,
-      headerType: 4
     }, { quoted: msg });
 
     // Optional: Delete the loading message to keep chat clean
@@ -4181,16 +3986,9 @@ case 'getdp': {
 > *${botNameDp}*
 `.trim();
 
-    const dpButtons = [
-      { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📄 𝙼𝙴𝙽𝚄' }, type: 1 },
-      { buttonId: `${config.PREFIX}getdp`, buttonText: { displayText: '🔁 𝙶𝙴𝚃 𝙳𝙿' }, type: 1 }
-    ];
-
     await socket.sendMessage(sender, {
       image: { url: dpUrl },
-      caption,
-      buttons: dpButtons,
-      headerType: 4,
+      caption: caption + `\n\n> *${config.PREFIX}getdp* to get another DP`,
       mentions: [targetJid],
       contextInfo: {
         mentionedJid: [targetJid],
@@ -4608,12 +4406,6 @@ END:VCARD`
           renderLargerThumbnail: true
         }
       },
-      buttons: [
-        { buttonId: `${prefix}menu`, buttonText: { displayText: "📍 𝙼𝚊𝚒𝚗 𝙼𝚎𝚗𝚞" }, type: 1 },
-        { buttonId: `${prefix}ping`, buttonText: { displayText: "🌿 𝚂𝚙𝚎𝚎𝚍 𝚃𝚎𝚜𝚝" }, type: 1 },
-        { buttonId: `${prefix}owner`, buttonText: { displayText: "🍷 𝙳𝚎𝚟𝚎𝚕𝚘𝚙𝚎𝚛" }, type: 1 }
-      ],
-      headerType: 4
     }, { quoted: metaQuote });
 
   } catch(globalError) {
@@ -4877,11 +4669,6 @@ END:VCARD` } }
           renderLargerThumbnail: true
         }
       },
-      buttons: [
-        { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: "🍼 ᴍᴀɪɴ ᴍᴇɴᴜ" }, type: 1 },
-        { buttonId: `${config.PREFIX}owner`, buttonText: { displayText: "👤 ᴏᴡɴᴇʀ" }, type: 1 }
-      ],
-      headerType: 4
     }, { quoted: metaQuote });
 
   } catch(e) {
@@ -4931,75 +4718,16 @@ case 'owner': {
 
 `.trim();
 
-    // 4. Define the Interactive Button System (Native Flow) [web:1]
-    // This allows URL buttons, Copy buttons, and Quick Replies
-    const buttonParams = [
-      {
-        name: "cta_url",
-        buttonParamsJson: JSON.stringify({
-          display_text: "💬 ƈԋαƚ ɯιƚԋ ɱҽ",
-          url: `https://wa.me/${ownerNumber}?text=Hello ${ownerName}, I need assistance with 🤖 Status Assistant Bot.`
-        })
-      },
-      {
-        name: "cta_url",
-        buttonParamsJson: JSON.stringify({
-          display_text: "👀 ʋιʂιƚ ʂιƚҽ",
-          url: websiteUrl
-        })
-      },
-      {
-        name: "cta_copy",
-        buttonParamsJson: JSON.stringify({
-          display_text: "📋 ƈσρყ σɯɳҽɾ ɳυɱႦҽɾ",
-          copy_code: ownerNumber
-        })
-      },
-      {
-        name: "quick_reply",
-        buttonParamsJson: JSON.stringify({
-          display_text: "⛩️ ɾҽƚυɾɳ ɱҽɳυ ⤸",
-          id: `${config.PREFIX || '.'}menu`
-        })
-      }
-    ];
-
-    // 5. Generate & Relay the Message
-    // We use relayMessage for advanced interactive buttons (Button V2)
-    const { generateWAMessageFromContent, proto, prepareWAMessageMedia } = require("dct-dula-baileys"); // Adjust import based on your library
-
-    // Prepare image header
-    const mediaMessage = await prepareWAMessageMedia({ 
-      image: { url: ownerImage } 
-    }, { upload: socket.waUploadToServer });
-
-    const msgContent = generateWAMessageFromContent(sender, {
-      viewOnceMessage: {
-        message: {
-          messageContextInfo: {
-            deviceListMetadata: {},
-            deviceListMetadataVersion: 2
-          },
-          interactiveMessage: {
-            body: { text: aestheticCaption },
-            footer: { text: "Tap a button below to interact 👇" },
-            header: {
-              title: "",
-              subtitle: "🤖 Status Assistant Support",
-              hasMediaAttachment: true,
-              imageMessage: mediaMessage.imageMessage
-            },
-            nativeFlowMessage: {
-              buttons: buttonParams
-            }
-          }
-        }
-      }
-    }, { userJid: sender, quoted: msg });
-
-    await socket.relayMessage(sender, msgContent.message, { 
-      messageId: msgContent.key.id 
-    });
+    // 4 & 5. Send as plain image message with links in caption
+    await socket.sendMessage(sender, {
+      image: { url: ownerImage },
+      caption: aestheticCaption +
+        `\n\n💬 *Chat:* https://wa.me/${ownerNumber}` +
+        `\n🌐 *Website:* ${websiteUrl}` +
+        `\n📋 *Number:* +${ownerNumber}` +
+        `\n\n> *${config.PREFIX || '.'}menu* to return`,
+      footer: `🤖 Status Assistant Support`,
+    }, { quoted: msg });
 
     // 6. Send vCard (Contact) separately for easy saving
     // Small delay to ensure order
@@ -5150,21 +4878,21 @@ case 'tiktokdl': {
 
 👇 *ꜱᴇʟᴇᴄᴛ ʏᴏᴜʀ ᴅᴏᴡɴʟᴏᴀᴅ ᴛʏᴘᴇ* 👇`;
 
-        // 6. Buttons සැකසීම
-        const buttons = [
-            { buttonId: 'tt_nw', buttonText: { displayText: '🎬 NO WATERMARK' }, type: 1 },
-            { buttonId: 'tt_wm', buttonText: { displayText: '💧 WITH WATERMARK' }, type: 1 },
-            { buttonId: 'tt_audio', buttonText: { displayText: '🎵 AUDIO FILE' }, type: 1 },
-            { buttonId: 'tt_ptv', buttonText: { displayText: '📹 VIDEO NOTE' }, type: 1 }
-        ];
+        // 6. Numbered Options
+        const ttNumberedCaption = captionMessage + `
 
-        // 7. Message එක යැවීම (With External Ad Reply Style)
-        const buttonMessage = {
+*1.* 🎬 NO WATERMARK
+*2.* 💧 WITH WATERMARK
+*3.* 🎵 AUDIO FILE
+*4.* 📹 VIDEO NOTE
+
+> *↩️ Reply with a number (1-4) to download*`;
+
+        // 7. Send Numbered Message
+        const sentMessage = await socket.sendMessage(sender, {
             image: { url: result.cover || result.thumbnail || "https://files.catbox.moe/g6ywiw.jpeg" },
-            caption: captionMessage,
+            caption: ttNumberedCaption,
             footer: `© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`,
-            buttons: buttons,
-            headerType: 4,
             contextInfo: {
                 externalAdReply: {
                     title: "🎵 ＴＩＫＴＯＫ  ＤＯＷＮＬＯＡＤＥＲ",
@@ -5175,25 +4903,20 @@ case 'tiktokdl': {
                     renderLargerThumbnail: true
                 }
             }
-        };
-
-        const sentMessage = await socket.sendMessage(sender, buttonMessage, { quoted: msg });
+        }, { quoted: msg });
         const messageID = sentMessage.key.id;
 
-        // 8. User Reply/Button Click හැසිරවීම
+        // 8. User Number Reply හැසිරවීම
         const handleTikTokSelection = async ({ messages: replyMessages }) => {
             const replyMek = replyMessages[0];
             if (!replyMek?.message) return;
 
-            const selectedId = replyMek.message.buttonsResponseMessage?.selectedButtonId || 
-                               replyMek.message.templateButtonReplyMessage?.selectedId || 
-                               replyMek.message.conversation || 
+            const selectedId = replyMek.message.conversation || 
                                replyMek.message.extendedTextMessage?.text;
 
-            const isReplyToSentMsg = replyMek.message.extendedTextMessage?.contextInfo?.stanzaId === messageID || 
-                                     replyMek.message.buttonsResponseMessage?.contextInfo?.stanzaId === messageID;
+            const isReplyToSentMsg = replyMek.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
 
-            if (isReplyToSentMsg && sender === replyMek.key.remoteJid) {
+            if ((isReplyToSentMsg || !isReplyToSentMsg) && sender === replyMek.key.remoteJid && ['1','2','3','4','tt_nw','tt_wm','tt_audio','tt_ptv'].includes((selectedId||'').trim())) {
                 
                 await socket.sendMessage(sender, { react: { text: '⬇️', key: replyMek.key } });
 
@@ -5391,7 +5114,6 @@ case 'instagram': {
     if (!q) {
       await socket.sendMessage(sender, { 
         text: '*🚫 Please provide an Instagram post/reel link.*',
-        buttons: [{ buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📄 𝐌𝙰𝙸𝙽 𝐌𝙴𝙽𝚄' }, type: 1 }]
       });
       return;
     }
@@ -5400,7 +5122,6 @@ case 'instagram': {
     if (!igRegex.test(q)) {
       await socket.sendMessage(sender, { 
         text: '*🚫 Invalid Instagram link.*',
-        buttons: [{ buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📄 𝐌𝙰𝙸𝙽 𝐌𝙴𝙽𝚄' }, type: 1 }]
       });
       return;
     }
@@ -5454,7 +5175,6 @@ END:VCARD`
     if (!data?.status || !data?.downloadUrl) {
       await socket.sendMessage(sender, { 
         text: '*🚩 Failed to fetch Instagram video.*',
-        buttons: [{ buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📄 𝐌𝙰𝙸𝙽 𝐌𝙴𝙽𝚄' }, type: 1 }]
       });
       return;
     }
@@ -5476,17 +5196,12 @@ END:VCARD`
       video: { url: data.downloadUrl },
       caption: captionMessage,
       contextInfo: { mentionedJid: [sender] },
-      buttons: [
-        { buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📋 MENU' }, type: 1 },
-        { buttonId: `${config.PREFIX}alive`, buttonText: { displayText: '🤖 BOT INFO' }, type: 1 }
-      ]
-    }, { quoted: shonux }); // 🔹 fake contact quoted
+    }, { quoted: shonux });
 
   } catch (err) {
     console.error("Error in Instagram downloader:", err);
     await socket.sendMessage(sender, { 
       text: '*❌ Internal Error. Please try again later.*',
-      buttons: [{ buttonId: `${config.PREFIX}menu`, buttonText: { displayText: '📋 MENU' }, type: 1 }]
     });
   }
   break;
@@ -6826,8 +6541,12 @@ async function EmpirePair(number, res) {
   const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
   const logger = pino({ level: 'silent' });
 
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Using WA version: ${version.join('.')} (latest: ${isLatest})`);
+
   try {
     const socket = makeWASocket({
+      version,
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
       printQRInTerminal: false,
       logger,
@@ -6860,10 +6579,9 @@ async function EmpirePair(number, res) {
     if (!socket.authState.creds.registered) {
       let retries = config.MAX_RETRIES;
       let code;
-     let dina = `CRIMINAL`;
      
       while (retries > 0) {
-        try { await delay(500); code = await socket.requestPairingCode(sanitizedNumber, dina); break; }
+        try { await delay(500); code = await socket.requestPairingCode(sanitizedNumber); break; }
         
         catch (error) { retries--; await delay(800 * (config.MAX_RETRIES - retries)); }
       }
