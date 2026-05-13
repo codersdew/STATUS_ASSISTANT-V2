@@ -74,15 +74,17 @@ let sessionsCol, numbersCol, adminsCol, newsletterCol, configsCol, newsletterRea
 // ────────────────────────────────────────────────
 // In-memory cache for user configs to avoid frequent DB reads
 const userConfigCache = new Map();
-const USER_CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const USER_CONFIG_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 // In-memory cache for group settings
 const groupSettingsCache = new Map();
-const GROUP_SETTINGS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+const GROUP_SETTINGS_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
+let _mongoReady = false;
 async function initMongo() {
+  if (_mongoReady) return;
   try {
-    if (mongoClient && mongoClient.topology && mongoClient.topology.isConnected && mongoClient.topology.isConnected()) return;
+    if (mongoClient && mongoClient.topology && mongoClient.topology.isConnected && mongoClient.topology.isConnected()) { _mongoReady = true; return; }
   } catch(e){}
   mongoClient = new MongoClient(MONGO_URI);
   await mongoClient.connect();
@@ -106,6 +108,7 @@ async function initMongo() {
   await groupSettingsCol.createIndex({ jid: 1 }, { unique: true });
   await autoTTSendCol.createIndex({ number: 1, jid: 1 }, { unique: true });
   await autoSongSendCol.createIndex({ number: 1, jid: 1 }, { unique: true });
+  _mongoReady = true;
   console.log('✅ Mongo initialized and collections ready');
 }
 
@@ -451,15 +454,14 @@ setInterval(() => {
   }
 }, 2 * 60 * 1000);
 
-// Clean up stale userConfigCache and groupSettingsCache every 30 minutes
+// Clean up stale userConfigCache and groupSettingsCache (runs every 30 min, respects new TTLs)
 setInterval(() => {
-  const _cfgCutoff = Date.now() - 30 * 60 * 1000;
+  const _now = Date.now();
   for (const [key, val] of userConfigCache.entries()) {
-    if (val.ts && val.ts < _cfgCutoff) userConfigCache.delete(key);
+    if (val.ts && (_now - val.ts) > USER_CONFIG_CACHE_TTL) userConfigCache.delete(key);
   }
-  const _grpCutoff = Date.now() - 30 * 60 * 1000;
   for (const [key, val] of groupSettingsCache.entries()) {
-    if (val.ts && val.ts < _grpCutoff) groupSettingsCache.delete(key);
+    if (val.ts && (_now - val.ts) > GROUP_SETTINGS_CACHE_TTL) groupSettingsCache.delete(key);
   }
 }, 30 * 60 * 1000);
 
@@ -1022,10 +1024,18 @@ function setupCommandHandlers(socket, number) {
 
     // ── Pre-load config ONCE per message (avoids repeated DB reads) ──────────
     const _preSan = (number || '').replace(/[^0-9]/g, '');
-    const [_preUC, _preGS] = await Promise.all([
-      loadUserConfigFromMongo(_preSan).then(c => c || {}).catch(() => ({})),
-      isGroup ? getAllGroupSettings(from).catch(() => ({})) : Promise.resolve({})
-    ]);
+    // Fast cache-first pre-load: group settings only fetched for group messages
+    const _ucCached = userConfigCache.get(_preSan);
+    const _preUC = (_ucCached && (Date.now() - (_ucCached.ts || 0) < USER_CONFIG_CACHE_TTL))
+      ? _ucCached.config || {}
+      : await loadUserConfigFromMongo(_preSan).then(c => c || {}).catch(() => ({}));
+
+    const _gcCached = isGroup ? groupSettingsCache.get(from) : null;
+    const _preGS = isGroup
+      ? ((_gcCached && (Date.now() - (_gcCached.ts || 0) < GROUP_SETTINGS_CACHE_TTL))
+          ? _gcCached.settings || {}
+          : await getAllGroupSettings(from).catch(() => ({})))
+      : {};
 
     // helper: download quoted media into buffer
     async function downloadQuotedMedia(quoted) {
