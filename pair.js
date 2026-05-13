@@ -980,7 +980,7 @@ function setupCommandHandlers(socket, number) {
     const developers = `${config.OWNER_NUMBER}`;
     const botNumber = socket.user.id.split(':')[0];
     const isbot = botNumber.includes(senderNumber);
-    const isOwner = isbot ? isbot : developers.includes(senderNumber);
+    const isBotOrOwner = isbot ? isbot : developers.includes(senderNumber);
     const isGroup = from.endsWith("@g.us");
 
 
@@ -1204,7 +1204,7 @@ function setupCommandHandlers(socket, number) {
 
       // ========== ADD WORK TYPE RESTRICTIONS HERE ==========
       // Apply work type restrictions for non-owner users
-      if (!isOwner) {
+      if (!isBotOrOwner) {
         // Get work type from user config or fallback to global config
         const workType = userConfig.WORK_TYPE || 'public'; // Default to public if not set
 
@@ -1346,11 +1346,6 @@ function setupCommandHandlers(socket, number) {
             writer.on('error', reject);
         });
 
-        await new Promise((resolve, reject) => {
-            ffmpeg(chm_Mp3).noVideo().audioCodec('libopus').format('opus')
-                .on('end', resolve).on('error', reject).save(chm_Opus);
-        });
-
         const sCaption = `☘️ *TITLE :* ${sTitle}\n` +
                          `◽️ ⏱ *Duration :* ${sDuration}\n\n` +
                          `> *© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴᴛ*`;
@@ -1361,12 +1356,16 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(sJid, { text: sCaption });
         }
 
-        const chm_Buf = fs.readFileSync(chm_Opus);
-        await socket.sendMessage(sJid, { audio: chm_Buf, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+        const chm_Buf = fs.readFileSync(chm_Mp3);
+        await socket.sendMessage(sJid, {
+            audio: chm_Buf,
+            mimetype: 'audio/mpeg',
+            fileName: `${sTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`
+        });
 
         if (sJid !== from) await socket.sendMessage(from, { text: `✅ *Song sent successfully!*\n🎵 ${sTitle}` }, { quoted: msg });
 
-        try { [chm_Mp3, chm_Opus].forEach(f => fs.existsSync(f) && fs.unlinkSync(f)); } catch(e){}
+        try { if (fs.existsSync(chm_Mp3)) fs.unlinkSync(chm_Mp3); } catch(e){}
 
     } catch (e) {
         console.error('csong error:', e);
@@ -1803,7 +1802,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
             const opt = (args[0] || '').toLowerCase();
             if (opt === 'on' || opt === 'off') {
               await setGroupSetting(from, 'ANTI_LINK', opt);
@@ -1821,7 +1820,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
             const opt = (args[0] || '').toLowerCase();
             if (opt === 'on' || opt === 'off') {
               await setGroupSetting(from, 'ANTI_SPAM', opt);
@@ -1839,7 +1838,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
             const opt = (args[0] || '').toLowerCase();
             if (opt === 'on' || opt === 'off') {
               await setGroupSetting(from, 'WELCOME', opt);
@@ -1861,7 +1860,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can use this.' }, { quoted: msg });
             const opt = (args[0] || '').toLowerCase();
             if (opt === 'on' || opt === 'off') {
               await setGroupSetting(from, 'GOODBYE', opt);
@@ -1883,7 +1882,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can kick.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can kick.' }, { quoted: msg });
             const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] ? `${args[0].replace(/[^0-9]/g,'')}@s.whatsapp.net` : null);
             if (!target) return await socket.sendMessage(sender, { text: '❌ Reply to a message or provide a number.' }, { quoted: msg });
             await socket.groupParticipantsUpdate(from, [target], 'remove');
@@ -1898,7 +1897,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can promote.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only group admins can promote.' }, { quoted: msg });
             const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] ? `${args[0].replace(/[^0-9]/g,'')}@s.whatsapp.net` : null);
             if (!target) return await socket.sendMessage(sender, { text: '❌ Reply to a message or provide a number.' }, { quoted: msg });
             await socket.groupParticipantsUpdate(from, [target], 'promote');
@@ -1913,7 +1912,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can demote.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can demote.' }, { quoted: msg });
             const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] ? `${args[0].replace(/[^0-9]/g,'')}@s.whatsapp.net` : null);
             if (!target) return await socket.sendMessage(sender, { text: '❌ Reply to a message or provide a number.' }, { quoted: msg });
             await socket.groupParticipantsUpdate(from, [target], 'demote');
@@ -1928,7 +1927,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can mute.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can mute.' }, { quoted: msg });
             await socket.groupSettingUpdate(from, 'announcement');
             await socket.sendMessage(sender, { text: '🔇 *Group muted.* Only admins can send messages.' }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: '❌ Failed. Make sure bot is admin.' }, { quoted: msg }); }
@@ -1941,7 +1940,7 @@ case 'ytmp3':
           try {
             let gAdmins = [];
             try { const m = await socket.groupMetadata(from); gAdmins = m.participants.filter(p => p.admin).map(p => p.id); } catch(e) {}
-            if (!gAdmins.includes(nowsender) && !isOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can unmute.' }, { quoted: msg });
+            if (!gAdmins.includes(nowsender) && !isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Only admins can unmute.' }, { quoted: msg });
             await socket.groupSettingUpdate(from, 'not_announcement');
             await socket.sendMessage(sender, { text: '🔊 *Group unmuted.* Everyone can send messages.' }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: '❌ Failed. Make sure bot is admin.' }, { quoted: msg }); }
@@ -4504,7 +4503,7 @@ case 'bots': {
     // ------------------------------------------------------------------
     
     let isAdmin = false;
-    let isOwnerSafe = (typeof isOwner !== 'undefined' ? isOwner : false);
+    let isOwnerSafe = (typeof isBotOrOwner !== 'undefined' ? isBotOrOwner : false);
 
     try {
         const dbAdmins = (typeof loadAdminsFromMongo === 'function') ? await loadAdminsFromMongo() : [];
@@ -5037,7 +5036,7 @@ Contact: +${config.OWNER_NUMBER}`
   const normalizedAdmins = admins.map(a => (a || '').toString());
   const senderIdSimple = (nowsender || '').includes('@') ? nowsender.split('@')[0] : (nowsender || '');
   const isAdmin = normalizedAdmins.includes(nowsender) || normalizedAdmins.includes(senderNumber) || normalizedAdmins.includes(senderIdSimple);
-  if (!(isOwner || isAdmin)) {
+  if (!(isBotOrOwner || isAdmin)) {
     let userCfg = {};
     try { if (number && typeof loadUserConfigFromMongo === 'function') userCfg = await loadUserConfigFromMongo((number || '').replace(/[^0-9]/g, '')) || {}; } catch(e){ userCfg = {}; }
     const title = userCfg.botName || '🤖 Status Assistant ';
