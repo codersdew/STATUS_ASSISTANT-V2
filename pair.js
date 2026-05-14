@@ -2087,11 +2087,12 @@ case 'ytmp3':
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _uc = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_uc.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const _opt = (args[0] || '').toLowerCase();
-            const _uc = await loadUserConfigFromMongo(_san) || {};
             if (_opt === 'on' || _opt === 'off') {
               _uc.ANTI_BADWORD = _opt;
               await setUserConfigInMongo(_san, _uc);
@@ -2123,11 +2124,12 @@ case 'ytmp3':
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _uc = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_uc.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const _opt = (args[0] || '').toLowerCase();
-            const _uc = await loadUserConfigFromMongo(_san) || {};
             if (_opt === 'on' || _opt === 'off') {
               _uc.ANTI_BUG = _opt;
               await setUserConfigInMongo(_san, _uc);
@@ -2145,11 +2147,12 @@ case 'ytmp3':
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _uc = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_uc.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const _opt = (args[0] || '').toLowerCase();
-            const _uc = await loadUserConfigFromMongo(_san) || {};
             _uc.AUTO_REPLIES = _uc.AUTO_REPLIES || {};
             if (_opt === 'on' || _opt === 'off') {
               _uc.AUTO_REPLY = _opt;
@@ -2188,11 +2191,12 @@ case 'ytmp3':
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _uc = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_uc.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const _opt = (args[0] || '').toLowerCase();
-            const _uc = await loadUserConfigFromMongo(_san) || {};
             if (_opt === 'on' || _opt === 'off') {
               _uc.AUTO_REACT = _opt;
               await setUserConfigInMongo(_san, _uc);
@@ -2339,7 +2343,9 @@ break;
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _armCfg = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_armCfg.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const opt = (args[0] || '').toLowerCase();
@@ -2368,7 +2374,9 @@ break;
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _rsCfg = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_rsCfg.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const opt = (args[0] || '').toLowerCase();
@@ -2397,7 +2405,9 @@ break;
             const _san = (number || '').replace(/[^0-9]/g, '');
             const _sn = (nowsender || '').split('@')[0];
             const _own = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-            if (_sn !== _san && _sn !== _own) {
+            const _srCfg = await loadUserConfigFromMongo(_san) || {};
+            const _storedOwner = (_srCfg.sessionOwner || '').replace(/[^0-9]/g, '');
+            if (_sn !== _san && _sn !== _own && (!_storedOwner || _sn !== _storedOwner)) {
               return await socket.sendMessage(sender, { text: '❌ Only the session owner can change this setting.' }, { quoted: msg });
             }
             const opt = (args[0] || '').toLowerCase();
@@ -2649,7 +2659,16 @@ if (videoNoteEnabled) {
   image: { url: MENU_IMG },
   caption: menuText + `\n${menuNumberedText}\n\n> *↩️ Reply with a number to select*`,
   contextInfo: {
-    mentionedJid: [sender]
+    mentionedJid: [sender],
+    externalAdReply: {
+      title: `${BOT_NAME}`,
+      body: `📋 Command Menu`,
+      mediaType: 1,
+      thumbnail: Buffer.alloc(0),
+      sourceUrl: 'https://whatsapp.com',
+      renderLargerThumbnail: false,
+      showAdAttribution: false
+    }
   }
 }, { quoted: msg });
 
@@ -4157,7 +4176,18 @@ END:VCARD` } }
       image: imagePayload,
       caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*`,
       footer: `*${botName} 2026*`,
-      mentions: [sender]
+      mentions: [sender],
+      contextInfo: {
+        externalAdReply: {
+          title: botName,
+          body: `🟢 Bot is Online`,
+          mediaType: 1,
+          thumbnail: Buffer.alloc(0),
+          sourceUrl: 'https://whatsapp.com',
+          renderLargerThumbnail: false,
+          showAdAttribution: false
+        }
+      }
     }, { quoted: msg });
 
   } catch(e) {
@@ -4284,6 +4314,17 @@ ${frame}`, edit: key });
       image: imagePayload,
       caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*`,
       footer: `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ 🤖 Status Assistant*`,
+      contextInfo: {
+        externalAdReply: {
+          title: botName,
+          body: `🚀 Speed Test Result`,
+          mediaType: 1,
+          thumbnail: Buffer.alloc(0),
+          sourceUrl: 'https://whatsapp.com',
+          renderLargerThumbnail: false,
+          showAdAttribution: false
+        }
+      }
     }, { quoted: msg });
 
     // Optional: Delete the loading message to keep chat clean
@@ -5270,14 +5311,15 @@ END:VCARD` } }
       image: imagePayload,
       caption: text,
       footer: `*${botName} 𝐒ʏꜱᴛᴇᴍ 𝐈ɴꜰᴏ*`,
-      // Added a contextInfo for better appearance if supported
       contextInfo: {
         externalAdReply: {
-          title: `${botName} System Status`,
-          body: "Running Smoothly",
-          thumbnail: imagePayload.url ? null : imagePayload, // Handle buffer vs url
+          title: `${botName}`,
+          body: `🖥️ System Information`,
           mediaType: 1,
-          renderLargerThumbnail: true
+          thumbnail: Buffer.alloc(0),
+          sourceUrl: 'https://whatsapp.com',
+          renderLargerThumbnail: false,
+          showAdAttribution: false
         }
       },
     }, { quoted: metaQuote });
@@ -7473,7 +7515,7 @@ router.post('/setup-bot', async (req, res) => {
   try {
     const cfg = await loadUserConfigFromMongo(san) || {};
     if (botName && botName.trim()) cfg.botName = botName.trim();
-    if (botLogo && botLogo.trim()) cfg.botLogo = botLogo.trim();
+    if (botLogo && botLogo.trim()) cfg.logo = botLogo.trim();
     await setUserConfigInMongo(san, cfg);
     res.json({ ok: true });
   } catch(e) {
