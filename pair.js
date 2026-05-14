@@ -1477,8 +1477,7 @@ END:VCARD`
         const chm_Buf = fs.readFileSync(chm_Mp3);
         await socket.sendMessage(sJid, {
             audio: chm_Buf,
-            mimetype: 'audio/ogg; codecs=opus',
-            ptt: true
+             mimetype: 'audio/mpeg',
             fileName: `${sTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`
         });
 
