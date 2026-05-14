@@ -8,6 +8,62 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
 
+/* ── PASSWORD LOCK OVERLAY ── */
+#pw-overlay{
+  position:fixed;inset:0;z-index:99999;
+  background:radial-gradient(ellipse at 60% 40%,#0e0e22 0%,#050508 100%);
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity 0.5s ease,transform 0.5s ease;
+}
+#pw-overlay.hidden{opacity:0;pointer-events:none;transform:scale(1.04);}
+.pw-box{
+  background:linear-gradient(145deg,#161626,#0c0c18);
+  border:1px solid rgba(124,107,255,0.2);
+  border-radius:28px;
+  box-shadow:0 0 60px rgba(124,107,255,0.12),0 20px 60px rgba(0,0,0,0.8);
+  padding:40px 36px 36px;
+  width:340px;max-width:92vw;
+  text-align:center;
+  animation:pwEntry 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes pwEntry{from{opacity:0;transform:translateY(24px) scale(0.96);}to{opacity:1;transform:translateY(0) scale(1);}}
+.pw-logo{
+  font-size:2.6rem;margin-bottom:6px;
+  animation:pwPulse 2.5s ease-in-out infinite;
+}
+@keyframes pwPulse{0%,100%{filter:drop-shadow(0 0 8px rgba(124,107,255,0.4));}50%{filter:drop-shadow(0 0 20px rgba(124,107,255,0.7));}}
+.pw-title{
+  font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;
+  color:#fff;margin-bottom:4px;
+}
+.pw-sub{
+  font-size:0.8rem;color:rgba(200,200,255,0.45);margin-bottom:26px;
+  letter-spacing:0.04em;
+}
+.pw-input{
+  width:100%;padding:13px 18px;border-radius:14px;
+  background:#0a0a16;border:1.5px solid rgba(124,107,255,0.2);
+  color:#eef;font-size:1rem;outline:none;text-align:center;
+  letter-spacing:0.12em;
+  transition:border-color 0.25s,box-shadow 0.25s;
+  margin-bottom:14px;
+}
+.pw-input:focus{border-color:rgba(124,107,255,0.55);box-shadow:0 0 0 3px rgba(124,107,255,0.1);}
+.pw-input.pw-error{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,0.1);animation:pwShake 0.35s ease;}
+@keyframes pwShake{0%,100%{transform:translateX(0);}20%{transform:translateX(-8px);}60%{transform:translateX(8px);}80%{transform:translateX(-4px);}}
+.pw-btn{
+  width:100%;padding:13px;border-radius:14px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#7c6bff,#5b4de8);
+  color:#fff;font-size:0.95rem;font-weight:700;
+  box-shadow:0 4px 20px rgba(124,107,255,0.35);
+  transition:transform 0.2s,box-shadow 0.2s,opacity 0.2s;
+  letter-spacing:0.02em;
+}
+.pw-btn:hover{transform:translateY(-2px);box-shadow:0 6px 26px rgba(124,107,255,0.5);}
+.pw-btn:active{transform:translateY(0);}
+.pw-err-msg{font-size:0.78rem;color:#ef4444;margin-top:10px;height:16px;transition:opacity 0.2s;}
+
+
 :root{
   --bg:#09090f;
   --bg-dark:#0e0e18;
@@ -1487,6 +1543,49 @@ async function removeReactConfig(jid){
     if(d.ok){document.getElementById('ov-sessions').textContent=d.count;renderActiveSessions(d.sessions);}
   }catch(e){}
   initEmojiGrid();
+})();
+</script>
+
+<!-- ── PASSWORD LOCK OVERLAY HTML ── -->
+<script>
+(function(){
+  const CORRECT = 'kezuofc@123';
+  const SK = 'kz_dashboard_auth';
+  if(sessionStorage.getItem(SK)==='1') return;
+  const overlay = document.createElement('div');
+  overlay.id='pw-overlay';
+  overlay.innerHTML=`
+    <div class="pw-box">
+      <div class="pw-logo">🔐</div>
+      <div class="pw-title">KEZU Dashboard</div>
+      <div class="pw-sub">SECURE ACCESS REQUIRED</div>
+      <input id="pw-inp" class="pw-input" type="password" placeholder="Enter password" autocomplete="off" />
+      <button class="pw-btn" id="pw-submit-btn">Unlock Dashboard</button>
+      <div class="pw-err-msg" id="pw-err"></div>
+    </div>`;
+  document.body.prepend(overlay);
+
+  function unlock(){
+    const val = document.getElementById('pw-inp').value;
+    const inp = document.getElementById('pw-inp');
+    const err = document.getElementById('pw-err');
+    if(val === CORRECT){
+      sessionStorage.setItem(SK,'1');
+      overlay.classList.add('hidden');
+      setTimeout(()=>overlay.remove(),600);
+    } else {
+      inp.classList.remove('pw-error');
+      void inp.offsetWidth;
+      inp.classList.add('pw-error');
+      err.textContent='❌ Incorrect password. Try again.';
+      inp.value='';
+      setTimeout(()=>{ inp.classList.remove('pw-error'); err.textContent=''; },2500);
+    }
+  }
+
+  document.getElementById('pw-submit-btn').addEventListener('click', unlock);
+  document.getElementById('pw-inp').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+  document.getElementById('pw-inp').focus();
 })();
 </script>
 </body>

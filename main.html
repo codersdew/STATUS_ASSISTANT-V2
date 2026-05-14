@@ -34,23 +34,17 @@ body{color:var(--text);}
 /* ── AMBIENT ORBS ── */
 body::before,body::after{
   content:'';position:fixed;border-radius:50%;pointer-events:none;z-index:0;
-  filter:blur(80px);
+  filter:blur(90px);
 }
 body::before{
-  width:360px;height:360px;
-  background:radial-gradient(circle,rgba(124,107,255,0.10) 0%,transparent 70%);
+  width:320px;height:320px;
+  background:radial-gradient(circle,rgba(124,107,255,0.08) 0%,transparent 70%);
   top:-80px;right:-80px;
-  animation:orbDrift 12s ease-in-out infinite alternate;
 }
 body::after{
-  width:280px;height:280px;
-  background:radial-gradient(circle,rgba(0,201,177,0.07) 0%,transparent 70%);
+  width:240px;height:240px;
+  background:radial-gradient(circle,rgba(0,201,177,0.06) 0%,transparent 70%);
   bottom:-60px;left:-40px;
-  animation:orbDrift 15s ease-in-out infinite alternate-reverse;
-}
-@keyframes orbDrift{
-  from{transform:translate(0,0) scale(1);}
-  to{transform:translate(30px,20px) scale(1.1);}
 }
 
 /* ── 3D NEUMORPHIC HELPERS ── */
@@ -72,25 +66,24 @@ body::after{
   display:flex;align-items:flex-start;justify-content:center;
   padding:18px 16px 30px;overflow:hidden;
   opacity:0;pointer-events:none;
-  transform:perspective(1100px) rotateY(72deg) scale(0.96);
-  transition:transform 0.58s var(--ease-smooth),opacity 0.48s var(--ease-smooth);
+  transform:translateX(48px);
+  transition:transform 0.38s var(--ease-smooth),opacity 0.32s var(--ease-smooth);
   will-change:transform,opacity;
-  backface-visibility:hidden;
 }
 .page.p-active{
   opacity:1;pointer-events:all;z-index:2;
-  transform:perspective(1100px) rotateY(0deg) scale(1);
+  transform:translateX(0);
 }
 .page.p-exit-fwd{
   opacity:0;pointer-events:none;z-index:1;
-  transform:perspective(1100px) rotateY(-72deg) scale(0.96);
+  transform:translateX(-48px);
 }
 .page.p-exit-back{
   opacity:0;pointer-events:none;z-index:1;
-  transform:perspective(1100px) rotateY(72deg) scale(0.96);
+  transform:translateX(48px);
 }
 .page.p-enter-back{
-  transform:perspective(1100px) rotateY(-72deg) scale(0.96);
+  transform:translateX(-48px);
 }
 .page-content{
   width:100%;max-width:440px;
@@ -1088,7 +1081,7 @@ function goPage(idx){
   setTimeout(() => {
     oldPage.classList.remove('p-exit-fwd','p-exit-back');
     isAnimating = false;
-  }, 620);
+  }, 400);
 }
 
 // Init — show page 0

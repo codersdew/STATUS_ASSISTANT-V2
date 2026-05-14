@@ -2722,9 +2722,14 @@ ${dlList}
     const dlCmd = dlNumMap[dlText];
     if (!dlCmd) return;
     socket.ev.off('messages.upsert', dlHandler);
-    selectedId = dlCmd;
     await socket.sendMessage(sender, { react: { text: '⬇️', key: dlMsg.key } });
-    await socket.sendMessage(sender, { text: `_Processing: *${dlCmd}*..._` }, { quoted: dlMsg });
+    // Emit fake command so the main handler processes it
+    const fakeDlMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_DL_' + Date.now() },
+      message: { conversation: dlCmd },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeDlMsg], type: 'append' });
   };
   socket.ev.on('messages.upsert', dlHandler);
   setTimeout(() => socket.ev.off('messages.upsert', dlHandler), 60000);
@@ -2782,11 +2787,34 @@ ${ocList}
     if (!ocCmd) return;
     socket.ev.off('messages.upsert', ocHandler);
     await socket.sendMessage(sender, { react: { text: '⚙️', key: ocMsg.key } });
-    await socket.sendMessage(sender, { text: `_Running: *${ocCmd}*..._` }, { quoted: ocMsg });
+    // Emit fake command so the main handler processes it
+    const fakeOcMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_OC_' + Date.now() },
+      message: { conversation: ocCmd },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeOcMsg], type: 'append' });
   };
   socket.ev.on('messages.upsert', ocHandler);
   setTimeout(() => socket.ev.off('messages.upsert', ocHandler), 60000);
-}
+
+  // ── Handle direct menu items (.setting, .active) ──
+  } else if (selectedId === `${config.PREFIX}setting` || selectedId === `${prefix}setting`) {
+    const fakeSettingMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_SETTING_' + Date.now() },
+      message: { conversation: `${prefix}setting` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeSettingMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}active` || selectedId === `${prefix}active`) {
+    const fakeActiveMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_ACTIVE_' + Date.now() },
+      message: { conversation: `${prefix}active` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeActiveMsg], type: 'append' });
+  }
 
       } catch (err) {
         console.error("Button handler error:", err);
@@ -3206,11 +3234,103 @@ END:VCARD` } }
       key: { remoteJid: "status@broadcast", participant: `${sanitized}@s.whatsapp.net`, fromMe: false, id: "META_SETTING_NUM" },
       message: { contactMessage: { displayName: botName, vcard: `BEGIN:VCARD\nVERSION:3.0\nN:${botName};;;;\nFN:${botName}\nORG:Status Assistant\nTEL;type=CELL;type=VOICE;waid=${sanitized}:+${sanitized}\nEND:VCARD` } }
     };
+    // ── Auto-Command Shortcuts ──
+    const shortcutMap = {
+      '1.0': `${prefix}autotyping on`,
+      '1.5': `${prefix}autotyping off`,
+      '2.0': `${prefix}autorecording on`,
+      '2.5': `${prefix}autorecording off`,
+      '3.0': `${prefix}autoreact on`,
+      '3.5': `${prefix}autoreact off`,
+      '4.0': `${prefix}mread all`,
+      '4.5': `${prefix}mread cmd`,
+      '4.9': `${prefix}mread off`,
+      '5.0': `${prefix}statusdl on`,
+      '5.5': `${prefix}statusdl off`,
+      '6.0': `${prefix}autottsend on`,
+      '6.5': `${prefix}autottsend off`,
+      '7.0': `${prefix}autosong on`,
+      '7.5': `${prefix}autosong off`,
+      '8.0': `${prefix}creject on`,
+      '8.5': `${prefix}creject off`,
+      '9.0': `${prefix}antiban on`,
+      '9.5': `${prefix}antiban off`,
+      '10.0': `${prefix}antispam on`,
+      '10.5': `${prefix}antispam off`,
+      '11.0': `${prefix}antibug on`,
+      '11.5': `${prefix}antibug off`,
+      '12.0': `${prefix}antilink on`,
+      '12.5': `${prefix}antilink off`,
+      '13.0': `${prefix}antidelete on`,
+      '13.5': `${prefix}antidelete off`,
+    };
+
+    const shortcutText = `
+╭━━━━━━━━━━━━━━━━━━━╮
+│ ⚡ *𝗔𝗨𝗧𝗢 𝗖𝗠𝗗 𝗦𝗛𝗢𝗥𝗧𝗖𝗨𝗧𝗦*
+╰━━━━━━━━━━━━━━━━━━━╯
+_↩️ Reply with a code to toggle:_
+
+*✍️ Auto Typing*
+┃ 𝗢𝗡 = *1.0*  |  𝗢𝗙𝗙 = *1.5*
+*🎙️ Auto Recording*
+┃ 𝗢𝗡 = *2.0*  |  𝗢𝗙𝗙 = *2.5*
+*✨ Auto React*
+┃ 𝗢𝗡 = *3.0*  |  𝗢𝗙𝗙 = *3.5*
+*📖 Auto Read*
+┃ 𝗔𝗟𝗟 = *4.0*  |  𝗖𝗠𝗗 = *4.5*  |  𝗢𝗙𝗙 = *4.9*
+*📥 Status Save*
+┃ 𝗢𝗡 = *5.0*  |  𝗢𝗙𝗙 = *5.5*
+*🔊 AutoTTSend*
+┃ 𝗢𝗡 = *6.0*  |  𝗢𝗙𝗙 = *6.5*
+*🎵 AutoSong*
+┃ 𝗢𝗡 = *7.0*  |  𝗢𝗙𝗙 = *7.5*
+*📞 Call Reject*
+┃ 𝗢𝗡 = *8.0*  |  𝗢𝗙𝗙 = *8.5*
+*🚫 Anti Ban*
+┃ 𝗢𝗡 = *9.0*  |  𝗢𝗙𝗙 = *9.5*
+*💬 Anti Spam*
+┃ 𝗢𝗡 = *10.0*  |  𝗢𝗙𝗙 = *10.5*
+*🐛 Anti Bug*
+┃ 𝗢𝗡 = *11.0*  |  𝗢𝗙𝗙 = *11.5*
+*🔗 Anti Link*
+┃ 𝗢𝗡 = *12.0*  |  𝗢𝗙𝗙 = *12.5*
+*🗑️ Anti Delete*
+┃ 𝗢𝗡 = *13.0*  |  𝗢𝗙𝗙 = *13.5*
+
+> *⚡ Reply with any code above to apply instantly*
+`.trim();
+
     await socket.sendMessage(sender, {
       image: { url: currentConfig.logo || config.KEZU_IMG },
       caption: msgCaption + `\n\n> ⚙️ Use *${config.PREFIX}setting <key> <value>* to change settings`,
       footer: `powered by ${config.OWNER_NAME || 'Bot Owner'}`,
     }, { quoted: _settingNumCard });
+
+    // Send shortcut list as a second message
+    await socket.sendMessage(sender, { text: shortcutText }, { quoted: _settingNumCard });
+
+    // ── Listen for shortcut number replies ──
+    const shortcutHandler = async (scUpdate) => {
+      try {
+        const scMsg = scUpdate.messages?.[0];
+        if (!scMsg?.message || scMsg.key.remoteJid !== sender) return;
+        const scText = (scMsg.message?.conversation || scMsg.message?.extendedTextMessage?.text || '').trim();
+        const scCmd = shortcutMap[scText];
+        if (!scCmd) return;
+        socket.ev.off('messages.upsert', shortcutHandler);
+        await socket.sendMessage(sender, { react: { text: '⚡', key: scMsg.key } });
+        // Emit fake command to main handler
+        const fakeScMsg = {
+          key: { remoteJid: sender, fromMe: false, id: 'SETTING_SC_' + Date.now() },
+          message: { conversation: scCmd },
+          messageTimestamp: Math.floor(Date.now() / 1000)
+        };
+        socket.ev.emit('messages.upsert', { messages: [fakeScMsg], type: 'append' });
+      } catch(e) { console.error('Shortcut handler error:', e); }
+    };
+    socket.ev.on('messages.upsert', shortcutHandler);
+    setTimeout(() => socket.ev.off('messages.upsert', shortcutHandler), 120000);
 
   } catch (e) {
     console.error('Setting command error:', e);
@@ -4176,6 +4296,101 @@ ${frame}`, edit: key });
   break;
 }
 
+// ─────────────────── LIST — All Commands ────────────────────────
+case 'list':
+case 'cmds':
+case 'commands': {
+  try {
+    await socket.sendMessage(sender, { react: { text: '📋', key: msg.key } });
+    const _listSan = (number || '').replace(/[^0-9]/g, '');
+    const _listCfg = await loadUserConfigFromMongo(_listSan) || {};
+    const _listBot = _listCfg.botName || '🤖 Status Assistant';
+    const _p = _listCfg.PREFIX || config.PREFIX || '.';
+
+    const listText = `
+╭━━━━━━━━━━━━━━━━━━━╮
+│ 📋 *𝗔𝗟𝗟 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦*
+╰━━━━━━━━━━━━━━━━━━━╯
+
+*📥 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗 𝗖𝗠𝗗𝗦*
+┃ ${_p}song [name/url] — YouTube Audio
+┃ ${_p}video [name/url] — YouTube Video
+┃ ${_p}fb [url] — Facebook Video
+┃ ${_p}insta [url] — Instagram Media
+┃ ${_p}tiktok [url] — TikTok Video
+┃ ${_p}mf [url] — MediaFire Download
+┃ ${_p}apk [package] — Android APK
+┃ ${_p}splotify [url] — Spotify Track
+┃ ${_p}csong [name] — Song to Channel
+┃ ${_p}cvid [url] — Video to Channel
+
+*🤖 𝗔𝗨𝗧𝗢 𝗖𝗠𝗗𝗦 (on/off)*
+┃ ${_p}autotyping on/off
+┃ ${_p}autorecording on/off
+┃ ${_p}autoreact on/off
+┃ ${_p}autoreply on/off
+┃ ${_p}statusdl on/off
+┃ ${_p}vvsave on/off
+┃ ${_p}autocsave on/off
+┃ ${_p}vidnote on/off
+┃ ${_p}autosong jid,title,time / off
+┃ ${_p}autottsend jid,title,time / off
+
+*🛡️ 𝗔𝗡𝗧𝗜 𝗖𝗠𝗗𝗦 (on/off)*
+┃ ${_p}antiban on/off
+┃ ${_p}antispam on/off
+┃ ${_p}antibug on/off
+┃ ${_p}antilink on/off
+┃ ${_p}antidelete on/off
+┃ ${_p}creject on/off
+
+*⚙️ 𝗦𝗘𝗧𝗧𝗜𝗡𝗚𝗦 𝗖𝗠𝗗𝗦*
+┃ ${_p}setting — Interactive Settings Menu
+┃ ${_p}settings — View Current Settings
+┃ ${_p}wtype public/private/groups/inbox
+┃ ${_p}botpresence online/offline
+┃ ${_p}mread all/cmd/off
+┃ ${_p}prefix [char] — Change Prefix
+┃ ${_p}setbotname [name]
+┃ ${_p}setlogo — Reply image to set logo
+┃ ${_p}setmenuvideo [url]
+┃ ${_p}setowner [number]
+
+*🎭 𝗧𝗢𝗢𝗟𝗦 & 𝗨𝗧𝗜𝗟𝗜𝗧𝗬*
+┃ ${_p}weather [city]
+┃ ${_p}getdp @user
+┃ ${_p}vv — View Once Unlock
+┃ ${_p}save — Save Media
+┃ ${_p}dl [url] — Save & Download
+
+*👑 𝗦𝗬𝗦𝗧𝗘𝗠 𝗖𝗠𝗗𝗦*
+┃ ${_p}menu — Main Menu
+┃ ${_p}alive — Bot Status
+┃ ${_p}ping — Ping Bot
+┃ ${_p}system — System Info
+┃ ${_p}owner — Owner Info
+┃ ${_p}active — Active Sessions
+┃ ${_p}list — This Command List
+
+> *🤖 ${_listBot}*
+`.trim();
+
+    const _listCard = {
+      key: { remoteJid: "status@broadcast", participant: "0@s.whatsapp.net", fromMe: false, id: "META_AI_LIST1" },
+      message: { contactMessage: { displayName: _listBot, vcard: `BEGIN:VCARD\nVERSION:3.0\nN:${_listBot};;;;\nFN:${_listBot}\nORG:Status Assistant\nEND:VCARD` } }
+    };
+    await socket.sendMessage(sender, {
+      image: { url: _listCfg.logo || config.KEZU_IMG },
+      caption: listText
+    }, { quoted: _listCard });
+    await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+  } catch (e) {
+    console.error('List command error:', e);
+    await socket.sendMessage(sender, { text: '❌ *Error loading command list.*' }, { quoted: msg });
+  }
+  break;
+}
+
 // ─────────────────── VV — Save View-Once ────────────────────────
 case 'vv':
 case 'viewonce':
@@ -5109,14 +5324,6 @@ case 'owner': {
 │ ⏰ *Time :* ${timeNow}
 └──────────────────────
 
-💰 *𝐏𝐑𝐈𝐂𝐄 𝐋𝐈𝐒𝐓*
-┌──────────────────────
-│ 🤖 Bot Setup        → *LKR 500*
-│ 🔧 Custom Features  → *LKR 300*
-│ 📲 Full Package     → *LKR 1000*
-│ 🆓 Free Trial       → *3 Days*
-└──────────────────────
-
 📦 *𝐒𝐄𝐑𝐕𝐈𝐂𝐄𝐒 𝐈𝐍𝐂𝐋𝐔𝐃𝐄𝐃*
 ✅ Auto Status View & React
 ✅ Media Download (YT/TikTok/FB)
@@ -5146,7 +5353,13 @@ case 'owner': {
 
     await new Promise(r => setTimeout(r, 800));
 
-    const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${ownerName}\nORG:© KEZU BOT\nTEL;waid=${ownerNumber}:+${ownerNumber}\nTEL;TYPE=CELL:+94705851067\nEND:VCARD`;
+    const vcard = `BEGIN:VCARD
+VERSION:3.0
+FN:${ownerName}
+ORG:© KEZU BOT
+TEL;TYPE=CELL,VOICE;waid=${ownerNumber}:+${ownerNumber}
+TEL;TYPE=CELL,VOICE;waid=94705851067:+94705851067
+END:VCARD`;
     await socket.sendMessage(sender, {
       contacts: { displayName: ownerName, contacts: [{ vcard }] }
     });
