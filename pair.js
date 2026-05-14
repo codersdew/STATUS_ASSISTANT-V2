@@ -2698,6 +2698,9 @@ if (videoNoteEnabled) {
 
         if (!selectedId) return;
 
+        // Remove menuHandler immediately after valid selection to prevent repeat
+        socket.ev.off("messages.upsert", menuHandler);
+
         await socket.sendMessage(sender, {
           react: { text: "🐾", key: received.key }
         });
@@ -2744,7 +2747,7 @@ ${dlList}
     await socket.sendMessage(sender, { react: { text: '⬇️', key: dlMsg.key } });
     // Emit fake command so the main handler processes it
     const fakeDlMsg = {
-      key: { remoteJid: sender, fromMe: false, id: 'MENU_DL_' + Date.now() },
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_DL_' + Date.now() },
       message: { conversation: dlCmd },
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
@@ -2808,7 +2811,7 @@ ${ocList}
     await socket.sendMessage(sender, { react: { text: '⚙️', key: ocMsg.key } });
     // Emit fake command so the main handler processes it
     const fakeOcMsg = {
-      key: { remoteJid: sender, fromMe: false, id: 'MENU_OC_' + Date.now() },
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_OC_' + Date.now() },
       message: { conversation: ocCmd },
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
@@ -2820,7 +2823,7 @@ ${ocList}
   // ── Handle direct menu items (.setting, .active) ──
   } else if (selectedId === `${config.PREFIX}setting` || selectedId === `${prefix}setting`) {
     const fakeSettingMsg = {
-      key: { remoteJid: sender, fromMe: false, id: 'MENU_SETTING_' + Date.now() },
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_SETTING_' + Date.now() },
       message: { conversation: `${prefix}setting` },
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
@@ -2828,7 +2831,7 @@ ${ocList}
 
   } else if (selectedId === `${config.PREFIX}active` || selectedId === `${prefix}active`) {
     const fakeActiveMsg = {
-      key: { remoteJid: sender, fromMe: false, id: 'MENU_ACTIVE_' + Date.now() },
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_ACTIVE_' + Date.now() },
       message: { conversation: `${prefix}active` },
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
@@ -3341,7 +3344,7 @@ _↩️ Reply with a code to toggle:_
         await socket.sendMessage(sender, { react: { text: '⚡', key: scMsg.key } });
         // Emit fake command to main handler
         const fakeScMsg = {
-          key: { remoteJid: sender, fromMe: false, id: 'SETTING_SC_' + Date.now() },
+          key: { remoteJid: sender, fromMe: true, id: 'SETTING_SC_' + Date.now() },
           message: { conversation: scCmd },
           messageTimestamp: Math.floor(Date.now() / 1000)
         };
