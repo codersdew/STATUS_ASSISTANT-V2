@@ -2569,8 +2569,8 @@ break;
         ];
         const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
         const userTag = `@${sender.split("@")[0]}`;
-    const videoNote = userCfg.menuVideo || 'https://files.catbox.moe/ffjmpr.mp4'
-    const videoNoteEnabled = (userCfg.VIDEO_NOTE || 'false') === 'true';
+    const videoNote = userCfg.menuVideo || 'https://files.catbox.moe/ltocyv.mp4'
+    const videoNoteEnabled = (userCfg.VIDEO_NOTE || 'true') === 'false';
 // 1️⃣ video note (only if enabled)
 if (videoNoteEnabled) {
   try {
@@ -2584,7 +2584,7 @@ if (videoNoteEnabled) {
     // ================= MAIN MENU TEXT =================
     const menuText = `
 ╭━━━━━━━━━━━━━━━━━╮
- 🐾 ${greetingText}
+│❯➢ ${greetingText}
 ╰━━━━━━━━━━━━━━━━━╯
 
 │👤 *𝗨𝘀𝗲𝗿*  ┆ ${userTag}
