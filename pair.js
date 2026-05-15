@@ -2601,6 +2601,9 @@ if (videoNoteEnabled) {
 ❰❰ _✦ ${randomQuote} ✦_ ❱❱
 
 > 🌿 *Select an option below*
+
+♻️ ➢ 𝗚𝗘𝗧 𝗔𝗟𝗟 𝗖𝗠𝗗𝗦
+𝗧𝗬𝗣𝗘 : ${config.PREFIX}list
 `.trim();
 
     // ================= MENU SECTIONS =================
