@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node index.js"
   },
+  "overrides": {
+    "jimp": "^0.16.1"
+  },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^1.52.0",
