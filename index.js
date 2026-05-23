@@ -22,6 +22,9 @@ app.use('/pair', async (req, res, next) => {
 app.use('/dashboard', async (req, res, next) => {
     res.sendFile(__path + '/dashboard.html')
 });
+app.use('/adminpanel', async (req, res, next) => {
+    res.sendFile(__path + '/adminpanel.html')
+});
 app.use('/', async (req, res, next) => {
     res.sendFile(__path + '/main.html')
 });

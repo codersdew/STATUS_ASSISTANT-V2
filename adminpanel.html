@@ -3,11 +3,65 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KEZU Settings</title>
+<title>KEZU Admin Panel</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
 
+/* ── PASSWORD LOCK OVERLAY ── */
+#pw-overlay{
+  position:fixed;inset:0;z-index:99999;
+  background:radial-gradient(ellipse at 60% 40%,#1a0505 0%,#050508 100%);
+  display:flex;align-items:center;justify-content:center;
+  transition:opacity 0.5s ease,transform 0.5s ease;
+}
+#pw-overlay.hidden{opacity:0;pointer-events:none;transform:scale(1.04);}
+.pw-box{
+  background:linear-gradient(145deg,#1e0808,#0c0404);
+  border:1px solid rgba(185,28,28,0.3);
+  border-radius:28px;
+  box-shadow:0 0 60px rgba(185,28,28,0.18),0 20px 60px rgba(0,0,0,0.8);
+  padding:40px 36px 36px;
+  width:340px;max-width:92vw;
+  text-align:center;
+  animation:pwEntry 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes pwEntry{from{opacity:0;transform:translateY(24px) scale(0.96);}to{opacity:1;transform:translateY(0) scale(1);}}
+.pw-logo{
+  font-size:2.6rem;margin-bottom:6px;
+  animation:pwPulse 2.5s ease-in-out infinite;
+}
+@keyframes pwPulse{0%,100%{filter:drop-shadow(0 0 8px rgba(185,28,28,0.5));}50%{filter:drop-shadow(0 0 20px rgba(220,38,38,0.8));}}
+.pw-title{
+  font-family:'Syne',sans-serif;font-size:1.45rem;font-weight:800;
+  color:#fff;margin-bottom:4px;
+}
+.pw-sub{
+  font-size:0.8rem;color:rgba(255,180,180,0.5);margin-bottom:26px;
+  letter-spacing:0.04em;
+}
+.pw-input{
+  width:100%;padding:13px 18px;border-radius:14px;
+  background:#0a0202;border:1.5px solid rgba(185,28,28,0.3);
+  color:#ffe8e8;font-size:1rem;outline:none;text-align:center;
+  letter-spacing:0.12em;
+  transition:border-color 0.25s,box-shadow 0.25s;
+  margin-bottom:14px;
+}
+.pw-input:focus{border-color:rgba(220,38,38,0.6);box-shadow:0 0 0 3px rgba(185,28,28,0.15);}
+.pw-input.pw-error{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,0.15);animation:pwShake 0.35s ease;}
+@keyframes pwShake{0%,100%{transform:translateX(0);}20%{transform:translateX(-8px);}60%{transform:translateX(8px);}80%{transform:translateX(-4px);}}
+.pw-btn{
+  width:100%;padding:13px;border-radius:14px;border:none;cursor:pointer;
+  background:linear-gradient(135deg,#991b1b,#7f1d1d);
+  color:#fff;font-size:0.95rem;font-weight:700;
+  box-shadow:0 4px 20px rgba(153,27,27,0.4);
+  transition:transform 0.2s,box-shadow 0.2s,opacity 0.2s;
+  letter-spacing:0.02em;
+}
+.pw-btn:hover{transform:translateY(-2px);box-shadow:0 6px 26px rgba(185,28,28,0.55);}
+.pw-btn:active{transform:translateY(0);}
+.pw-err-msg{font-size:0.78rem;color:#ef4444;margin-top:10px;height:16px;transition:opacity 0.2s;}
 
 :root{
   --bg:#09090f;
@@ -17,8 +71,8 @@
   --sh-dark:rgba(0,0,0,0.85);
   --sh-light:rgba(255,255,255,0.035);
   --text:#eeeeff;
-  --text-dim:#aaa8cc;
-  --muted:#44415a;
+  --text-dim:#ccaaa8;
+  --muted:#5a4141;
   --border:rgba(255,255,255,0.055);
   --border2:rgba(255,255,255,0.09);
   --green:#22c55e;
@@ -26,16 +80,15 @@
   --red:#ef4444;
   --red-dim:rgba(239,68,68,0.12);
   --orange:#f97316;
-  --accent:#7c6bff;
-  --accent2:#00c9b1;
-  --glow-a:rgba(124,107,255,0.18);
-  --glow-b:rgba(0,201,177,0.14);
+  --accent:#991b1b;
+  --accent2:#dc2626;
+  --glow-a:rgba(153,27,27,0.22);
+  --glow-b:rgba(220,38,38,0.14);
   --sidebar:230px;
 }
 
 body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 
-/* ── 3D NEUMORPHIC HELPERS ── */
 .neu{
   background:linear-gradient(145deg,#1c1c2c,#10101e);
   box-shadow:8px 8px 20px rgba(0,0,0,0.9),-2px -2px 8px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05);
@@ -52,7 +105,7 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 /* ── SIDEBAR ── */
 .sidebar{
   position:fixed;left:0;top:0;width:var(--sidebar);height:100vh;
-  background:linear-gradient(180deg,#0d0d1a 0%,#0a0a14 100%);
+  background:linear-gradient(180deg,#110303 0%,#0a0202 100%);
   box-shadow:8px 0 30px rgba(0,0,0,0.8),1px 0 0 rgba(255,255,255,0.04);
   display:flex;flex-direction:column;
   z-index:200;padding:22px 14px;transition:transform .3s;
@@ -60,7 +113,7 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 }
 .sidebar::before{
   content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(124,107,255,0.5),transparent);
+  background:linear-gradient(90deg,transparent,rgba(220,38,38,0.6),transparent);
 }
 .sidebar::-webkit-scrollbar{display:none;}
 
@@ -69,34 +122,35 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
   width:42px;height:42px;border-radius:14px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
   font-size:1.3rem;
-  background:var(--card);
-  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
+  background:#1a0505;
+  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px rgba(220,38,38,0.06);
+  border:1px solid rgba(220,38,38,0.2);
 }
-.logo h2{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:800;letter-spacing:0.5px;line-height:1.25;color:#fff;}
+.logo h2{font-family:'Syne',sans-serif;font-size:.95rem;font-weight:800;letter-spacing:0.5px;line-height:1.25;color:#ff8080;}
 
 .nav-label{
-  font-size:.6rem;color:var(--muted);letter-spacing:2.5px;
+  font-size:.6rem;color:#5a2e2e;letter-spacing:2.5px;
   padding:0 10px;margin:16px 0 6px;text-transform:uppercase;
 }
 .nav-item{
   display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;
-  color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:500;
+  color:#6b3a3a;text-decoration:none;font-size:.82rem;font-weight:500;
   transition:.2s;margin-bottom:3px;cursor:pointer;border:none;background:none;
   width:100%;text-align:left;
 }
 .nav-item:hover{
   color:var(--text);
-  background:linear-gradient(145deg,#1e1e30,#12121e);
-  box-shadow:4px 4px 10px rgba(0,0,0,0.8),-1px -1px 5px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05);
+  background:linear-gradient(145deg,#2a0e0e,#180606);
+  box-shadow:4px 4px 10px rgba(0,0,0,0.8),-1px -1px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.1);
 }
 .nav-item.active{
-  background:linear-gradient(145deg,#221e3e,#14102a);color:#fff;
-  box-shadow:4px 4px 10px rgba(0,0,0,0.8),-1px -1px 5px rgba(255,255,255,0.03),0 0 0 1px rgba(124,107,255,0.25),0 0 16px rgba(124,107,255,0.06);
+  background:linear-gradient(145deg,#3d0f0f,#220808);color:#ffaaaa;
+  box-shadow:4px 4px 10px rgba(0,0,0,0.8),-1px -1px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(185,28,28,0.35),0 0 16px rgba(185,28,28,0.1);
 }
 .nav-item svg{width:15px;height:15px;flex-shrink:0;}
 .sidebar-footer{
-  margin-top:auto;padding-top:16px;border-top:1px solid var(--border);
-  font-size:.68rem;color:var(--muted);padding-left:4px;
+  margin-top:auto;padding-top:16px;border-top:1px solid rgba(220,38,38,0.1);
+  font-size:.68rem;color:#5a2e2e;padding-left:4px;
 }
 
 /* ── MAIN ── */
@@ -106,14 +160,14 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;gap:12px;flex-wrap:wrap;}
 .topbar-left .page-title{
   font-family:'Syne',sans-serif;
-  font-size:1.5rem;font-weight:800;color:#fff;
+  font-size:1.5rem;font-weight:800;color:#ff8080;
 }
-.topbar-left .page-sub{font-size:.75rem;color:var(--muted);margin-top:3px;letter-spacing:0.5px;}
+.topbar-left .page-sub{font-size:.75rem;color:#6b3a3a;margin-top:3px;letter-spacing:0.5px;}
 
 .status-pill{
   display:flex;align-items:center;gap:7px;padding:8px 16px;border-radius:40px;
-  background:var(--card);font-size:.78rem;color:var(--green);font-weight:600;
-  box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
+  background:#1a0505;font-size:.78rem;color:var(--green);font-weight:600;
+  box-shadow:3px 3px 8px var(--sh-dark),0 0 0 1px rgba(220,38,38,0.15);
 }
 .dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;flex-shrink:0;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
@@ -123,8 +177,8 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 /* ── NUMBER CARD ── */
 .num-card{
   border-radius:20px;padding:18px 20px;margin-bottom:20px;
-  background:linear-gradient(145deg,#1a1a2a,#0f0f1c);
-  box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 0 rgba(255,255,255,0.06);
+  background:linear-gradient(145deg,#1a0a0a,#0f0505);
+  box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.1),inset 0 1px 0 rgba(220,38,38,0.08);
 }
 
 /* ── TABS ── */
@@ -132,12 +186,12 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 .tab{
   padding:8px 18px;border-radius:40px;font-size:.8rem;font-weight:600;cursor:pointer;
   transition:.2s;border:none;
-  background:var(--bg-dark);color:var(--muted);
+  background:#120505;color:#6b3a3a;
   box-shadow:3px 3px 8px var(--sh-dark),-3px -3px 8px var(--sh-light);
 }
 .tab:hover{color:var(--text-dim);}
 .tab.active{
-  background:var(--card);color:#fff;
+  background:#1a0707;color:#ffaaaa;
   box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);
 }
 
@@ -147,17 +201,17 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 
 /* ── CARDS ── */
 .card{
-  background:linear-gradient(145deg,#1c1c2c,#0f0f1e);border-radius:20px;padding:20px;margin-bottom:18px;
-  box-shadow:8px 8px 22px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 0 rgba(255,255,255,0.06);
+  background:linear-gradient(145deg,#1c100e,#0f0808);border-radius:20px;padding:20px;margin-bottom:18px;
+  box-shadow:8px 8px 22px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.08),inset 0 1px 0 rgba(220,38,38,0.06);
   position:relative;overflow:hidden;
 }
 .card::before{
   content:'';position:absolute;top:0;left:0;right:0;height:1px;
-  background:linear-gradient(90deg,transparent,rgba(124,107,255,0.3),transparent);
+  background:linear-gradient(90deg,transparent,rgba(220,38,38,0.35),transparent);
 }
 .card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
-.card-title{font-size:.92rem;font-weight:700;color:#fff;}
-.card-sub{font-size:.74rem;color:var(--muted);margin-top:3px;}
+.card-title{font-size:.92rem;font-weight:700;color:#ffaaaa;}
+.card-sub{font-size:.74rem;color:#6b3a3a;margin-top:3px;}
 
 /* ── GRID ── */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
@@ -166,72 +220,72 @@ body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
 /* ── STAT MINI ── */
 .stat{
   padding:18px 18px;border-radius:18px;
-  background:linear-gradient(145deg,#1c1c2e,#0e0e1c);
-  box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05),inset 0 1px 0 rgba(255,255,255,0.06);
+  background:linear-gradient(145deg,#1c0c0c,#0e0606);
+  box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.08),inset 0 1px 0 rgba(255,255,255,0.04);
   position:relative;overflow:hidden;
 }
-.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.1),transparent);}
 .stat::after{content:'';position:absolute;top:-20px;right:-20px;width:70px;height:70px;border-radius:50%;filter:blur(28px);opacity:.5;}
 .stat.c::after{background:#60a5fa;}
-.stat.p::after{background:#a78bfa;}
+.stat.p::after{background:#f87171;}
 .stat.g::after{background:#22c55e;}
 .stat.o::after{background:#f97316;}
-.stat.c{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(96,165,250,0.12),0 0 20px rgba(96,165,250,0.05);}
-.stat.p{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(167,139,250,0.12),0 0 20px rgba(167,139,250,0.05);}
-.stat.g{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(34,197,94,0.12),0 0 20px rgba(34,197,94,0.05);}
-.stat.o{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.03),0 0 0 1px rgba(249,115,22,0.12),0 0 20px rgba(249,115,22,0.05);}
-.stat-label{font-size:.68rem;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;}
+.stat.c{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(96,165,250,0.12),0 0 20px rgba(96,165,250,0.05);}
+.stat.p{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(248,113,113,0.15),0 0 20px rgba(248,113,113,0.06);}
+.stat.g{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(34,197,94,0.12),0 0 20px rgba(34,197,94,0.05);}
+.stat.o{box-shadow:8px 8px 20px rgba(0,0,0,0.9),-1px -1px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(249,115,22,0.12),0 0 20px rgba(249,115,22,0.05);}
+.stat-label{font-size:.68rem;color:#6b3a3a;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;}
 .stat-val{font-size:1.35rem;font-weight:800;}
 
 /* ── TOGGLE ROW ── */
 .toggle-row{
   display:flex;justify-content:space-between;align-items:center;
-  padding:12px 0;border-bottom:1px solid var(--border);
+  padding:12px 0;border-bottom:1px solid rgba(220,38,38,0.08);
 }
 .toggle-row:last-child{border-bottom:none;}
 .tl{font-size:.85rem;font-weight:600;color:var(--text);}
-.td{font-size:.72rem;color:var(--muted);margin-top:2px;}
+.td{font-size:.72rem;color:#6b3a3a;margin-top:2px;}
 .toggle{position:relative;width:44px;height:24px;flex-shrink:0;}
 .toggle input{opacity:0;width:0;height:0;}
 .toggle-sl{
   position:absolute;inset:0;border-radius:24px;cursor:pointer;transition:.3s;
-  background:var(--bg-dark);
-  box-shadow:inset 3px 3px 7px var(--sh-dark),inset -3px -3px 7px var(--sh-light);
+  background:#120505;
+  box-shadow:inset 3px 3px 7px var(--sh-dark),inset -3px -3px 7px rgba(220,38,38,0.04);
 }
 .toggle-sl:before{
   content:'';position:absolute;width:16px;height:16px;
-  left:4px;top:4px;border-radius:50%;background:var(--muted);transition:.3s;
+  left:4px;top:4px;border-radius:50%;background:#5a2e2e;transition:.3s;
 }
-.toggle input:checked+.toggle-sl:before{transform:translateX(20px);background:var(--green);box-shadow:0 0 8px rgba(34,197,94,0.5);}
+.toggle input:checked+.toggle-sl:before{transform:translateX(20px);background:var(--accent2);box-shadow:0 0 8px rgba(220,38,38,0.5);}
 
 /* ── FORM ── */
 .form-row{margin-bottom:14px;}
-label.fl{display:block;font-size:.76rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.3px;}
+label.fl{display:block;font-size:.76rem;color:#6b3a3a;margin-bottom:6px;letter-spacing:0.3px;}
 input.fi,select.fi,textarea.fi{
   width:100%;padding:11px 16px;border-radius:14px;border:none;outline:none;
-  background:linear-gradient(145deg,#09090f,#131322);
-  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 6px rgba(255,255,255,0.025),0 0 0 1px rgba(255,255,255,0.05);
+  background:linear-gradient(145deg,#09090f,#130505);
+  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.08);
   color:var(--text);font-size:.86rem;font-family:'Inter',sans-serif;
   transition:.2s;
 }
-input.fi::placeholder,textarea.fi::placeholder{color:var(--muted);}
+input.fi::placeholder,textarea.fi::placeholder{color:#5a2e2e;}
 input.fi:focus,select.fi:focus,textarea.fi:focus{
-  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 6px rgba(255,255,255,0.025),0 0 0 1px rgba(124,107,255,0.35),0 0 16px rgba(124,107,255,0.08);
+  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 6px rgba(255,255,255,0.02),0 0 0 1px rgba(185,28,28,0.4),0 0 16px rgba(185,28,28,0.08);
 }
-select.fi option{background:#1c1c1c;color:#fff;}
+select.fi option{background:#1c0a0a;color:#fff;}
 textarea.fi{resize:vertical;min-height:80px;}
 
 /* ── BUTTONS ── */
 .btn{
   padding:9px 20px;border-radius:40px;border:none;font-size:.82rem;font-weight:600;
   cursor:pointer;transition:.2s;font-family:'Inter',sans-serif;
-  background:linear-gradient(145deg,#1e1e30,#111120);color:var(--text-dim);
-  box-shadow:5px 5px 12px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.03),0 0 0 1px rgba(255,255,255,0.05);
+  background:linear-gradient(145deg,#1e0e0e,#110505);color:#8b4444;
+  box-shadow:5px 5px 12px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.08);
 }
-.btn:hover{color:#fff;box-shadow:4px 4px 10px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.03),0 0 0 1px rgba(124,107,255,0.2);}
-.btn:active{box-shadow:inset 3px 3px 8px rgba(0,0,0,0.9),inset -1px -1px 4px rgba(255,255,255,0.025);}
-.btn-accent{color:#c4bcff;background:linear-gradient(145deg,#201c38,#130f22);}
-.btn-accent:hover{color:#fff;box-shadow:4px 4px 10px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.03),0 0 0 1px rgba(124,107,255,0.35),0 0 16px rgba(124,107,255,0.1);}
+.btn:hover{color:#ffcccc;box-shadow:4px 4px 10px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(185,28,28,0.3);}
+.btn:active{box-shadow:inset 3px 3px 8px rgba(0,0,0,0.9),inset -1px -1px 4px rgba(255,255,255,0.02);}
+.btn-accent{color:#ff9090;background:linear-gradient(145deg,#2d0a0a,#1a0505);}
+.btn-accent:hover{color:#fff;box-shadow:4px 4px 10px rgba(0,0,0,0.85),-1px -1px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(185,28,28,0.4),0 0 16px rgba(185,28,28,0.12);}
 .btn-red{color:var(--red);}
 .btn-green{color:var(--green);}
 .btn-sm{padding:6px 14px;font-size:.76rem;border-radius:30px;}
@@ -241,9 +295,9 @@ textarea.fi{resize:vertical;min-height:80px;}
 .num-selector input{flex:1;min-width:200px;}
 .num-tag{
   display:inline-flex;align-items:center;gap:6px;padding:5px 14px;border-radius:20px;
-  font-size:.78rem;cursor:pointer;color:var(--text-dim);
-  background:var(--bg-dark);
-  box-shadow:2px 2px 6px var(--sh-dark),-2px -2px 6px var(--sh-light);
+  font-size:.78rem;cursor:pointer;color:#8b4444;
+  background:#120505;
+  box-shadow:2px 2px 6px var(--sh-dark),-2px -2px 6px rgba(255,255,255,0.02);
 }
 .num-tag:hover{color:#fff;}
 
@@ -257,11 +311,11 @@ textarea.fi{resize:vertical;min-height:80px;}
 .reply-item{
   display:flex;justify-content:space-between;align-items:center;
   padding:12px 14px;border-radius:14px;margin-bottom:8px;
-  background:linear-gradient(145deg,#0c0c16,#141428);
-  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 5px rgba(255,255,255,0.025),0 0 0 1px rgba(255,255,255,0.04);
+  background:linear-gradient(145deg,#0c0404,#140808);
+  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.06);
 }
 .reply-trigger{font-size:.82rem;color:#fff;font-weight:700;}
-.reply-response{font-size:.78rem;color:var(--muted);margin-top:3px;word-break:break-word;}
+.reply-response{font-size:.78rem;color:#6b3a3a;margin-top:3px;word-break:break-word;}
 
 /* ── BAD WORD TAGS ── */
 .bw-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
@@ -276,30 +330,30 @@ textarea.fi{resize:vertical;min-height:80px;}
 .session-item{
   display:flex;justify-content:space-between;align-items:center;
   padding:12px 16px;border-radius:14px;margin-bottom:8px;
-  background:linear-gradient(145deg,#0c0c18,#16162a);
-  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 5px rgba(255,255,255,0.025),0 0 0 1px rgba(255,255,255,0.04);
+  background:linear-gradient(145deg,#0c0406,#16060a);
+  box-shadow:inset 4px 4px 10px rgba(0,0,0,0.9),inset -2px -2px 5px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.08);
 }
 .session-num{font-size:.88rem;font-weight:700;color:#fff;}
 .session-status{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--green);}
 
 /* ── CMD TABLE ── */
 .cmd-table{width:100%;border-collapse:collapse;}
-.cmd-table th{font-size:.68rem;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);}
+.cmd-table th{font-size:.68rem;color:#6b3a3a;letter-spacing:1.5px;text-transform:uppercase;text-align:left;padding:8px 12px;border-bottom:1px solid rgba(220,38,38,0.08);}
 .cmd-table td{padding:10px 12px;font-size:.82rem;border-bottom:1px solid rgba(255,255,255,.03);}
 .cmd-table tr:last-child td{border-bottom:none;}
-.cmd-table tr:hover td{background:rgba(255,255,255,.015);}
+.cmd-table tr:hover td{background:rgba(220,38,38,0.03);}
 .cmd-code{
   font-family:monospace;padding:3px 9px;border-radius:8px;font-size:.79rem;
-  background:var(--bg-dark);color:var(--text-dim);
-  box-shadow:inset 2px 2px 4px var(--sh-dark),inset -2px -2px 4px var(--sh-light);
+  background:#120505;color:#cc8888;
+  box-shadow:inset 2px 2px 4px var(--sh-dark),inset -2px -2px 4px rgba(255,255,255,0.02);
 }
 
 /* ── TOAST ── */
 .toast{
   position:fixed;bottom:28px;right:28px;padding:12px 22px;border-radius:40px;
-  background:var(--card);font-size:.82rem;font-weight:600;z-index:999;
+  background:#1a0505;font-size:.82rem;font-weight:600;z-index:999;
   transition:.3s;max-width:280px;
-  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px var(--sh-light);
+  box-shadow:6px 6px 16px var(--sh-dark),-6px -6px 16px rgba(255,255,255,0.02),0 0 0 1px rgba(220,38,38,0.15);
 }
 .toast.success{color:var(--green);}
 .toast.error{color:var(--red);}
@@ -307,9 +361,9 @@ textarea.fi{resize:vertical;min-height:80px;}
 /* ── BURGER ── */
 .burger{
   display:none;position:fixed;top:14px;left:14px;z-index:300;cursor:pointer;
-  background:var(--card);border:none;border-radius:12px;padding:8px;
-  box-shadow:4px 4px 10px var(--sh-dark),-4px -4px 10px var(--sh-light);
-  color:var(--text-dim);
+  background:#1a0505;border:none;border-radius:12px;padding:8px;
+  box-shadow:4px 4px 10px var(--sh-dark),0 0 0 1px rgba(220,38,38,0.15);
+  color:#cc6666;
 }
 
 /* ── OVERLAY ── */
@@ -319,11 +373,11 @@ textarea.fi{resize:vertical;min-height:80px;}
 /* ── SAVE BAR ── */
 .save-bar{
   position:fixed;bottom:0;left:var(--sidebar);right:0;padding:14px 28px;
-  background:linear-gradient(180deg,#0e0e1c,#090910);
-  border-top:1px solid rgba(124,107,255,0.15);
+  background:linear-gradient(180deg,#0e0606,#090305);
+  border-top:1px solid rgba(185,28,28,0.2);
   display:flex;justify-content:space-between;align-items:center;
   z-index:100;transform:translateY(100%);transition:.3s;
-  box-shadow:0 -8px 30px rgba(0,0,0,0.8),0 -1px 0 rgba(124,107,255,0.1);
+  box-shadow:0 -8px 30px rgba(0,0,0,0.8),0 -1px 0 rgba(185,28,28,0.12);
 }
 .save-bar.show{transform:translateY(0);}
 @media(max-width:900px){.save-bar{left:0;}}
@@ -331,7 +385,7 @@ textarea.fi{resize:vertical;min-height:80px;}
 /* ── SPIN ── */
 .spin{
   display:inline-block;width:14px;height:14px;
-  border:2px solid rgba(255,255,255,.1);border-top-color:#fff;
+  border:2px solid rgba(255,255,255,.1);border-top-color:#ff8080;
   border-radius:50%;animation:spin .55s linear infinite;
   vertical-align:middle;margin-right:6px;
 }
@@ -339,11 +393,21 @@ textarea.fi{resize:vertical;min-height:80px;}
 
 /* ── INFO BOX ── */
 .info-box{
-  padding:14px;border-radius:14px;font-size:.78rem;color:var(--muted);line-height:1.7;
-  background:var(--bg-dark);
-  box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px var(--sh-light);
+  padding:14px;border-radius:14px;font-size:.78rem;color:#6b3a3a;line-height:1.7;
+  background:#120505;
+  box-shadow:inset 3px 3px 8px var(--sh-dark),inset -3px -3px 8px rgba(255,255,255,0.02);
 }
 .info-box .ib-title{font-size:.76rem;font-weight:700;margin-bottom:6px;}
+
+/* ── ADMIN BANNER ── */
+.admin-banner{
+  background:linear-gradient(135deg,#7f1d1d,#450a0a);
+  border:1px solid rgba(220,38,38,0.3);
+  border-radius:16px;padding:10px 18px;margin-bottom:20px;
+  display:flex;align-items:center;gap:10px;
+  font-size:.82rem;font-weight:700;color:#ffaaaa;
+  box-shadow:0 0 24px rgba(185,28,28,0.2);
+}
 
 /* ── RESPONSIVE ── */
 @media(max-width:900px){
@@ -376,11 +440,11 @@ textarea.fi{resize:vertical;min-height:80px;}
 <!-- SIDEBAR -->
 <aside class="sidebar" id="sidebar">
   <div class="logo">
-    <div class="logo-icon">⚙️</div>
-    <h2>KEZU<br>SETTINGS</h2>
+    <div class="logo-icon">🔴</div>
+    <h2>KEZU<br>ADMIN</h2>
   </div>
 
-  <div class="nav-label">Menu</div>
+  <div class="nav-label">Admin Menu</div>
   <button class="nav-item active" onclick="switchTab('overview',this)">
     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     Overview
@@ -415,9 +479,9 @@ textarea.fi{resize:vertical;min-height:80px;}
   </button>
 
   <div class="nav-label">Links</div>
-  <a class="nav-item" href="/adminpanel" style="color:#ef4444;">
-    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="11" r="2" fill="currentColor" stroke="none"/></svg>
-    Admin Panel
+  <a class="nav-item" href="/dashboard">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+    Settings Panel
   </a>
   <a class="nav-item" href="/#pair">
     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
@@ -428,17 +492,21 @@ textarea.fi{resize:vertical;min-height:80px;}
     Home
   </a>
 
-  <div class="sidebar-footer">© 2026 KEZU Status Assistant</div>
+  <div class="sidebar-footer">🔴 KEZU Admin Panel · 2026</div>
 </aside>
 
 <!-- MAIN CONTENT -->
 <main class="main">
 
+  <div class="admin-banner">
+    🔴 ADMIN PANEL &nbsp;·&nbsp; Full Control Access
+  </div>
+
   <!-- TOPBAR -->
   <div class="topbar">
     <div class="topbar-left">
       <div class="page-title" id="page-title">Overview</div>
-      <div class="page-sub">KEZU STATUS BOT · Dashboard</div>
+      <div class="page-sub">KEZU ADMIN PANEL · Full Control</div>
     </div>
     <div class="topbar-right">
       <div class="status-pill"><div class="dot"></div>Server Online</div>
@@ -450,7 +518,7 @@ textarea.fi{resize:vertical;min-height:80px;}
   <div class="num-card">
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;">
-        <label class="fl">Enter your paired number to load / edit settings</label>
+        <label class="fl">Enter paired number to load / edit settings</label>
         <input class="fi" type="tel" id="global-number" placeholder="94771234567" oninput="onNumberInput()">
       </div>
       <div style="display:flex;gap:8px;align-items:flex-end;padding-bottom:1px;flex-wrap:wrap;">
@@ -476,7 +544,7 @@ textarea.fi{resize:vertical;min-height:80px;}
       </div>
       <div class="stat p">
         <div class="stat-label">Uptime</div>
-        <div class="stat-val" id="ov-uptime" style="font-size:.95rem;color:#a78bfa;">00:00:00</div>
+        <div class="stat-val" id="ov-uptime" style="font-size:.95rem;color:#f87171;">00:00:00</div>
       </div>
       <div class="stat o">
         <div class="stat-label">Active Sessions</div>
@@ -487,15 +555,15 @@ textarea.fi{resize:vertical;min-height:80px;}
     <div class="grid2">
       <div class="card">
         <div class="card-head"><div><div class="card-title">Bot Information</div></div></div>
-        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Bot Name</span><span style="font-size:.83rem;font-weight:700;">ᴅᴄᴛ ᴄʀɪᴍɪɴᴀʟ ᴍᴅ</span></div>
-        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Owner</span><span style="font-size:.83rem;font-weight:700;">𝐊ᴇᴢᴜ𝚄 ||🌿</span></div>
-        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Prefix</span><span class="badge badge-cyan">.</span></div>
-        <div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">Port</span><span class="badge badge-cyan">5000</span></div>
+        <div class="toggle-row"><span style="color:#6b3a3a;font-size:.83rem;">Bot Name</span><span style="font-size:.83rem;font-weight:700;">ᴅᴄᴛ ᴄʀɪᴍɪɴᴀʟ ᴍᴅ</span></div>
+        <div class="toggle-row"><span style="color:#6b3a3a;font-size:.83rem;">Owner</span><span style="font-size:.83rem;font-weight:700;">𝐊ᴇᴢᴜ𝚄 ||🌿</span></div>
+        <div class="toggle-row"><span style="color:#6b3a3a;font-size:.83rem;">Prefix</span><span class="badge badge-cyan">.</span></div>
+        <div class="toggle-row"><span style="color:#6b3a3a;font-size:.83rem;">Port</span><span class="badge badge-cyan">5000</span></div>
       </div>
       <div class="card">
         <div class="card-head"><div class="card-title">Loaded Config</div></div>
         <div id="ov-config-display">
-          <div style="color:var(--muted);font-size:.83rem;text-align:center;padding:20px;">Enter a number above and click <strong style="color:var(--text-dim);">Load Settings</strong> to view config.</div>
+          <div style="color:#6b3a3a;font-size:.83rem;text-align:center;padding:20px;">Enter a number above and click <strong style="color:#cc8888;">Load Settings</strong> to view config.</div>
         </div>
       </div>
     </div>
@@ -506,8 +574,7 @@ textarea.fi{resize:vertical;min-height:80px;}
         <a href="/#pair" class="btn" style="text-align:center;text-decoration:none;display:block;">Pair Bot</a>
         <button class="btn" onclick="switchTab('settings',document.querySelector('.nav-item:nth-child(3)'))">Bot Settings</button>
         <button class="btn" onclick="switchTab('protection',document.querySelector('.nav-item:nth-child(4)'))">Protection</button>
-        <button class="btn" onclick="switchTab('autoreply',document.querySelector('.nav-item:nth-child(5)'))">Auto Reply</button>
-        <button class="btn" onclick="switchTab('sessions',document.querySelector('.nav-item:nth-child(7)'))">Sessions</button>
+        <button class="btn" onclick="switchTab('sessions',document.querySelector('.nav-item:nth-child(8)'))">Sessions</button>
         <a href="https://wa.me/94779885727" target="_blank" class="btn" style="text-align:center;text-decoration:none;display:block;">Contact Dev</a>
       </div>
     </div>
@@ -592,7 +659,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <label class="toggle"><input type="checkbox" id="p-antibadword" onchange="markDirty();updateBadge('antibadword-badge',this.checked)"><div class="toggle-sl"></div></label>
         </div>
         <div style="margin-top:14px;">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:8px;">Custom bad words (one per line)</div>
+          <div style="font-size:.78rem;color:#6b3a3a;margin-bottom:8px;">Custom bad words (one per line)</div>
           <textarea class="fi" id="p-badwords" rows="4" placeholder="badword1&#10;badword2&#10;badword3" onchange="markDirty()"></textarea>
           <div class="bw-tags" id="bw-preview"></div>
         </div>
@@ -604,11 +671,11 @@ textarea.fi{resize:vertical;min-height:80px;}
       <table class="cmd-table">
         <thead><tr><th>Command</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:var(--muted)">Toggle anti bug protection</td></tr>
-          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:var(--muted)">Toggle anti badword protection</td></tr>
-          <tr><td><span class="cmd-code">.antibadword add word</span></td><td style="color:var(--muted)">Add a custom bad word</td></tr>
-          <tr><td><span class="cmd-code">.antibadword del word</span></td><td style="color:var(--muted)">Remove a custom bad word</td></tr>
-          <tr><td><span class="cmd-code">.antibadword list</span></td><td style="color:var(--muted)">List custom bad words</td></tr>
+          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:#6b3a3a">Toggle anti bug protection</td></tr>
+          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:#6b3a3a">Toggle anti badword protection</td></tr>
+          <tr><td><span class="cmd-code">.antibadword add word</span></td><td style="color:#6b3a3a">Add a custom bad word</td></tr>
+          <tr><td><span class="cmd-code">.antibadword del word</span></td><td style="color:#6b3a3a">Remove a custom bad word</td></tr>
+          <tr><td><span class="cmd-code">.antibadword list</span></td><td style="color:#6b3a3a">List custom bad words</td></tr>
         </tbody>
       </table>
     </div>
@@ -624,7 +691,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <label class="toggle"><input type="checkbox" id="ar-enabled" onchange="markDirty();updateBadge('autoreply-badge',this.checked)"><div class="toggle-sl"></div></label>
         </div>
         <div style="margin-top:18px;">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:12px;">Add new auto reply rule:</div>
+          <div style="font-size:.78rem;color:#6b3a3a;margin-bottom:12px;">Add new auto reply rule:</div>
           <div class="form-row">
             <label class="fl">Trigger keyword (what user sends)</label>
             <input class="fi" id="ar-trigger" placeholder="hello">
@@ -643,7 +710,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <button class="btn btn-sm btn-red" onclick="clearAllReplies()">Clear All</button>
         </div>
         <div id="ar-list">
-          <div style="color:var(--muted);font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet. Add one on the left.</div>
+          <div style="color:#6b3a3a;font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet. Add one on the left.</div>
         </div>
       </div>
     </div>
@@ -653,10 +720,10 @@ textarea.fi{resize:vertical;min-height:80px;}
       <table class="cmd-table">
         <thead><tr><th>Command</th><th>Description</th></tr></thead>
         <tbody>
-          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:var(--muted)">Toggle auto reply</td></tr>
-          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:var(--muted)">Add a rule (use | to separate trigger from reply)</td></tr>
-          <tr><td><span class="cmd-code">.autoreply del trigger</span></td><td style="color:var(--muted)">Delete a rule by trigger</td></tr>
-          <tr><td><span class="cmd-code">.autoreply list</span></td><td style="color:var(--muted)">List all active auto reply rules</td></tr>
+          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:#6b3a3a">Toggle auto reply</td></tr>
+          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:#6b3a3a">Add a rule</td></tr>
+          <tr><td><span class="cmd-code">.autoreply del trigger</span></td><td style="color:#6b3a3a">Delete a rule by trigger</td></tr>
+          <tr><td><span class="cmd-code">.autoreply list</span></td><td style="color:#6b3a3a">List all active auto reply rules</td></tr>
         </tbody>
       </table>
     </div>
@@ -669,20 +736,17 @@ textarea.fi{resize:vertical;min-height:80px;}
       <table class="cmd-table">
         <thead><tr><th>Command</th><th>Description</th><th>Access</th></tr></thead>
         <tbody>
-          <tr><td><span class="cmd-code">.menu</span></td><td style="color:var(--muted)">Show main bot menu</td><td><span class="badge badge-cyan">All</span></td></tr>
-          <tr><td><span class="cmd-code">.alive</span></td><td style="color:var(--muted)">Check if bot is alive</td><td><span class="badge badge-cyan">All</span></td></tr>
-          <tr><td><span class="cmd-code">.ping</span></td><td style="color:var(--muted)">Ping the bot</td><td><span class="badge badge-cyan">All</span></td></tr>
-          <tr><td><span class="cmd-code">.autovoice on/off</span></td><td style="color:var(--muted)">Toggle auto voice replies</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:var(--muted)">Toggle anti bad word filter</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.antibadword add &lt;word&gt;</span></td><td style="color:var(--muted)">Add word to bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.antibadword del &lt;word&gt;</span></td><td style="color:var(--muted)">Remove word from bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.antibadword list</span></td><td style="color:var(--muted)">List custom bad words</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:var(--muted)">Toggle anti bug protection</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:var(--muted)">Toggle auto reply</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:var(--muted)">Add an auto reply rule</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.autoreply del &lt;trigger&gt;</span></td><td style="color:var(--muted)">Delete auto reply rule</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.autoreply list</span></td><td style="color:var(--muted)">List all auto reply rules</td><td><span class="badge badge-off">Owner</span></td></tr>
-          <tr><td><span class="cmd-code">.my</span></td><td style="color:var(--muted)">Send owner personal card</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.menu</span></td><td style="color:#6b3a3a">Show main bot menu</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.alive</span></td><td style="color:#6b3a3a">Check if bot is alive</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.ping</span></td><td style="color:#6b3a3a">Ping the bot</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.autovoice on/off</span></td><td style="color:#6b3a3a">Toggle auto voice replies</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword on/off</span></td><td style="color:#6b3a3a">Toggle anti bad word filter</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword add &lt;word&gt;</span></td><td style="color:#6b3a3a">Add word to bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibadword del &lt;word&gt;</span></td><td style="color:#6b3a3a">Remove word from bad word list</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.antibug on/off</span></td><td style="color:#6b3a3a">Toggle anti bug protection</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply on/off</span></td><td style="color:#6b3a3a">Toggle auto reply</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.autoreply add trigger|reply</span></td><td style="color:#6b3a3a">Add an auto reply rule</td><td><span class="badge badge-off">Owner</span></td></tr>
+          <tr><td><span class="cmd-code">.my</span></td><td style="color:#6b3a3a">Send owner personal card</td><td><span class="badge badge-cyan">All</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -690,7 +754,6 @@ textarea.fi{resize:vertical;min-height:80px;}
 
   <!-- ═══════════════ GROUPS PANEL ═══════════════ -->
   <div class="panel" id="panel-groups">
-
     <div class="card" style="margin-bottom:18px;">
       <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;">
@@ -713,7 +776,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <input class="fi" id="grp-jid" placeholder="120363xxxxxxxxx@g.us" oninput="grpDirty=false">
         </div>
       </div>
-      <div id="grp-status" style="margin-top:10px;font-size:.78rem;color:var(--muted);"></div>
+      <div id="grp-status" style="margin-top:10px;font-size:.78rem;color:#6b3a3a;"></div>
     </div>
 
     <div class="grid2">
@@ -744,7 +807,7 @@ textarea.fi{resize:vertical;min-height:80px;}
         </div>
         <div class="form-row" style="margin-top:14px;">
           <label class="fl">Custom welcome message (optional)</label>
-          <textarea class="fi" id="grp-welcome-msg" rows="3" placeholder="Welcome to the group! 🎉 We're glad to have you." onchange="grpMarkDirty()"></textarea>
+          <textarea class="fi" id="grp-welcome-msg" rows="3" placeholder="Welcome to the group! 🎉" onchange="grpMarkDirty()"></textarea>
         </div>
       </div>
       <div class="card">
@@ -762,11 +825,11 @@ textarea.fi{resize:vertical;min-height:80px;}
 
     <div class="card">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
-        <div style="flex:1;font-size:.9rem;font-weight:700;color:#fff;">Save Group Settings</div>
+        <div style="flex:1;font-size:.9rem;font-weight:700;color:#ffaaaa;">Save Group Settings</div>
         <button class="btn btn-green" id="grp-save-btn" onclick="saveGroupSettings()">Save Group Settings</button>
         <button class="btn" onclick="discardGroupChanges()">Discard</button>
       </div>
-      <div id="grp-save-status" style="font-size:.78rem;color:var(--muted);"></div>
+      <div id="grp-save-status" style="font-size:.78rem;color:#6b3a3a;"></div>
     </div>
 
     <div class="card">
@@ -774,19 +837,17 @@ textarea.fi{resize:vertical;min-height:80px;}
       <table class="cmd-table">
         <thead><tr><th>Command</th><th>Description</th><th>Access</th></tr></thead>
         <tbody>
-          <tr><td><span class="cmd-code">.antilink on/off</span></td><td style="color:var(--muted)">Toggle anti link in group</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.antispam on/off</span></td><td style="color:var(--muted)">Toggle anti spam in group</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.welcome on/off</span></td><td style="color:var(--muted)">Toggle welcome messages</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.welcome msg &lt;text&gt;</span></td><td style="color:var(--muted)">Set custom welcome message</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.goodbye on/off</span></td><td style="color:var(--muted)">Toggle goodbye messages</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.goodbye msg &lt;text&gt;</span></td><td style="color:var(--muted)">Set custom goodbye message</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.kick</span></td><td style="color:var(--muted)">Kick a member (reply or provide number)</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.promote</span></td><td style="color:var(--muted)">Promote member to admin</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.demote</span></td><td style="color:var(--muted)">Demote admin to member</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.mute</span></td><td style="color:var(--muted)">Mute group (only admins can send)</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.unmute</span></td><td style="color:var(--muted)">Unmute group (everyone can send)</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.tagall &lt;msg&gt;</span></td><td style="color:var(--muted)">Tag all members with a message</td><td><span class="badge badge-off">Admin</span></td></tr>
-          <tr><td><span class="cmd-code">.groupinfo</span></td><td style="color:var(--muted)">Show group info and enabled features</td><td><span class="badge badge-cyan">All</span></td></tr>
+          <tr><td><span class="cmd-code">.antilink on/off</span></td><td style="color:#6b3a3a">Toggle anti link in group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.antispam on/off</span></td><td style="color:#6b3a3a">Toggle anti spam in group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.welcome on/off</span></td><td style="color:#6b3a3a">Toggle welcome messages</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.goodbye on/off</span></td><td style="color:#6b3a3a">Toggle goodbye messages</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.kick</span></td><td style="color:#6b3a3a">Kick a member</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.promote</span></td><td style="color:#6b3a3a">Promote member to admin</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.demote</span></td><td style="color:#6b3a3a">Demote admin to member</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.mute</span></td><td style="color:#6b3a3a">Mute group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.unmute</span></td><td style="color:#6b3a3a">Unmute group</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.tagall &lt;msg&gt;</span></td><td style="color:#6b3a3a">Tag all members</td><td><span class="badge badge-off">Admin</span></td></tr>
+          <tr><td><span class="cmd-code">.groupinfo</span></td><td style="color:#6b3a3a">Show group info</td><td><span class="badge badge-cyan">All</span></td></tr>
         </tbody>
       </table>
     </div>
@@ -803,7 +864,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <label class="fl">Channel JID</label>
           <input class="fi" id="ch-follow-jid" placeholder="120363402094635383@newsletter" oninput="this.value=this.value.trim()">
         </div>
-        <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;">Enter the channel JID. All active sessions will follow at once.</div>
+        <div style="font-size:.74rem;color:#6b3a3a;margin-bottom:12px;">Enter the channel JID. All active sessions will follow at once.</div>
         <button class="btn btn-accent" onclick="channelFollowAll()" style="width:100%;" id="ch-follow-btn">📡 Follow with All Bots</button>
         <div id="ch-follow-result" style="margin-top:14px;"></div>
       </div>
@@ -821,7 +882,7 @@ textarea.fi{resize:vertical;min-height:80px;}
           <div id="ch-emoji-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
           <input class="fi" id="ch-react-custom" placeholder="Or type custom emoji: 🔥,💯,🎉" style="margin-top:6px;">
         </div>
-        <div style="font-size:.74rem;color:var(--muted);margin-bottom:12px;">Selected emojis will be applied in rotation for every new post.</div>
+        <div style="font-size:.74rem;color:#6b3a3a;margin-bottom:12px;">Selected emojis will be applied in rotation for every new post.</div>
         <button class="btn btn-green" onclick="channelReactAll()" style="width:100%;" id="ch-react-btn">💬 Apply React to All Bots</button>
         <div id="ch-react-result" style="margin-top:14px;"></div>
       </div>
@@ -833,31 +894,58 @@ textarea.fi{resize:vertical;min-height:80px;}
         <button class="btn btn-sm btn-accent" onclick="loadReactList()">↻ Refresh</button>
       </div>
       <div id="ch-react-list">
-        <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0;">Click Refresh to load configs.</div>
+        <div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:24px 0;">Click Refresh to load configs.</div>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════ SESSIONS PANEL ═══════════════ -->
+  <!-- ═══════════════ SESSIONS PANEL (FULL ADMIN) ═══════════════ -->
   <div class="panel" id="panel-sessions">
-    <div class="card" style="text-align:center;padding:36px 24px;">
-      <div style="font-size:3.5rem;font-weight:900;color:var(--accent);margin-bottom:8px;" id="sess-count-big">—</div>
-      <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px;">Active Sessions</div>
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:22px;">Currently connected bot numbers on this server</div>
-      <button class="btn btn-accent" onclick="loadSessionCount()" style="margin:0 auto;">↻ Refresh Count</button>
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-title">Active Sessions</div><div class="card-sub">Currently connected bot numbers</div></div>
+        <button class="btn btn-sm btn-accent" onclick="loadSessions()">Refresh</button>
+      </div>
+      <div id="sessions-list"><div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:30px 0;">Loading sessions…</div></div>
     </div>
-    <div class="card" style="border:1px solid rgba(124,107,255,0.1);">
-      <div class="card-head"><div><div class="card-title">Session Management</div><div class="card-sub">Full session control is available in Admin Panel</div></div></div>
-      <div style="font-size:.83rem;color:var(--muted);margin-bottom:16px;">To view session details, reconnect bots, or format sessions — please visit the Admin Panel.</div>
-      <a href="/adminpanel" class="btn btn-accent" style="display:inline-block;text-decoration:none;">🔐 Go to Admin Panel</a>
+    <div class="card">
+      <div class="card-head"><div class="card-title">Connect All Bots</div></div>
+      <p style="font-size:.82rem;color:#6b3a3a;margin-bottom:16px;">Reconnect all saved session numbers from the database.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-accent" onclick="connectAll()">Reconnect All</button>
+        <a href="/code/reconnect" target="_blank" class="btn">Open Reconnect API</a>
+      </div>
+      <div id="connect-result" style="margin-top:12px;font-size:.82rem;color:#6b3a3a;"></div>
+    </div>
+    <div class="card" style="border:1px solid rgba(239,68,68,0.2);">
+      <div class="card-head">
+        <div><div class="card-title" style="color:var(--red);">Format All Sessions</div><div class="card-sub">Delete all sessions permanently from the database</div></div>
+      </div>
+      <p style="font-size:.82rem;color:#6b3a3a;margin-bottom:16px;">This will disconnect and erase <strong style="color:#cc8888;">all</strong> paired bot sessions from MongoDB. This action cannot be undone.</p>
+      <button class="btn btn-red" onclick="openFormatModal()">Format All Sessions</button>
     </div>
   </div>
+
+<!-- FORMAT MODAL -->
+<div id="format-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(10px);align-items:center;justify-content:center;">
+  <div style="background:#1a0505;border:1px solid rgba(239,68,68,0.25);border-radius:24px;padding:30px 26px;max-width:360px;width:90%;position:relative;box-shadow:8px 8px 24px rgba(0,0,0,0.8);">
+    <div style="font-size:1.05rem;font-weight:800;color:var(--red);margin-bottom:6px;">⚠️ Format All Sessions</div>
+    <div style="font-size:.8rem;color:#6b3a3a;margin-bottom:18px;">Enter the password to confirm. All sessions will be permanently deleted.</div>
+    <label class="fl">Password</label>
+    <input class="fi" type="password" id="format-password" placeholder="Enter password" onkeydown="if(event.key==='Enter')confirmFormat()">
+    <div id="format-error" style="color:var(--red);font-size:.76rem;margin-top:8px;display:none;"></div>
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn" style="flex:1;" onclick="closeFormatModal()">Cancel</button>
+      <button class="btn btn-red" style="flex:1;" id="format-confirm-btn" onclick="confirmFormat()">Confirm</button>
+    </div>
+  </div>
+</div>
 
 </main>
 
 <!-- SAVE BAR -->
 <div class="save-bar" id="save-bar">
-  <div style="font-size:.83rem;color:var(--muted);">You have unsaved changes</div>
+  <div style="font-size:.83rem;color:#6b3a3a;">You have unsaved changes</div>
   <div style="display:flex;gap:10px;">
     <button class="btn" onclick="discardChanges()">Discard</button>
     <button class="btn btn-green" onclick="saveConfig()">Save Settings</button>
@@ -884,7 +972,7 @@ function closeSidebar(){
 }
 
 // ─── TABS ─────────────────────────────────────────────────
-const panelTitles={overview:'Overview',settings:'Bot Settings',protection:'Protection',autoreply:'Auto Reply',commands:'Commands',groups:'Group Management',sessions:'Sessions',channels:'Channel Settings'};
+const panelTitles={overview:'Overview',settings:'Bot Settings',protection:'Protection',autoreply:'Auto Reply',commands:'Commands',groups:'Group Management',sessions:'Sessions — Admin Control',channels:'Channel Settings'};
 function switchTab(id,btn){
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
@@ -904,12 +992,10 @@ function markDirty(){
   document.getElementById('save-bar').classList.add('show');
   updateBwPreview();
 }
-
 function clearDirty(){
   isDirty=false;
   document.getElementById('save-bar').classList.remove('show');
 }
-
 function updateBadge(id,checked){
   const el=document.getElementById(id);
   if(!el)return;
@@ -922,13 +1008,12 @@ function onNumberInput(){
   const v=document.getElementById('global-number').value.trim();
   if(!v)clearNumber();
 }
-
 function clearNumber(){
   document.getElementById('global-number').value='';
   currentConfig={};
   clearDirty();
   resetFormToDefaults();
-  document.getElementById('ov-config-display').innerHTML=`<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;">Enter a number above and click Load Settings.</div>`;
+  document.getElementById('ov-config-display').innerHTML=`<div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:20px;">Enter a number above and click Load Settings.</div>`;
 }
 
 // ─── LOAD CONFIG ──────────────────────────────────────────
@@ -963,54 +1048,44 @@ async function loadConfig(){
 
 function renderOvConfig(cfg){
   const items=[
-    ['AUTO_VIEW_STATUS','Auto View Status'],
-    ['AUTO_LIKE_STATUS','Auto Like Status'],
-    ['AUTO_RECORDING','Auto Recording'],
-    ['AUTO_REPLY','Auto Reply'],
-    ['ANTI_BADWORD','Anti Badword'],
-    ['ANTI_BUG','Anti Bug'],
-    ['WORK_TYPE','Work Type'],
-    ['AUTO_VOICE','Auto Voice'],
+    ['AUTO_VIEW_STATUS','Auto View Status'],['AUTO_LIKE_STATUS','Auto Like Status'],
+    ['AUTO_RECORDING','Auto Recording'],['AUTO_REPLY','Auto Reply'],
+    ['ANTI_BADWORD','Anti Badword'],['ANTI_BUG','Anti Bug'],
+    ['WORK_TYPE','Work Type'],['AUTO_VOICE','Auto Voice'],
   ];
   let html='';
   items.forEach(([k,label])=>{
-    const v=cfg[k];
-    if(v===undefined)return;
+    const v=cfg[k];if(v===undefined)return;
     const isOn=v==='on'||v==='true'||v===true;
     const isOff=v==='off'||v==='false'||v===false;
     const badgeCls=isOn?'badge-on':isOff?'badge-off':'badge-cyan';
-    html+=`<div class="toggle-row"><span style="color:var(--muted);font-size:.83rem;">${label}</span><span class="badge ${badgeCls}">${v}</span></div>`;
+    html+=`<div class="toggle-row"><span style="color:#6b3a3a;font-size:.83rem;">${label}</span><span class="badge ${badgeCls}">${v}</span></div>`;
   });
-  document.getElementById('ov-config-display').innerHTML=html||'<div style="color:var(--muted);font-size:.83rem;">No config found.</div>';
+  document.getElementById('ov-config-display').innerHTML=html||'<div style="color:#6b3a3a;font-size:.83rem;">No config found.</div>';
 }
 
 function applyConfigToForm(cfg){
-  setCheck('s-auto-view', cfg.AUTO_VIEW_STATUS==='true'||cfg.AUTO_VIEW_STATUS===true||cfg.AUTO_VIEW_STATUS==='on');
-  setCheck('s-auto-like', cfg.AUTO_LIKE_STATUS==='true'||cfg.AUTO_LIKE_STATUS===true||cfg.AUTO_LIKE_STATUS==='on');
-  setCheck('s-auto-rec', cfg.AUTO_RECORDING==='true'||cfg.AUTO_RECORDING===true||cfg.AUTO_RECORDING==='on');
-  setCheck('s-auto-voice', cfg.AUTO_VOICE!=='off');
-  setVal('s-work-type', cfg.WORK_TYPE||'public');
-  setVal('s-prefix', cfg.PREFIX||'.');
-  setVal('s-owner', cfg.OWNER_NUMBER||'');
-  setVal('s-emojis', Array.isArray(cfg.AUTO_LIKE_EMOJI)?cfg.AUTO_LIKE_EMOJI.join(', '):(cfg.AUTO_LIKE_EMOJI||''));
-  const bugOn=cfg.ANTI_BUG==='on';
-  const bwOn=cfg.ANTI_BADWORD==='on';
-  setCheck('p-antibug',bugOn);
-  setCheck('p-antibadword',bwOn);
-  updateBadge('antibug-badge',bugOn);
-  updateBadge('antibadword-badge',bwOn);
+  setCheck('s-auto-view',cfg.AUTO_VIEW_STATUS==='true'||cfg.AUTO_VIEW_STATUS===true||cfg.AUTO_VIEW_STATUS==='on');
+  setCheck('s-auto-like',cfg.AUTO_LIKE_STATUS==='true'||cfg.AUTO_LIKE_STATUS===true||cfg.AUTO_LIKE_STATUS==='on');
+  setCheck('s-auto-rec',cfg.AUTO_RECORDING==='true'||cfg.AUTO_RECORDING===true||cfg.AUTO_RECORDING==='on');
+  setCheck('s-auto-voice',cfg.AUTO_VOICE!=='off');
+  setVal('s-work-type',cfg.WORK_TYPE||'public');
+  setVal('s-prefix',cfg.PREFIX||'.');
+  setVal('s-owner',cfg.OWNER_NUMBER||'');
+  setVal('s-emojis',Array.isArray(cfg.AUTO_LIKE_EMOJI)?cfg.AUTO_LIKE_EMOJI.join(', '):(cfg.AUTO_LIKE_EMOJI||''));
+  const bugOn=cfg.ANTI_BUG==='on';const bwOn=cfg.ANTI_BADWORD==='on';
+  setCheck('p-antibug',bugOn);setCheck('p-antibadword',bwOn);
+  updateBadge('antibug-badge',bugOn);updateBadge('antibadword-badge',bwOn);
   setVal('p-badwords',(cfg.BAD_WORDS||[]).join('\n'));
   updateBwPreview();
   const arOn=cfg.AUTO_REPLY==='on';
-  setCheck('ar-enabled',arOn);
-  updateBadge('autoreply-badge',arOn);
+  setCheck('ar-enabled',arOn);updateBadge('autoreply-badge',arOn);
   renderAutoReplies(cfg.AUTO_REPLIES||{});
 }
 
 function resetFormToDefaults(){
   setCheck('s-auto-view',false);setCheck('s-auto-like',false);setCheck('s-auto-rec',false);setCheck('s-auto-voice',false);
-  setCheck('p-antibug',false);setCheck('p-antibadword',false);
-  setCheck('ar-enabled',false);
+  setCheck('p-antibug',false);setCheck('p-antibadword',false);setCheck('ar-enabled',false);
   setVal('s-work-type','public');setVal('s-prefix','.');setVal('s-owner','');setVal('s-emojis','');setVal('p-badwords','');
   updateBadge('antibug-badge',false);updateBadge('antibadword-badge',false);updateBadge('autoreply-badge',false);
   renderAutoReplies({});
@@ -1020,7 +1095,7 @@ function resetFormToDefaults(){
 function setCheck(id,val){const el=document.getElementById(id);if(el)el.checked=!!val;}
 function setVal(id,val){const el=document.getElementById(id);if(el)el.value=val||'';}
 
-// ─── BAD WORD PREVIEW ──────────────────────────────────────
+// ─── BAD WORD PREVIEW ─────────────────────────────────────
 function updateBwPreview(){
   const words=document.getElementById('p-badwords').value.split('\n').map(w=>w.trim()).filter(Boolean);
   const container=document.getElementById('bw-preview');
@@ -1030,10 +1105,8 @@ function updateBwPreview(){
 function removeBwTag(idx){
   const el=document.getElementById('p-badwords');
   const words=el.value.split('\n').map(w=>w.trim()).filter(Boolean);
-  words.splice(idx,1);
-  el.value=words.join('\n');
-  updateBwPreview();
-  markDirty();
+  words.splice(idx,1);el.value=words.join('\n');
+  updateBwPreview();markDirty();
 }
 
 // ─── AUTO REPLIES ─────────────────────────────────────────
@@ -1041,7 +1114,7 @@ function renderAutoReplies(replies){
   const entries=Object.entries(replies||{});
   document.getElementById('ar-count').textContent=`${entries.length} rule${entries.length!==1?'s':''} configured`;
   if(!entries.length){
-    document.getElementById('ar-list').innerHTML='<div style="color:var(--muted);font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet.</div>';
+    document.getElementById('ar-list').innerHTML='<div style="color:#6b3a3a;font-size:.82rem;text-align:center;padding:30px 0;">No auto reply rules yet.</div>';
     return;
   }
   document.getElementById('ar-list').innerHTML=entries.map(([t,r])=>`
@@ -1053,32 +1126,23 @@ function renderAutoReplies(replies){
       <button class="btn btn-sm btn-red" style="margin-left:10px;flex-shrink:0;" onclick="removeReply('${escAttr(t)}')">×</button>
     </div>`).join('');
 }
-
 function addAutoReply(){
   const trigger=document.getElementById('ar-trigger').value.trim().toLowerCase();
   const response=document.getElementById('ar-response').value.trim();
   if(!trigger||!response){showToast('Enter both trigger and response','error');return;}
   currentConfig.AUTO_REPLIES=currentConfig.AUTO_REPLIES||{};
   currentConfig.AUTO_REPLIES[trigger]=response;
-  document.getElementById('ar-trigger').value='';
-  document.getElementById('ar-response').value='';
-  renderAutoReplies(currentConfig.AUTO_REPLIES);
-  markDirty();
-  showToast('Reply rule added','success');
+  document.getElementById('ar-trigger').value='';document.getElementById('ar-response').value='';
+  renderAutoReplies(currentConfig.AUTO_REPLIES);markDirty();showToast('Reply rule added','success');
 }
-
 function removeReply(trigger){
   if(!currentConfig.AUTO_REPLIES)return;
   delete currentConfig.AUTO_REPLIES[trigger];
-  renderAutoReplies(currentConfig.AUTO_REPLIES);
-  markDirty();
+  renderAutoReplies(currentConfig.AUTO_REPLIES);markDirty();
 }
-
 function clearAllReplies(){
   if(!confirm('Clear all auto reply rules?'))return;
-  currentConfig.AUTO_REPLIES={};
-  renderAutoReplies({});
-  markDirty();
+  currentConfig.AUTO_REPLIES={};renderAutoReplies({});markDirty();
 }
 
 // ─── SAVE CONFIG ──────────────────────────────────────────
@@ -1090,38 +1154,30 @@ async function saveConfig(){
   const bwRaw=document.getElementById('p-badwords').value;
   const bwList=bwRaw.split('\n').map(w=>w.trim()).filter(Boolean);
   const cfg={
-    AUTO_VIEW_STATUS: document.getElementById('s-auto-view').checked?'true':'false',
-    AUTO_LIKE_STATUS: document.getElementById('s-auto-like').checked?'true':'false',
-    AUTO_RECORDING: document.getElementById('s-auto-rec').checked?'true':'false',
-    AUTO_VOICE: document.getElementById('s-auto-voice').checked?'on':'off',
-    WORK_TYPE: document.getElementById('s-work-type').value,
-    PREFIX: document.getElementById('s-prefix').value||'.',
-    OWNER_NUMBER: document.getElementById('s-owner').value.replace(/\D/g,'')||undefined,
-    AUTO_LIKE_EMOJI: emojiList.length?emojiList:undefined,
-    ANTI_BUG: document.getElementById('p-antibug').checked?'on':'off',
-    ANTI_BADWORD: document.getElementById('p-antibadword').checked?'on':'off',
-    BAD_WORDS: bwList,
-    AUTO_REPLY: document.getElementById('ar-enabled').checked?'on':'off',
-    AUTO_REPLIES: currentConfig.AUTO_REPLIES||{},
+    AUTO_VIEW_STATUS:document.getElementById('s-auto-view').checked?'true':'false',
+    AUTO_LIKE_STATUS:document.getElementById('s-auto-like').checked?'true':'false',
+    AUTO_RECORDING:document.getElementById('s-auto-rec').checked?'true':'false',
+    AUTO_VOICE:document.getElementById('s-auto-voice').checked?'on':'off',
+    WORK_TYPE:document.getElementById('s-work-type').value,
+    PREFIX:document.getElementById('s-prefix').value||'.',
+    OWNER_NUMBER:document.getElementById('s-owner').value.replace(/\D/g,'')||undefined,
+    AUTO_LIKE_EMOJI:emojiList.length?emojiList:undefined,
+    ANTI_BUG:document.getElementById('p-antibug').checked?'on':'off',
+    ANTI_BADWORD:document.getElementById('p-antibadword').checked?'on':'off',
+    BAD_WORDS:bwList,
+    AUTO_REPLY:document.getElementById('ar-enabled').checked?'on':'off',
+    AUTO_REPLIES:currentConfig.AUTO_REPLIES||{},
   };
   Object.keys(cfg).forEach(k=>cfg[k]===undefined&&delete cfg[k]);
   try{
-    const r=await fetch('/code/api/config',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({number:num,config:cfg})
-    });
+    const r=await fetch('/code/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:num,config:cfg})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
     currentConfig={...currentConfig,...cfg};
-    clearDirty();
-    renderOvConfig(currentConfig);
+    clearDirty();renderOvConfig(currentConfig);
     showToast('Settings saved successfully!','success');
-  }catch(e){
-    showToast('Save failed: '+e.message,'error');
-  }
+  }catch(e){showToast('Save failed: '+e.message,'error');}
 }
-
 function discardChanges(){
   const num=document.getElementById('global-number').value.trim().replace(/\D/g,'');
   if(num&&Object.keys(currentConfig).length){applyConfigToForm(currentConfig);}
@@ -1129,9 +1185,9 @@ function discardChanges(){
   clearDirty();
 }
 
-// ─── SESSIONS ─────────────────────────────────────────────
+// ─── SESSIONS (FULL ADMIN) ────────────────────────────────
 async function loadSessions(){
-  document.getElementById('sessions-list').innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:30px 0;"><span class="spin"></span>Loading…</div>';
+  document.getElementById('sessions-list').innerHTML='<div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:30px 0;"><span class="spin"></span>Loading…</div>';
   try{
     const r=await fetch('/code/api/sessions/list');
     const d=await r.json();
@@ -1139,7 +1195,7 @@ async function loadSessions(){
     document.getElementById('ov-sessions').textContent=d.count;
     renderActiveSessions(d.sessions);
     if(!d.sessions.length){
-      document.getElementById('sessions-list').innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:30px 0;">No active sessions.</div>';
+      document.getElementById('sessions-list').innerHTML='<div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:30px 0;">No active sessions.</div>';
       return;
     }
     document.getElementById('sessions-list').innerHTML=d.sessions.map(n=>`
@@ -1170,27 +1226,17 @@ async function connectAll(){
     const r=await fetch('/code/connect-all');
     const d=await r.json();
     document.getElementById('connect-result').textContent=JSON.stringify(d,null,2);
-  }catch(e){
-    document.getElementById('connect-result').textContent='Error: '+e.message;
-  }
+  }catch(e){document.getElementById('connect-result').textContent='Error: '+e.message;}
 }
 
-async function forceReconnect(number, btn){
-  const orig=btn.innerHTML;
-  btn.disabled=true;
-  btn.innerHTML='⟳ Reconnecting…';
+async function forceReconnect(number,btn){
+  const orig=btn.innerHTML;btn.disabled=true;btn.innerHTML='⟳ Reconnecting…';
   try{
-    const r=await fetch('/code/api/session/force-reconnect',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({number})
-    });
+    const r=await fetch('/code/api/session/force-reconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number})});
     const d=await r.json();
     if(d.ok){btn.innerHTML='✅ Started';btn.style.color='var(--green)';}
     else{btn.innerHTML='❌ '+d.error;btn.style.color='var(--red)';}
-  }catch(e){
-    btn.innerHTML='❌ Error';btn.style.color='var(--red)';
-  }
+  }catch(e){btn.innerHTML='❌ Error';btn.style.color='var(--red)';}
   setTimeout(()=>{btn.innerHTML=orig;btn.disabled=false;btn.style.color='';},4000);
 }
 
@@ -1207,8 +1253,7 @@ async function confirmFormat(){
   const errEl=document.getElementById('format-error');
   const btn=document.getElementById('format-confirm-btn');
   errEl.style.display='none';
-  btn.innerHTML='<span class="spin"></span>Formatting…';
-  btn.disabled=true;
+  btn.innerHTML='<span class="spin"></span>Formatting…';btn.disabled=true;
   try{
     const r=await fetch('/code/api/sessions/format-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
     const d=await r.json();
@@ -1219,16 +1264,12 @@ async function confirmFormat(){
   }catch(e){
     errEl.textContent=e.message==='Wrong password'?'Incorrect password. Try again.':e.message;
     errEl.style.display='block';
-  }finally{
-    btn.innerHTML='Confirm';btn.disabled=false;
-  }
+  }finally{btn.innerHTML='Confirm';btn.disabled=false;}
 }
 document.getElementById('format-modal').addEventListener('click',function(e){if(e.target===this)closeFormatModal();});
 
 // ─── GROUP MANAGEMENT ─────────────────────────────────────
-let grpDirty=false;
-let currentGrpSettings={};
-
+let grpDirty=false;let currentGrpSettings={};
 function grpMarkDirty(){grpDirty=true;document.getElementById('grp-save-status').textContent='You have unsaved changes.';document.getElementById('grp-save-status').style.color='var(--orange)';}
 
 async function loadGroupsList(){
@@ -1240,10 +1281,10 @@ async function loadGroupsList(){
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
     const row=document.getElementById('grp-list-row');
-    if(!d.groups.length){row.innerHTML='<span style="font-size:.82rem;color:var(--muted);">No groups found for this number.</span>';return;}
+    if(!d.groups.length){row.innerHTML='<span style="font-size:.82rem;color:#6b3a3a;">No groups found for this number.</span>';return;}
     row.innerHTML=d.groups.map(g=>`
       <span class="num-tag" title="${escHtml(g.jid)}" onclick="document.getElementById('grp-jid').value='${escAttr(g.jid)}';loadGroupSettings();" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-        ${escHtml(g.name||g.jid)} <span style="color:var(--muted);font-size:.7rem;">(${g.participants})</span>
+        ${escHtml(g.name||g.jid)} <span style="color:#6b3a3a;font-size:.7rem;">(${g.participants})</span>
       </span>`).join('');
     showToast(`${d.groups.length} groups loaded`,'success');
   }catch(e){
@@ -1270,9 +1311,7 @@ async function loadGroupSettings(){
   }catch(e){
     document.getElementById('grp-status').textContent='❌ '+e.message;
     document.getElementById('grp-status').style.color='var(--red)';
-  }finally{
-    loadText.textContent='Load';
-  }
+  }finally{loadText.textContent='Load';}
 }
 
 function applyGroupSettingsToForm(s){
@@ -1286,36 +1325,29 @@ function applyGroupSettingsToForm(s){
   setVal('grp-goodbye-msg',s.GOODBYE_MSG||'');
 }
 
-function discardGroupChanges(){
-  applyGroupSettingsToForm(currentGrpSettings);
-  grpDirty=false;
-  document.getElementById('grp-save-status').textContent='';
-}
+function discardGroupChanges(){applyGroupSettingsToForm(currentGrpSettings);grpDirty=false;document.getElementById('grp-save-status').textContent='';}
 
 async function saveGroupSettings(){
   const jid=document.getElementById('grp-jid').value.trim();
   if(!jid){showToast('Enter a group JID first','error');return;}
   const settings={
-    ANTI_LINK: document.getElementById('grp-antilink').checked?'on':'off',
-    ANTI_SPAM: document.getElementById('grp-antispam').checked?'on':'off',
-    WELCOME: document.getElementById('grp-welcome').checked?'on':'off',
-    WELCOME_MSG: document.getElementById('grp-welcome-msg').value.trim()||undefined,
-    GOODBYE: document.getElementById('grp-goodbye').checked?'on':'off',
-    GOODBYE_MSG: document.getElementById('grp-goodbye-msg').value.trim()||undefined,
+    ANTI_LINK:document.getElementById('grp-antilink').checked?'on':'off',
+    ANTI_SPAM:document.getElementById('grp-antispam').checked?'on':'off',
+    WELCOME:document.getElementById('grp-welcome').checked?'on':'off',
+    WELCOME_MSG:document.getElementById('grp-welcome-msg').value.trim()||undefined,
+    GOODBYE:document.getElementById('grp-goodbye').checked?'on':'off',
+    GOODBYE_MSG:document.getElementById('grp-goodbye-msg').value.trim()||undefined,
   };
   Object.keys(settings).forEach(k=>settings[k]===undefined&&delete settings[k]);
   try{
     const r=await fetch('/code/api/group',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid,settings})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    currentGrpSettings=settings;
-    grpDirty=false;
+    currentGrpSettings=settings;grpDirty=false;
     document.getElementById('grp-save-status').textContent='✅ Group settings saved!';
     document.getElementById('grp-save-status').style.color='var(--green)';
     showToast('Group settings saved!','success');
-  }catch(e){
-    showToast('Save failed: '+e.message,'error');
-  }
+  }catch(e){showToast('Save failed: '+e.message,'error');}
 }
 
 // ─── TOAST ────────────────────────────────────────────────
@@ -1335,7 +1367,6 @@ function escAttr(s){return String(s).replace(/'/g,"\\'");}
 // ─── CHANNEL SETTINGS ─────────────────────────────────────
 const CH_EMOJIS=['❤️','🔥','💯','👍','😍','🎉','💪','🙏','😂','🥰','💀','🤩','👏','🌟','💥','🎶','🏆','✨','🤣','😎'];
 let chSelectedEmojis=new Set();
-
 function initEmojiGrid(){
   const grid=document.getElementById('ch-emoji-grid');
   if(!grid)return;
@@ -1344,44 +1375,31 @@ function initEmojiGrid(){
       style="cursor:pointer;font-size:1.4rem;padding:6px 10px;border-radius:10px;border:2px solid transparent;transition:.15s;user-select:none;"
       data-emoji="${e}">${e}</span>`).join('');
 }
-
 function toggleEmoji(emoji,el){
-  if(chSelectedEmojis.has(emoji)){
-    chSelectedEmojis.delete(emoji);
-    el.style.border='2px solid transparent';
-    el.style.background='none';
-  } else {
-    chSelectedEmojis.add(emoji);
-    el.style.border='2px solid rgba(255,255,255,0.3)';
-    el.style.background='rgba(255,255,255,0.07)';
-    el.style.borderRadius='10px';
-  }
+  if(chSelectedEmojis.has(emoji)){chSelectedEmojis.delete(emoji);el.style.border='2px solid transparent';el.style.background='none';}
+  else{chSelectedEmojis.add(emoji);el.style.border='2px solid rgba(220,38,38,0.4)';el.style.background='rgba(220,38,38,0.08)';el.style.borderRadius='10px';}
 }
-
 function getSelectedEmojis(){
   const custom=document.getElementById('ch-react-custom').value.trim();
   const customArr=custom?custom.split(',').map(e=>e.trim()).filter(Boolean):[];
   return [...chSelectedEmojis,...customArr];
 }
-
 function chResultHtml(data,type){
-  if(!data.results||!data.results.length) return `<div style="color:var(--muted);font-size:.82rem;">No active sessions.</div>`;
+  if(!data.results||!data.results.length) return `<div style="color:#6b3a3a;font-size:.82rem;">No active sessions.</div>`;
   const rows=data.results.map(r=>{
-    const color=r.status==='followed'||r.status==='followed+react_set'?'var(--green)':r.status==='error'?'var(--red)':'var(--muted)';
+    const color=r.status==='followed'||r.status==='followed+react_set'?'var(--green)':r.status==='error'?'var(--red)':'#6b3a3a';
     const icon=r.status==='followed'||r.status==='followed+react_set'?'✅':r.status==='error'?'❌':'⚠️';
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:12px;background:var(--bg-dark);margin-bottom:6px;">
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:12px;background:#120505;margin-bottom:6px;">
       <span style="font-size:.82rem;font-weight:600;">${r.number}</span>
       <span style="font-size:.8rem;color:${color};">${icon} ${r.status}${r.reason?' ('+r.reason+')':''}</span>
     </div>`;
   }).join('');
-  return `<div style="font-size:.8rem;color:var(--muted);margin-bottom:8px;">✅ ${data.succeeded}/${data.total} succeeded</div>${rows}`;
+  return `<div style="font-size:.8rem;color:#6b3a3a;margin-bottom:8px;">✅ ${data.succeeded}/${data.total} succeeded</div>${rows}`;
 }
-
 async function channelFollowAll(){
   const jid=document.getElementById('ch-follow-jid').value.trim();
   if(!jid){showToast('Enter a channel JID','error');return;}
-  const btn=document.getElementById('ch-follow-btn');
-  const res=document.getElementById('ch-follow-result');
+  const btn=document.getElementById('ch-follow-btn');const res=document.getElementById('ch-follow-result');
   btn.innerHTML='<span class="spin"></span> Following…';btn.disabled=true;res.innerHTML='';
   try{
     const r=await fetch('/code/api/channel/follow-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid})});
@@ -1389,21 +1407,15 @@ async function channelFollowAll(){
     if(!d.ok)throw new Error(d.error||'Failed');
     res.innerHTML=chResultHtml(d,'follow');
     showToast(`Followed! ${d.succeeded}/${d.total} bots succeeded`,'success');
-  }catch(e){
-    res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;
-    showToast('Error: '+e.message,'error');
-  }finally{
-    btn.innerHTML='📡 Follow with All Bots';btn.disabled=false;
-  }
+  }catch(e){res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;showToast('Error: '+e.message,'error');}
+  finally{btn.innerHTML='📡 Follow with All Bots';btn.disabled=false;}
 }
-
 async function channelReactAll(){
   const jid=document.getElementById('ch-react-jid').value.trim();
   if(!jid){showToast('Enter a channel JID','error');return;}
   const emojis=getSelectedEmojis();
   if(!emojis.length){showToast('Select at least one emoji','error');return;}
-  const btn=document.getElementById('ch-react-btn');
-  const res=document.getElementById('ch-react-result');
+  const btn=document.getElementById('ch-react-btn');const res=document.getElementById('ch-react-result');
   btn.innerHTML='<span class="spin"></span> Applying…';btn.disabled=true;res.innerHTML='';
   try{
     const r=await fetch('/code/api/channel/react-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid,emojis})});
@@ -1412,70 +1424,89 @@ async function channelReactAll(){
     res.innerHTML=chResultHtml(d,'react');
     showToast(`React set! ${d.succeeded}/${d.total} bots succeeded`,'success');
     loadReactList();
-  }catch(e){
-    res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;
-    showToast('Error: '+e.message,'error');
-  }finally{
-    btn.innerHTML='💬 Apply React to All Bots';btn.disabled=false;
-  }
+  }catch(e){res.innerHTML=`<div style="color:var(--red);font-size:.82rem;">❌ ${e.message}</div>`;showToast('Error: '+e.message,'error');}
+  finally{btn.innerHTML='💬 Apply React to All Bots';btn.disabled=false;}
 }
-
 async function loadReactList(){
   const el=document.getElementById('ch-react-list');
-  el.innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:20px;"><span class="spin"></span> Loading…</div>';
+  el.innerHTML='<div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:20px;"><span class="spin"></span> Loading…</div>';
   try{
     const r=await fetch('/code/api/channel/react-list');
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    if(!d.list||!d.list.length){
-      el.innerHTML='<div style="color:var(--muted);font-size:.85rem;text-align:center;padding:24px 0;">No active react configs yet.</div>';
-      return;
-    }
+    if(!d.list||!d.list.length){el.innerHTML='<div style="color:#6b3a3a;font-size:.85rem;text-align:center;padding:24px 0;">No active react configs yet.</div>';return;}
     el.innerHTML=d.list.map(item=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:14px;background:var(--bg-dark);margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:14px;background:#120505;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div style="flex:1;min-width:0;">
           <div style="font-size:.82rem;font-weight:700;color:#fff;word-break:break-all;">${escHtml(item.jid)}</div>
           <div style="font-size:1.1rem;margin-top:4px;">${(item.emojis||[]).join(' ')}</div>
         </div>
         <button class="btn btn-sm btn-red" onclick="removeReactConfig('${escAttr(item.jid)}')">Remove</button>
       </div>`).join('');
-  }catch(e){
-    el.innerHTML=`<div style="color:var(--red);font-size:.82rem;text-align:center;padding:20px;">❌ ${e.message}</div>`;
-  }
+  }catch(e){el.innerHTML=`<div style="color:var(--red);font-size:.82rem;text-align:center;padding:20px;">❌ ${e.message}</div>`;}
 }
-
 async function removeReactConfig(jid){
   if(!confirm('Remove react config for '+jid+'?'))return;
   try{
     const r=await fetch('/code/api/channel/react-remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jid})});
     const d=await r.json();
     if(!d.ok)throw new Error(d.error||'Failed');
-    showToast('React config removed','success');
-    loadReactList();
-  }catch(e){
-    showToast('Error: '+e.message,'error');
-  }
-}
-
-// ─── SESSION COUNT (settings page — count only) ───────────
-async function loadSessionCount(){
-  try{
-    const r=await fetch('/code/api/sessions/list');
-    const d=await r.json();
-    if(d.ok){
-      document.getElementById('sess-count-big').textContent=d.count;
-      document.getElementById('ov-sessions').textContent=d.count;
-      renderActiveSessions(d.sessions);
-    }
-  }catch(e){}
+    showToast('React config removed','success');loadReactList();
+  }catch(e){showToast('Error: '+e.message,'error');}
 }
 
 // ─── INIT ─────────────────────────────────────────────────
 (async()=>{
-  await loadSessionCount();
+  try{
+    const r=await fetch('/code/api/sessions/list');
+    const d=await r.json();
+    if(d.ok){document.getElementById('ov-sessions').textContent=d.count;renderActiveSessions(d.sessions);}
+  }catch(e){}
   initEmojiGrid();
 })();
 </script>
 
+<!-- ── ADMIN PASSWORD LOCK ── -->
+<script>
+(function(){
+  const CORRECT='kezuofc@123';
+  const SK='kz_admin_auth';
+  if(sessionStorage.getItem(SK)==='1') return;
+  const overlay=document.createElement('div');
+  overlay.id='pw-overlay';
+  overlay.innerHTML=`
+    <div class="pw-box">
+      <div class="pw-logo">🔴</div>
+      <div class="pw-title">KEZU Admin Panel</div>
+      <div class="pw-sub">ADMIN ACCESS REQUIRED</div>
+      <input id="pw-inp" class="pw-input" type="password" placeholder="Enter admin password" autocomplete="off" />
+      <button class="pw-btn" id="pw-submit-btn">Unlock Admin Panel</button>
+      <div class="pw-err-msg" id="pw-err"></div>
+    </div>`;
+  document.body.prepend(overlay);
+
+  function unlock(){
+    const val=document.getElementById('pw-inp').value;
+    const inp=document.getElementById('pw-inp');
+    const err=document.getElementById('pw-err');
+    if(val===CORRECT){
+      sessionStorage.setItem(SK,'1');
+      overlay.classList.add('hidden');
+      setTimeout(()=>overlay.remove(),600);
+    } else {
+      inp.classList.remove('pw-error');
+      void inp.offsetWidth;
+      inp.classList.add('pw-error');
+      err.textContent='❌ Incorrect password. Try again.';
+      inp.value='';
+      setTimeout(()=>{inp.classList.remove('pw-error');err.textContent='';},2500);
+    }
+  }
+
+  document.getElementById('pw-submit-btn').addEventListener('click',unlock);
+  document.getElementById('pw-inp').addEventListener('keydown',e=>{if(e.key==='Enter')unlock();});
+  document.getElementById('pw-inp').focus();
+})();
+</script>
 </body>
 </html>

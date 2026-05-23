@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KEZU — Pair Your Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',sans-serif;}
+:root{
+  --bg:#0b0b12;
+  --bg-dark:#13131e;
+  --card:#161622;
+  --text:#f0f0ff;
+  --text-dim:rgba(240,240,255,0.72);
+  --text-muted:rgba(240,240,255,0.42);
+  --border:rgba(255,255,255,0.08);
+  --accent:#7c6bff;
+  --accent2:#00c9b1;
+  --glow-a:rgba(124,107,255,0.22);
+  --ease-out:cubic-bezier(0.16,1,0.3,1);
+}
+html,body{min-height:100%;background:var(--bg);color:var(--text);}
+
+body::before,body::after{
+  content:'';position:fixed;border-radius:50%;pointer-events:none;z-index:0;filter:blur(90px);
+}
+body::before{width:360px;height:360px;background:radial-gradient(circle,rgba(124,107,255,0.1) 0%,transparent 70%);top:-100px;right:-100px;}
+body::after{width:280px;height:280px;background:radial-gradient(circle,rgba(0,201,177,0.07) 0%,transparent 70%);bottom:-80px;left:-60px;}
+
+@keyframes pageEnter{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+@keyframes codeGlow{0%,100%{box-shadow:0 0 18px rgba(124,107,255,0.25)}50%{box-shadow:0 0 32px rgba(124,107,255,0.5)}}
+
+.wrap{
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:24px 16px;position:relative;z-index:1;
+}
+
+.brand{
+  display:flex;align-items:center;gap:10px;margin-bottom:32px;
+  animation:pageEnter .5s var(--ease-out);
+}
+.brand-icon{font-size:2rem;filter:drop-shadow(0 0 12px rgba(124,107,255,0.5));}
+.brand-name{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:800;
+  background:linear-gradient(135deg,#7c6bff,#00c9b1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+
+.card{
+  width:100%;max-width:420px;
+  background:linear-gradient(145deg,#0f0f1c,#181828);
+  border:1px solid var(--border);
+  border-radius:28px;
+  padding:36px 32px;
+  box-shadow:
+    8px 8px 24px rgba(0,0,0,0.7),
+    -4px -4px 12px rgba(255,255,255,0.02),
+    inset 1px 1px 0 rgba(255,255,255,0.04);
+  animation:pageEnter .55s var(--ease-out);
+}
+
+.card-icon{font-size:2.8rem;text-align:center;margin-bottom:14px;filter:drop-shadow(0 0 14px rgba(124,107,255,0.4));}
+.card-title{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:800;text-align:center;color:#fff;margin-bottom:6px;}
+.card-sub{font-size:0.78rem;color:var(--text-muted);text-align:center;margin-bottom:28px;line-height:1.6;}
+
+.step-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--accent);background:rgba(124,107,255,0.1);
+  border:1px solid rgba(124,107,255,0.2);
+  border-radius:20px;padding:4px 12px;margin-bottom:20px;
+}
+
+.input-label{
+  font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--text-muted);margin-bottom:8px;display:block;
+}
+
+.neu-input{
+  width:100%;
+  background:linear-gradient(145deg,#0c0c16,#13131e);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:16px;
+  color:#fff;
+  font-size:1rem;
+  font-weight:600;
+  letter-spacing:2px;
+  padding:14px 18px;
+  outline:none;
+  text-align:center;
+  box-shadow:inset 3px 3px 8px rgba(0,0,0,0.6),inset -2px -2px 5px rgba(255,255,255,0.02);
+  transition:border-color .2s,box-shadow .2s;
+  margin-bottom:20px;
+}
+.neu-input:focus{border-color:rgba(124,107,255,0.4);box-shadow:inset 3px 3px 8px rgba(0,0,0,0.6),inset -2px -2px 5px rgba(255,255,255,0.02),0 0 0 3px rgba(124,107,255,0.12);}
+.neu-input::placeholder{color:var(--text-muted);letter-spacing:0;font-weight:400;font-size:0.88rem;}
+
+.submit-btn{
+  width:100%;
+  background:linear-gradient(135deg,#7c6bff,#5a4fcf);
+  border:none;border-radius:16px;
+  color:#fff;font-size:0.9rem;font-weight:700;letter-spacing:.5px;
+  padding:15px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(124,107,255,0.35),0 2px 6px rgba(0,0,0,0.3);
+  transition:transform .15s,box-shadow .15s,opacity .15s;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.submit-btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(124,107,255,0.45),0 4px 10px rgba(0,0,0,0.3);}
+.submit-btn:active{transform:translateY(0);box-shadow:0 4px 14px rgba(124,107,255,0.3);}
+.submit-btn:disabled{opacity:0.6;cursor:not-allowed;transform:none;}
+
+.spinner{
+  width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
+}
+
+.code-box{
+  margin:20px 0 12px;
+  background:linear-gradient(145deg,#0c0c16,#13131e);
+  border:1px solid rgba(124,107,255,0.3);
+  border-radius:20px;
+  padding:20px;
+  text-align:center;
+  cursor:pointer;
+  transition:transform .15s,border-color .2s;
+  animation:codeGlow 2s ease-in-out infinite,pageEnter .4s var(--ease-out);
+  position:relative;
+  overflow:hidden;
+}
+.code-box::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(124,107,255,0.05),transparent);
+  pointer-events:none;
+}
+.code-box:hover{transform:scale(1.02);border-color:rgba(124,107,255,0.5);}
+.code-box:active{transform:scale(0.98);}
+.code-text{
+  font-size:2rem;font-weight:800;letter-spacing:6px;
+  background:linear-gradient(135deg,#7c6bff,#00c9b1);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  font-family:'Syne',sans-serif;
+}
+.code-tap{font-size:0.68rem;color:var(--text-muted);margin-top:6px;letter-spacing:.5px;}
+
+.hint-box{
+  background:rgba(0,201,177,0.05);
+  border:1px solid rgba(0,201,177,0.12);
+  border-radius:14px;
+  padding:14px 16px;
+  margin-top:16px;
+  animation:pageEnter .45s var(--ease-out);
+}
+.hint-title{font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#00c9b1;margin-bottom:8px;}
+.hint-step{font-size:0.75rem;color:var(--text-dim);line-height:2;display:flex;align-items:flex-start;gap:8px;}
+.hint-num{
+  min-width:18px;height:18px;border-radius:50%;
+  background:rgba(0,201,177,0.15);color:#00c9b1;
+  font-size:0.65rem;font-weight:800;
+  display:inline-flex;align-items:center;justify-content:center;
+  margin-top:2px;flex-shrink:0;
+}
+
+.error-box{
+  margin-top:16px;
+  background:rgba(255,100,100,0.06);
+  border:1px solid rgba(255,100,100,0.15);
+  border-radius:14px;
+  padding:14px 16px;
+  font-size:0.78rem;color:#ffb3b3;
+  text-align:center;
+  animation:pageEnter .3s var(--ease-out);
+}
+
+.divider{display:flex;align-items:center;gap:10px;margin:24px 0 0;opacity:.4;}
+.divider-line{flex:1;height:1px;background:var(--border);}
+.divider-text{font-size:0.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);}
+
+.nav-links{
+  display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;justify-content:center;
+  animation:pageEnter .6s var(--ease-out);
+}
+.nav-link{
+  font-size:0.72rem;color:var(--text-muted);
+  text-decoration:none;padding:7px 14px;
+  border:1px solid var(--border);border-radius:12px;
+  background:rgba(255,255,255,0.02);
+  transition:color .2s,border-color .2s,background .2s;
+}
+.nav-link:hover{color:var(--text);border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);}
+
+.toast{
+  position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:linear-gradient(135deg,#7c6bff,#5a4fcf);
+  color:#fff;font-size:0.8rem;font-weight:700;
+  padding:10px 22px;border-radius:40px;
+  box-shadow:0 8px 24px rgba(124,107,255,0.4);
+  transition:transform .35s var(--ease-out),opacity .35s;
+  opacity:0;pointer-events:none;z-index:999;white-space:nowrap;
+}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;}
+
+@media(max-width:480px){
+  .card{padding:28px 20px;border-radius:22px;}
+  .code-text{font-size:1.6rem;letter-spacing:4px;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <span class="brand-icon">♻️</span>
+    <span class="brand-name">KEZU STATUS BOT</span>
+  </div>
+
+  <div class="card">
+    <div class="card-icon">🔗</div>
+    <div class="card-title">Pair Your WhatsApp</div>
+    <p class="card-sub">Enter your number to get a 8-digit pairing code and connect your bot instantly.</p>
+
+    <div style="text-align:center;margin-bottom:20px;">
+      <span class="step-badge">🟢 Server Online</span>
+    </div>
+
+    <label class="input-label" for="number">WhatsApp Number</label>
+    <input
+      class="neu-input"
+      type="tel"
+      id="number"
+      placeholder="94 77 xxx xxxx"
+      onkeydown="if(event.key==='Enter')getCode()"
+      autocomplete="off"
+    >
+
+    <button class="submit-btn" id="pair-btn" onclick="getCode()">
+      <span>🔑</span> Get Pairing Code
+    </button>
+
+    <div id="result-area"></div>
+
+    <div class="divider">
+      <div class="divider-line"></div>
+      <span class="divider-text">Navigate</span>
+      <div class="divider-line"></div>
+    </div>
+  </div>
+
+  <div class="nav-links">
+    <a class="nav-link" href="/">🏠 Home</a>
+    <a class="nav-link" href="/dashboard">⚙️ Settings</a>
+    <a class="nav-link" href="/adminpanel">🛡️ Admin</a>
+  </div>
+
+</div>
+
+<div class="toast" id="copy-toast">✅ Code copied!</div>
+
+<script>
+async function getCode() {
+  const num = document.getElementById('number').value.replace(/\s/g,'').replace(/[^0-9]/g,'');
+  const area = document.getElementById('result-area');
+  const btn  = document.getElementById('pair-btn');
+
+  if (!num || num.length < 7) {
+    area.innerHTML = '<div class="error-box">⚠️ Please enter a valid WhatsApp number (with country code).</div>';
+    return;
+  }
+
+  btn.innerHTML = '<div class="spinner"></div> Connecting…';
+  btn.disabled = true;
+  area.innerHTML = '';
+
+  try {
+    const r    = await fetch('/code/?number=' + encodeURIComponent(num));
+    const data = await r.json();
+
+    if (data.code) {
+      area.innerHTML = `
+        <div class="code-box" onclick="copyCode('${data.code}')">
+          <div class="code-text">${data.code}</div>
+          <div class="code-tap">Tap to copy</div>
+        </div>
+        <div class="hint-box">
+          <div class="hint-title">📱 How to link</div>
+          <div class="hint-step"><span class="hint-num">1</span>Open WhatsApp on your phone</div>
+          <div class="hint-step"><span class="hint-num">2</span>Go to ⋮ Menu → Linked Devices</div>
+          <div class="hint-step"><span class="hint-num">3</span>Tap "Link with phone number"</div>
+          <div class="hint-step"><span class="hint-num">4</span>Enter the 8-digit code above</div>
+        </div>`;
+    } else {
+      area.innerHTML = `<div class="error-box">❌ ${data.error || 'Failed to get code. Please try again.'}</div>`;
+    }
+  } catch (e) {
+    area.innerHTML = '<div class="error-box">❌ Connection error. Make sure the server is running and try again.</div>';
+  }
+
+  btn.innerHTML = '<span>🔑</span> Get Pairing Code';
+  btn.disabled = false;
+}
+
+function copyCode(code) {
+  navigator.clipboard.writeText(code).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = code;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  });
+  const t = document.getElementById('copy-toast');
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// Check server ping
+(async () => {
+  try {
+    const r = await fetch('/code/ping');
+    const d = await r.json();
+    const el = document.querySelector('.step-badge');
+    if (d.status === 'active') {
+      el.innerHTML = '🟢 Server Online · ' + (d.activesession || 0) + ' active';
+    }
+  } catch(e) {
+    const el = document.querySelector('.step-badge');
+    el.innerHTML = '🔴 Server Offline';
+    el.style.color = '#ffb3b3';
+    el.style.background = 'rgba(255,100,100,0.1)';
+    el.style.borderColor = 'rgba(255,100,100,0.2)';
+  }
+})();
+</script>
+</body>
+</html>
