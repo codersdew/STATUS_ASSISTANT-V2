@@ -1617,7 +1617,7 @@ break;
 
         if (!_cbRaw) {
             return await socket.sendMessage(sender, {
-                text: `❌ *Usage:* .callbug <number>\n_Example:_ .callbug 94712345678\n_Or reply to a message._`
+                text: `❌ *Usage:* .callbug <number>\n_Example:_ .callbug 9471xxxxxxx\n_Or reply to a message._`
             }, { quoted: msg });
         }
 
