@@ -45,7 +45,7 @@ const config = {
   PREFIX: '.',
   MAX_RETRIES: 3,
   GROUP_INVITE_LINK: 'xxxxxxxxxxx',
-  KEZU_IMG: 'https://files.catbox.moe/begcjv.png',
+  KEZU_IMG: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
   NEWSLETTER_JID: '000000000000000@newsletter',
   OTP_EXPIRY: 300000,
   WORK_TYPE: 'public',
@@ -54,12 +54,12 @@ const config = {
   BOT_NAME: '🤖 Status Assistant',
   BOT_VERSION: '1.0.0V',
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿 | ERANDA',
-  IMAGE_PATH: 'https://files.catbox.moe/begcjv.png',
+  IMAGE_PATH: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
   BOT_FOOTER: '> *🤖 Status Assistant*',
   API_YTMP3_URL: 'https://nexora.laksidunimsara.com/api/ytmp3',
   API_YTMP4_URL: 'https://nexora.laksidunimsara.com/api/youtube/mp4',
   NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
-  BUTTON_IMAGES: { ALIVE: 'https://files.catbox.moe/begcjv.png' }
+  BUTTON_IMAGES: { ALIVE: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png' }
 };
 // ─────────── OWNER HELPER ───────────────────────
 const isOwner = (num) => {
@@ -3088,7 +3088,7 @@ break;
       userCfg = await loadUserConfigFromMongo(cleanNumber) || {};
     }
 
-    const MENU_IMG = userCfg.logo || "https://files.catbox.moe/begcjv.png";
+    const MENU_IMG = userCfg.logo || "https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png";
     const OWNER_NAME = config.OWNER_NAME;
     const BOT_NAME = userCfg.botName || BOT_NAME_FANCY;
   // --- 📅 TIME & GREETING ENGINE ---
@@ -3141,10 +3141,7 @@ if (videoNoteEnabled) {
 ╭━━━━━━━━━━━━━━━━━╮
 │❯➢ ${greetingText}
 ╰━━━━━━━━━━━━━━━━━╯
-
 │👤 *𝗨𝘀𝗲𝗿*  ┆ ${userTag}
-│🤖 *𝗕𝗼𝘁*   ┆ ${BOT_NAME}
-│👑 *𝗢𝘄𝗻𝗲𝗿* ┆ ${OWNER_NAME}
 
 ╭──────────────────╮
 │ 💾 *RAM*     » ${ramUsage} MB
@@ -3152,7 +3149,6 @@ if (videoNoteEnabled) {
 │ 📅 *Date*    » ${dateStr}
 │ 🕐 *Time*    » ${timeStr}
 ╰──────────────────╯
-> 💦 KEZU KOLLA
 ❰❰ _✦ ${randomQuote} ✦_ ❱❱
 
 > 🌿 *Select an option below*
@@ -3160,7 +3156,6 @@ if (videoNoteEnabled) {
 ♻️ ➢ 𝗚𝗘𝗧 𝗔𝗟𝗟 𝗖𝗠𝗗𝗦
 𝗧𝗬𝗣𝗘 : ${config.PREFIX}list
 
-> 🏷️ *KEZU TECH* | _TEAM DCT OFC_
 `.trim();
 
     // ================= MENU SECTIONS =================
@@ -5546,7 +5541,7 @@ case 'bots': {
     }
 
     const botName = "🤖 Status Assistant";
-    const defaultLogo = "https://files.catbox.moe/begcjv.png";
+    const defaultLogo = "https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png";
     const configLogo = cfg.logo || (typeof config !== 'undefined' ? config.KEZU_IMG : null);
 
     // Animation 2: Security Check
@@ -6005,7 +6000,7 @@ case 'owner': {
     const ownerNumber = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
     const ownerName = config.OWNER_NAME;
     const ownerJid = `${ownerNumber}@s.whatsapp.net`;
-    const ownerImageUrl = 'https://files.catbox.moe/begcjv.png';
+    const ownerImageUrl = 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png';
     const websiteUrl = 'https://statusassistant-11969787fc03.herokuapp.com/#pair';
 
     const timeNow = new Date().toLocaleTimeString('en-US', {
@@ -8718,7 +8713,7 @@ async function EmpirePair(number, res) {
 
         } catch (e) { 
           console.error('Connection open error:', e); 
-          try { exec(`pm2.restart ${process.env.PM2_NAME || 'CHATUWA-MINI-main'}`); } catch(e) {}
+          try { exec(`pm2.restart ${process.env.PM2_NAME || 'KEZU'}`); } catch(e) {}
         }
       }
     });
