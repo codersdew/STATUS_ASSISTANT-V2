@@ -1417,6 +1417,157 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
+          case 'tourl':
+case 'url':
+case 'upload': {
+    const axios = require('axios');
+    const FormData = require('form-data');
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+
+    const quoted = msg.message?.extendedTextMessage?.contextInfo;
+
+    const mime =
+        quoted?.quotedMessage?.imageMessage?.mimetype ||
+        quoted?.quotedMessage?.videoMessage?.mimetype ||
+        quoted?.quotedMessage?.audioMessage?.mimetype ||
+        quoted?.quotedMessage?.documentMessage?.mimetype;
+
+    if (!quoted || !mime) {
+        return await socket.sendMessage(sender, {
+            text: '❌ Reply to an image, video, audio or document.'
+        });
+    }
+
+    let mediaType;
+    let msgKey;
+
+    if (quoted.quotedMessage.imageMessage) {
+        mediaType = 'image';
+        msgKey = quoted.quotedMessage.imageMessage;
+    } else if (quoted.quotedMessage.videoMessage) {
+        mediaType = 'video';
+        msgKey = quoted.quotedMessage.videoMessage;
+    } else if (quoted.quotedMessage.audioMessage) {
+        mediaType = 'audio';
+        msgKey = quoted.quotedMessage.audioMessage;
+    } else if (quoted.quotedMessage.documentMessage) {
+        mediaType = 'document';
+        msgKey = quoted.quotedMessage.documentMessage;
+    }
+
+    try {
+        const stream = await downloadContentFromMessage(msgKey, mediaType);
+
+        let buffer = Buffer.alloc(0);
+
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
+
+        const ext = mime.split('/')[1] || 'tmp';
+
+        const tempFile = path.join(
+            os.tmpdir(),
+            `upload_${Date.now()}.${ext}`
+        );
+
+        fs.writeFileSync(tempFile, buffer);
+
+        let mediaUrl;
+
+        // Image -> ImgBB
+        if (mediaType === 'image') {
+            try {
+                const apiKey = '94afaabd3a8a795d86e6f30d98c057ce';
+
+                const res = await axios.post(
+                    `https://api.imgbb.com/1/upload?key=${apiKey}`,
+                    {
+                        image: buffer.toString('base64')
+                    },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    }
+                );
+
+                mediaUrl = res.data.data.url;
+
+            } catch (err) {
+                const form = new FormData();
+
+                form.append(
+                    'fileToUpload',
+                    fs.createReadStream(tempFile)
+                );
+
+                form.append('reqtype', 'fileupload');
+
+                const catbox = await axios.post(
+                    'https://catbox.moe/user/api.php',
+                    form,
+                    {
+                        headers: form.getHeaders()
+                    }
+                );
+
+                mediaUrl = catbox.data.trim();
+            }
+
+        } else {
+            // Video / Audio / Document -> Catbox
+            const form = new FormData();
+
+            form.append(
+                'fileToUpload',
+                fs.createReadStream(tempFile)
+            );
+
+            form.append('reqtype', 'fileupload');
+
+            const catbox = await axios.post(
+                'https://catbox.moe/user/api.php',
+                form,
+                {
+                    headers: form.getHeaders()
+                }
+            );
+
+            mediaUrl = catbox.data.trim();
+        }
+
+        fs.unlinkSync(tempFile);
+
+        const fileSize =
+            (buffer.length / 1024 / 1024).toFixed(2) + ' MB';
+
+        await socket.sendMessage(
+            sender,
+            {
+                text:
+`✅ Upload Successful
+
+📂 Type: ${mediaType}
+📊 Size: ${fileSize}
+
+🔗 URL:
+${mediaUrl}`
+            },
+            { quoted: msg }
+        );
+
+    } catch (err) {
+        console.error(err);
+
+        await socket.sendMessage(sender, {
+            text: '❌ Upload failed.'
+        });
+    }
+}
+break;
           case 'bug': {
     try {
         if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '❌ Owner only command.' }, { quoted: msg });
