@@ -58,6 +58,7 @@ const config = {
   BOT_FOOTER: '> *🤖 Status Assistant*',
   API_YTMP3_URL: 'https://nexora.laksidunimsara.com/api/ytmp3',
   API_YTMP4_URL: 'https://nexora.laksidunimsara.com/api/youtube/mp4',
+  API_YT_ALL_URL: 'https://nexoraapi.laksidunimsara.com/api/youtube/all',
   NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
   BOT_IMAGES: { ALIVE: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png' }
 };
@@ -771,11 +772,11 @@ async function sendAutoSong(socket, jid, title, botName) {
     if (!result.videos || result.videos.length === 0) return;
     const data = result.videos[0];
     const videoId = data.videoId;
-    const apiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
+    const apiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
     const res = await axios.get(apiUrl, { timeout: 25000 });
-    if (res.data.status !== 'success') return;
-    const downloadLink = res.data.data.download_url;
-    const songTitle = res.data.data.title || data.title;
+    if (!res.data.success) return;
+    const downloadLink = res.data.all_qualities?.audio?.download_url;
+    const songTitle = res.data.title || data.title;
     const duration = data.duration?.timestamp || data.duration?.toString() || 'Unknown';
     const channelName = data.author?.name || data.author || 'Unknown';
     const thumbnailUrl = data.thumbnail || data.image || null;
@@ -1186,7 +1187,7 @@ function setupCommandHandlers(socket, number) {
 
     const from = msg.key.remoteJid;
     const sender = from;
-    const nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net' || socket.user.id) : (msg.key.participant || msg.key.remoteJid);
+    const nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net') : jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
     const senderNumber = (nowsender || '').split('@')[0];
     const developers = `${config.OWNER_NUMBER}`;
     const botNumber = socket.user.id.split(':')[0];
@@ -2320,19 +2321,19 @@ END:VCARD`
             videoId = sMetadata.videoId;
         }
 
-        const sApiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
+        const sApiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
         const sApiResp = await axios.get(sApiUrl, { timeout: 30000 }).catch(() => null);
 
-        if (!sApiResp || !sApiResp.data || sApiResp.data.status !== 'success') {
+        if (!sApiResp || !sApiResp.data || !sApiResp.data.success) {
             return await socket.sendMessage(from, { text: "❌ *API failed. Try again later.*" }, { quoted: msg });
         }
 
-        const sApiData = sApiResp.data.data;
+        const sApiData = sApiResp.data;
         const sTitle = sApiData.title || sMetadata?.title || 'Song';
-        const sDuration = sMetadata?.timestamp || (sApiData.duration ? `${Math.floor(sApiData.duration/60)}:${String(sApiData.duration%60).padStart(2,'0')}` : 'N/A');
+        const sDuration = sMetadata?.timestamp || sApiData.duration || 'N/A';
         const sThumb = sApiData.thumbnail || sMetadata?.thumbnail || null;
 
-        const downloadUrl = sApiData.download_url;
+        const downloadUrl = sApiData.all_qualities?.audio?.download_url;
         if (!downloadUrl) {
             return await socket.sendMessage(from, { text: "❌ *No download link found.*" }, { quoted: msg });
         }
@@ -2426,20 +2427,20 @@ END:VCARD`
             videoId = sMetadata.videoId;
         }
 
-        const sApiUrl = `${config.API_YTMP4_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
+        const sApiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
         const sApiResp = await axios.get(sApiUrl, { timeout: 30000 }).catch(() => null);
 
-        if (!sApiResp || !sApiResp.data || !sApiResp.data.status) {
+        if (!sApiResp || !sApiResp.data || !sApiResp.data.success) {
             return await socket.sendMessage(from, { text: "❌ *API failed. Try again later.*" }, { quoted: msg });
         }
 
-        const sMeta = sApiResp.data.result || {};
+        const sMeta = sApiResp.data;
         const sTitle = sMeta.title || sMetadata?.title || 'Video';
-        const sDuration = sMetadata?.timestamp || (sMeta.duration ? `${Math.floor(sMeta.duration/60)}:${String(sMeta.duration%60).padStart(2,'0')}` : 'N/A');
+        const sDuration = sMetadata?.timestamp || sMeta.duration || 'N/A';
         const sThumb = sMeta.thumbnail || sMetadata?.thumbnail || null;
-        const sQuality = sMeta.quality || '720p';
+        const sQuality = sMeta.all_qualities?.['720p'] ? '720p' : (sMeta.available_qualities?.[0] || '360p');
 
-        const downloadUrl = sMeta.download_url;
+        const downloadUrl = sMeta.all_qualities?.[sQuality]?.download_url || sMeta.all_qualities?.['360p']?.download_url;
 
         if (!downloadUrl) {
             return await socket.sendMessage(from, { text: "❌ *No video download link found.*" }, { quoted: msg });
@@ -2675,15 +2676,15 @@ case 'ytmp3':
         const videoUrl = `https://youtu.be/${videoId}`;
 
         // Fetching data from the New API
-        const apiUrl = `${config.API_YTMP3_URL}?url=${encodeURIComponent(videoUrl)}&api_key=${config.NEXORA_API_KEY}`;
+        const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoUrl)}&api_key=${config.NEXORA_API_KEY}`;
         const apiRes = await axios.get(apiUrl, { timeout: 30000 });
 
-        if (apiRes.data.status !== 'success') {
+        if (!apiRes.data.success) {
             throw new Error('API failed to fetch download links.');
         }
 
-        const apiData = apiRes.data.data;
-        const downloadLink = apiData.download_url;
+        const apiData = apiRes.data;
+        const downloadLink = apiData.all_qualities?.audio?.download_url;
 
         const desc = `☘️ *𝗦𝗢𝗡𝗚* : _${apiData.title || searchData.title}_     
 ╭─────────────────┄┄
@@ -3870,12 +3871,12 @@ case 'mp4': {
                 try {
                     const ytdl = require('ytdl-core');
                     if (type === 'audio') {
-                        // ── Audio: use working ytmp3 API ──────────────────────────
-                        const apiUrl = `${config.API_YTMP3_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
+                        // ── Audio: use new all-in-one API ──────────────────────────
+                        const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
                         const apiRes = await axios.get(apiUrl, { timeout: 25000 });
-                        if (apiRes.data.status !== 'success') throw new Error(apiRes.data.message || 'Audio API error');
-                        const downloadUrl = apiRes.data.data.download_url;
-                        const songTitle = apiRes.data.data.title || videoInfo.title;
+                        if (!apiRes.data.success) throw new Error('Audio API error');
+                        const downloadUrl = apiRes.data.all_qualities?.audio?.download_url;
+                        const songTitle = apiRes.data.title || videoInfo.title;
                         await socket.sendMessage(sender, {
                             audio: { url: downloadUrl },
                             mimetype: 'audio/mpeg',
@@ -6119,16 +6120,16 @@ case 'ytmp3':
             await socket.sendMessage(sender, { react: { text: '⬇️', key: mek.key } });
 
             try {
-                const apiUrl = `${config.API_YTMP3_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
+                const apiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
                 const res = await axios.get(apiUrl, { timeout: 20000 });
 
-                if (res.data.status !== 'success') {
-                    throw new Error(res.data.message || 'API Error');
+                if (!res.data.success) {
+                    throw new Error('API Error');
                 }
 
-                const downloadLink = res.data.data.download_url;
-                const songTitle = res.data.data.title || data.title;
-                const thumbnail = res.data.data.thumbnail || data.thumbnail;
+                const downloadLink = res.data.all_qualities?.audio?.download_url;
+                const songTitle = res.data.title || data.title;
+                const thumbnail = res.data.thumbnail || data.thumbnail;
 
                 let thumbBuffer = null;
                 if (text === '2') {
@@ -8453,8 +8454,8 @@ async function setupViewOnceHandler(socket, sessionNumber) {
       let buffer = Buffer.from([]);
       for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
 
-      const senderJid = msg.key.participant || msg.key.remoteJid;
-      const senderNum = senderJid.split('@')[0];
+      const senderJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
+      const senderNum = (senderJid || '').split('@')[0];
       const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
       const caption = `👁️ *View Once Saved* 📥\n👤 *From:* +${senderNum}\n\n> _Auto-saved by 🤖 Status Assistant_`;
 
@@ -8490,8 +8491,8 @@ async function setupAutoContactSave(socket, sessionNumber) {
       const autoContactSave = userConfig.AUTO_CONTACT_SAVE || 'false';
       if (autoContactSave !== 'true') return;
 
-      const senderJid = msg.key.participant || msg.key.remoteJid;
-      const senderNum = senderJid.split('@')[0];
+      const senderJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
+      const senderNum = (senderJid || '').split('@')[0];
 
       // Skip groups, self, already-saved this session
       if (!senderNum || _savedContactsCache.has(senderNum)) return;
