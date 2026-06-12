@@ -59,7 +59,7 @@ const config = {
   API_YTMP3_URL: 'https://nexora.laksidunimsara.com/api/ytmp3',
   API_YTMP4_URL: 'https://nexora.laksidunimsara.com/api/youtube/mp4',
   NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
-  BUTTON_IMAGES: { ALIVE: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png' }
+  BOT_IMAGES: { ALIVE: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png' }
 };
 // ─────────── OWNER HELPER ───────────────────────
 const isOwner = (num) => {
@@ -2350,7 +2350,7 @@ END:VCARD`
         // 5. Success Reaction
         await socket.sendMessage(sender, { react: { text: '🔑', key: msg.key } });
 
-        // 6. 🎨 FANCY INTERACTIVE MESSAGE (Button Message)
+        // 6. 🎨 FANCY INTERACTIVE MESSAGE
         const msgParams = generateWAMessageFromContent(sender, {
             viewOnceMessage: {
                 message: {
@@ -3304,9 +3304,6 @@ if (videoNoteEnabled) {
 
 > 🌿 *Select an option below*
 
-♻️ ➢ 𝗚𝗘𝗧 𝗔𝗟𝗟 𝗖𝗠𝗗𝗦
-𝗧𝗬𝗣𝗘 : ${config.PREFIX}list
-
 `.trim();
 
     // ================= MENU SECTIONS =================
@@ -3358,18 +3355,23 @@ if (videoNoteEnabled) {
       }
     ];
 
+    // ── Flat menu items (ordered) ──
+    const menuItems = [
+      { label: 'ᴅᴏᴡɴʟᴏᴀᴅ',   id: `${config.PREFIX}dl`        },
+      { label: 'ᴀᴜᴛᴏ ᴄᴍᴅꜱ',  id: `${config.PREFIX}ownercmds`  },
+      { label: 'ꜱᴇᴛᴛɪɴɢꜱ',   id: `${config.PREFIX}setting`    },
+      { label: 'ᴀᴄᴛɪᴠᴇ',     id: `${config.PREFIX}active`     },
+      { label: 'ʙᴜɢ ᴍᴇɴᴜ',   id: `${config.PREFIX}bugmenu`    },
+      { label: 'ʟɪꜱᴛ',       id: `${config.PREFIX}list`       },
+    ];
     const menuNumberMap = {};
-    let menuNumCounter = 1;
-    const menuNumberedLines = [];
-    for (const sec of sections) {
-      menuNumberedLines.push(`\n*${sec.title}*`);
-      for (const row of sec.rows) {
-        menuNumberMap[String(menuNumCounter)] = row.id;
-        menuNumberedLines.push(`  *${menuNumCounter}.* ${row.title}`);
-        menuNumCounter++;
-      }
-    }
-    const menuNumberedText = menuNumberedLines.join('\n');
+    menuItems.forEach((item, i) => { menuNumberMap[String(i + 1)] = item.id; });
+
+    const menuBoxLines = menuItems.map((item, i) => {
+      const num = String(i + 1).padStart(2, '0');
+      return `*│${num} . ${item.label}*`;
+    });
+    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*└───────────────┘*`;
 
             // ================= SEND MAIN MENU =================
      await socket.sendMessage(sender, {
@@ -3452,7 +3454,7 @@ if (videoNoteEnabled) {
 ${dlList}
 
 > *↩️ Reply with a number to download*
-> ${BOT_NAME}`,
+> *${BOT_NAME}*`,
   }, { quoted: received });
 
   const dlHandler = async (dlUpdate) => {
@@ -3516,7 +3518,7 @@ if (selectedId === `${config.PREFIX}ownercmds`) {
 ${ocList}
 
 > *↩️ Reply with a number to select*
-> ${BOT_NAME}`,
+> *${BOT_NAME}*`,
   }, { quoted: received });
 
   const ocHandler = async (ocUpdate) => {
@@ -3562,10 +3564,18 @@ ${ocList}
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
     socket.ev.emit('messages.upsert', { messages: [fakeBugMenuMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}list`) {
+    const fakeListMsg = {
+      key: { remoteJid: sender, fromMe: true, id: 'MENU_LIST_' + Date.now() },
+      message: { conversation: `${config.PREFIX}list` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeListMsg], type: 'append' });
   }
 
       } catch (err) {
-        console.error("Button handler error:", err);
+        console.error("Menu handler error:", err);
       }
     };
 
@@ -8160,6 +8170,150 @@ case 'setmenuvideo': {
           } catch (e) {
             console.error('[BUGALL CMD]', e);
             await socket.sendMessage(sender, { text: '❌ BugAll error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ─── Sri Lanka Exam Results ───────────────────────────────────────────
+        case 'al':
+        case 'alresult':
+        case 'alevels': {
+          try {
+            const indexNo = args[0] ? args[0].trim() : '';
+            if (!indexNo) {
+              await socket.sendMessage(sender, {
+                text: formatMessage(
+                  '📋 A/L RESULT CHECK',
+                  `*Usage:* .al <index number>\n\n*Example:* .al 1234567\n\n> Submit your A/L index number to get the direct result link.`,
+                  BOT_NAME_FANCY
+                )
+              }, { quoted: msg });
+              break;
+            }
+            let examInfo = {};
+            try {
+              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
+                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
+                timeout: 8000
+              });
+              examInfo = infoRes.data || {};
+            } catch (_) {}
+            const examName = examInfo.desAlResult || 'G.C.E.(A/L) EXAMINATION';
+            const examYear = examInfo.yearAlResult || '';
+            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
+            const directUrl = `https://result.doenets.lk/AlResult/`;
+            const msgText = formatMessage(
+              `🎓 A/L RESULT — ${examYear}`,
+              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
+              BOT_NAME_FANCY
+            );
+            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
+          } catch (e) {
+            console.error('[AL CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ A/L result fetch error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'ol':
+        case 'olresult':
+        case 'olevels': {
+          try {
+            const indexNo = args[0] ? args[0].trim() : '';
+            if (!indexNo) {
+              await socket.sendMessage(sender, {
+                text: formatMessage(
+                  '📋 O/L RESULT CHECK',
+                  `*Usage:* .ol <index number>\n\n*Example:* .ol 2345678\n\n> Submit your O/L index number to get the direct result link.`,
+                  BOT_NAME_FANCY
+                )
+              }, { quoted: msg });
+              break;
+            }
+            let examInfo = {};
+            try {
+              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
+                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
+                timeout: 8000
+              });
+              examInfo = infoRes.data || {};
+            } catch (_) {}
+            const examName = examInfo.desOlResult || 'G.C.E.(O/L) EXAMINATION';
+            const examYear = examInfo.yearOlResult || '';
+            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
+            const directUrl = `https://result.doenets.lk/OlResult/`;
+            const msgText = formatMessage(
+              `📚 O/L RESULT — ${examYear}`,
+              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
+              BOT_NAME_FANCY
+            );
+            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
+          } catch (e) {
+            console.error('[OL CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ O/L result fetch error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'sship':
+        case 'scholarship':
+        case 'grade5':
+        case 'gv': {
+          try {
+            const indexNo = args[0] ? args[0].trim() : '';
+            if (!indexNo) {
+              await socket.sendMessage(sender, {
+                text: formatMessage(
+                  '📋 SCHOLARSHIP RESULT CHECK',
+                  `*Usage:* .sship <index number>\n\n*Example:* .sship 3456789\n\n> Submit your Grade 5 Scholarship index number to get the direct result link.`,
+                  BOT_NAME_FANCY
+                )
+              }, { quoted: msg });
+              break;
+            }
+            let examInfo = {};
+            try {
+              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
+                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
+                timeout: 8000
+              });
+              examInfo = infoRes.data || {};
+            } catch (_) {}
+            const examName = examInfo.desGvResult || 'GRADE 5 SCHOLARSHIP EXAMINATION';
+            const examYear = examInfo.yearGvResult || '';
+            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
+            const directUrl = `https://result.doenets.lk/GvResult/`;
+            const msgText = formatMessage(
+              `🏆 SCHOLARSHIP RESULT — ${examYear}`,
+              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
+              BOT_NAME_FANCY
+            );
+            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
+          } catch (e) {
+            console.error('[SSHIP CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Scholarship result fetch error: ' + e.message }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'examinfo':
+        case 'exams':
+        case 'results': {
+          try {
+            const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
+              headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
+              timeout: 8000
+            });
+            const d = infoRes.data || {};
+            const msgText = formatMessage(
+              '🇱🇰 SRI LANKA EXAM RESULTS',
+              `*දැනට Available ප්‍රතිඵල:*\n\n🎓 *A/L (උසස් පෙළ)*\n   📌 ${d.desAlResult || 'N/A'}\n   📅 ${d.yearAlResult || 'N/A'}\n   📲 .al <index>\n\n📚 *O/L (සාමාන්‍ය පෙළ)*\n   📌 ${d.desOlResult || 'N/A'}\n   📅 ${d.yearOlResult || 'N/A'}\n   📲 .ol <index>\n\n🏆 *5 ශ්‍රේණිය ශිෂ්‍යත්ව*\n   📌 ${d.desGvResult || 'N/A'}\n   📅 ${d.yearGvResult || 'N/A'}\n   📲 .sship <index>\n\n🌐 *Portal:* https://www.doenets.lk/examresults`,
+              BOT_NAME_FANCY
+            );
+            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
+          } catch (e) {
+            console.error('[EXAMINFO CMD]', e);
+            await socket.sendMessage(sender, { text: '❌ Exam info fetch error: ' + e.message }, { quoted: msg });
           }
           break;
         }
