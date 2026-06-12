@@ -403,6 +403,172 @@ function formatMessage(title, content, footer) {
   return `*${title}*\n\n${content}\n\n> *${footer}*`;
 }
 function generateOTP(){ return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+// ─── Exam Session Handler ────────────────────────────────────────────────────
+global.examSessions = global.examSessions || {};
+const _EXAM_API = 'https://exams-api-new.vercel.app';
+
+async function _handleExamSession({ socket, msg, from, body, prefix, args }) {
+  const _fetchApi = global.fetch || ((...a) => import('node-fetch').then(({ default: f }) => f(...a)));
+  const userId  = msg.key.participant || msg.key.remoteJid;
+  const session = global.examSessions[userId];
+
+  const isNormalReply = session && !(body || '').startsWith(prefix);
+  const input      = isNormalReply ? (body || '').trim() : (args || []).join(' ').trim();
+  const lowerInput = input.toLowerCase();
+
+  const sendMsg = async (text) => socket.sendMessage(from, { text }, { quoted: msg });
+  const wait    = (ms) => new Promise(r => setTimeout(r, ms));
+
+  // Cancel
+  if (lowerInput === 'cancel' || lowerInput === 'stop') {
+    delete global.examSessions[userId];
+    await sendMsg('❌ Exam result process එක cancel කළා.');
+    return;
+  }
+
+  // Session expire
+  if (session && Date.now() - session.createdAt > 10 * 60 * 1000) {
+    delete global.examSessions[userId];
+    await sendMsg('⌛ Exam session expire වුණා. *.exam* කියලා නැවත start කරන්න.');
+    return;
+  }
+
+  // ── STEP 1: Initial .exam call — show exam list ──
+  if (!session) {
+    await sendMsg(`🔍 *Exam Results System*\n\nවිභාග ලැයිස්තුව ලබාගනිමින්...\n\n💡 Use:\n*.exam*\n*.exam ol*\n*.exam al*\n*.exam 2024*\n\n❌ Cancel: *cancel*`);
+    try {
+      const res  = await _fetchApi(`${_EXAM_API}/api/exams`);
+      const data = await res.json();
+      if (!data.success || !Array.isArray(data.exams)) { await sendMsg('❌ විභාග ලැයිස්තුව ලැබුණේ නෑ.'); return; }
+
+      let exams = data.exams;
+      if (input) exams = exams.filter(e => String(e.typeTitle||'').toLowerCase().includes(lowerInput) || String(e.year||'').includes(lowerInput));
+      exams = exams.slice(0, 15);
+
+      if (!exams.length) {
+        await sendMsg(`❌ "${input}" search කරාම exam හමු වුණේ නෑ.\n\nTry: *.exam* *.exam ol* *.exam al*`);
+        return;
+      }
+
+      let msg2 = `🎓 *විභාග ලැයිස්තුව* 🎓\n\n`;
+      exams.forEach((e, i) => { msg2 += `*${i + 1}.* [${e.year}] ${e.typeTitle}\n`; });
+      msg2 += `\n🔢 Number එකක් reply කරන්න.\n❌ Cancel: *cancel*`;
+
+      global.examSessions[userId] = { step: 'SELECT_EXAM', exams, createdAt: Date.now() };
+      await sendMsg(msg2);
+    } catch (e) {
+      delete global.examSessions[userId];
+      await sendMsg(`❌ API Error: ${e.message}`);
+    }
+    return;
+  }
+
+  // ── STEP 2: Exam selection ──
+  if (session.step === 'SELECT_EXAM') {
+    const choice = parseInt(input);
+    if (isNaN(choice) || choice < 1 || choice > session.exams.length) {
+      await sendMsg(`⚠️ 1 - ${session.exams.length} අතර number එකක් reply කරන්න.\n❌ Cancel: *cancel*`);
+      return;
+    }
+    const sel = session.exams[choice - 1];
+    if (sel.isAddIndexNeeded === 'Y' && sel.additionalFieldName) {
+      global.examSessions[userId] = { step: 'INPUT_ADDITIONAL', exam: sel, createdAt: Date.now() };
+      await sendMsg(`💳 මේ exam එකට *${sel.additionalFieldName}* අවශ්‍යයි. Reply කරන්න.\n❌ Cancel: *cancel*`);
+    } else {
+      global.examSessions[userId] = { step: 'INPUT_INDEX', exam: sel, additionalValue: '', createdAt: Date.now() };
+      await sendMsg(`🔢 ඔයාගේ *Index Number* reply කරන්න.\n❌ Cancel: *cancel*`);
+    }
+    return;
+  }
+
+  // ── STEP 3: Additional field ──
+  if (session.step === 'INPUT_ADDITIONAL') {
+    if (!input) { await sendMsg('⚠️ හිස් value දාන්න බෑ.'); return; }
+    global.examSessions[userId] = { step: 'INPUT_INDEX', exam: session.exam, additionalValue: input, createdAt: Date.now() };
+    await sendMsg(`🔢 ඔයාගේ *Index Number* reply කරන්න.\n❌ Cancel: *cancel*`);
+    return;
+  }
+
+  // ── STEP 4: Fetch result ──
+  if (session.step === 'INPUT_INDEX') {
+    if (!input) { await sendMsg('⚠️ Index Number හිස්ව දාන්න බෑ.'); return; }
+    await sendMsg('⏳ Result search කරනවා...');
+    try {
+      const res = await _fetchApi(`${_EXAM_API}/api/results`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exam_session_id: session.exam.examSessionId, index_no: input, additional_value: session.additionalValue || null })
+      });
+      const result = await res.json();
+      if (!result.success || !result.data) {
+        delete global.examSessions[userId];
+        await sendMsg(`❌ Result හමු වුණේ නෑ.\n\nReason: ${result.error || 'Index Number හෝ details වැරදිය.'}\n\nනැවත: *.exam*`);
+        return;
+      }
+      const d = result.data;
+      await sendMsg('🏆 *EXAMINATION RESULTS* 🏆'); await wait(350);
+      await sendMsg(`📝 *Exam:* ${d.examination||'-'}`); await wait(300);
+      await sendMsg(`📅 *Year:* ${d.year||'-'}`); await wait(300);
+      await sendMsg(`👤 *Name:* ${d.name||'-'}`); await wait(300);
+      await sendMsg(`🆔 *Index No:* ${d.indexNo||input}`); await wait(300);
+      if (d.nic)          { await sendMsg(`💳 *NIC:* ${d.nic}`);                     await wait(300); }
+      if (d.stream)       { await sendMsg(`📚 *Stream:* ${d.stream}`);               await wait(300); }
+      if (d.zScore)       { await sendMsg(`🎯 *Z-Score:* ${d.zScore}`);              await wait(300); }
+      if (d.districtRank) { await sendMsg(`📍 *District Rank:* ${d.districtRank}`);  await wait(300); }
+      if (d.islandRank)   { await sendMsg(`🌍 *Island Rank:* ${d.islandRank}`);      await wait(300); }
+      if (Array.isArray(d.subjectResults) && d.subjectResults.length) {
+        await sendMsg('📊 *Subject Results*'); await wait(300);
+        for (const s of d.subjectResults) { await sendMsg(`▪️ ${s.subjectName||'-'}: *${s.subjectResult||'-'}*`); await wait(300); }
+      }
+      global.examSessions[userId] = { step: 'CONFIRM_PDF', exam: session.exam, indexNo: input, additionalValue: session.additionalValue||'', createdAt: Date.now() };
+      await sendMsg(`━━━━━━━━━━━━━━\n📄 PDF ගන්න *0* reply කරන්න.\n✅ Finish කරන්න වෙන ඕනෙ දෙයක් reply කරන්න.`);
+    } catch (e) {
+      delete global.examSessions[userId];
+      await sendMsg(`❌ Result error: ${e.message}`);
+    }
+    return;
+  }
+
+  // ── STEP 5: PDF ──
+  if (session.step === 'CONFIRM_PDF') {
+    if (input !== '0') {
+      delete global.examSessions[userId];
+      await sendMsg('✅ Exam result process finish කළා.');
+      return;
+    }
+    await sendMsg('📄 PDF generate කරනවා...');
+    try {
+      let pdfUrl = `${_EXAM_API}/api/results/pdf?exam_session_id=${encodeURIComponent(session.exam.examSessionId)}&index_no=${encodeURIComponent(session.indexNo)}`;
+      if (session.additionalValue) pdfUrl += `&additional_value=${encodeURIComponent(session.additionalValue)}`;
+
+      const pdfRes = await _fetchApi(pdfUrl);
+      if (!pdfRes.ok) {
+        let errTxt = `HTTP ${pdfRes.status}`;
+        try { const ed = await pdfRes.json(); errTxt = ed.error || errTxt; } catch {}
+        throw new Error(errTxt);
+      }
+      const pdfBuf  = Buffer.from(await pdfRes.arrayBuffer());
+      const fileName = `result_${session.indexNo}_${Date.now()}.pdf`;
+      const filePath = require('path').join(require('os').tmpdir(), fileName);
+      require('fs').writeFileSync(filePath, pdfBuf);
+      await socket.sendMessage(from, {
+        document: require('fs').readFileSync(filePath),
+        mimetype: 'application/pdf',
+        fileName,
+        caption: `📄 *Examination Result PDF*\n\n🆔 Index No: ${session.indexNo}`
+      }, { quoted: msg });
+      try { require('fs').unlinkSync(filePath); } catch {}
+      delete global.examSessions[userId];
+      await sendMsg('✅ PDF send කළා.');
+    } catch (e) {
+      delete global.examSessions[userId];
+      await sendMsg(`❌ PDF error: ${e.message}`);
+    }
+    return;
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
 function getSriLankaTimestamp(){ return moment().tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss'); }
 
 
@@ -1413,6 +1579,17 @@ function setupCommandHandlers(socket, number) {
       }
 
       // Command delay removed for speed
+
+      // ─── Exam Session Reply Intercept (non-prefixed replies) ──────────────
+      global.examSessions = global.examSessions || {};
+      {
+        const _euId = msg.key.participant || msg.key.remoteJid;
+        const _eSess = global.examSessions[_euId];
+        if (_eSess && !isCmd) {
+          await _handleExamSession({ socket, msg, from, body, prefix });
+          return;
+        }
+      }
 
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
@@ -3144,77 +3321,50 @@ break;
 
         // ─── META AI COMMAND (.ai) ────────────────────────────────────
         case 'ai':
-        case 'metaai':
-        case 'ask': {
+        case 'ask':
+        case 'gpt': {
           try {
             const question = args.join(' ').trim();
-            const metaAiNum = META_AI_JID.split('@')[0];
 
             if (!question) {
               await socket.sendMessage(sender, {
-                text: `🤖 *Meta AI*\n\nUsage: *.ai <question>*\n\nExample:\n*.ai What is the capital of Sri Lanka?*`
+                text: `🤖 *AI Assistant*\n\n*Usage:* .ai <question>\n\n*Example:*\n.ai What is the capital of Sri Lanka?`
+              }, { quoted: msg });
+              break;
+            }
+
+            const _geminiKey = process.env.GEMINI_API_KEY;
+            if (!_geminiKey) {
+              await socket.sendMessage(sender, {
+                text: `❌ *AI command setup නෑ.*\n\n📌 *Setup කරන්නේ මෙහෙමයි:*\n1. https://aistudio.google.com ට යන්න\n2. Free API key එකක් ගන්න\n3. .env file ඇතුළෙ \`GEMINI_API_KEY=your_key\` දාන්න\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            await socket.sendMessage(sender, { react: { text: '🤔', key: msg.key } });
+            await socket.sendPresenceUpdate('composing', from);
+
+            const { GoogleGenAI } = require('@google/genai');
+            const _genai = new GoogleGenAI({ apiKey: _geminiKey });
+            const _aiResult = await _genai.models.generateContent({
+              model: 'gemini-2.0-flash',
+              contents: question
+            });
+            const _aiReply = _aiResult?.candidates?.[0]?.content?.parts?.[0]?.text
+              || _aiResult?.text
+              || '';
+
+            if (!_aiReply || !_aiReply.trim()) {
+              await socket.sendMessage(sender, {
+                text: `❌ *AI reply ලැබුණේ නෑ. නැවත try කරන්න.*\n\n> *${BOT_NAME_FANCY}*`
               }, { quoted: msg });
               break;
             }
 
             await socket.sendMessage(sender, { react: { text: '🤖', key: msg.key } });
-            await socket.sendPresenceUpdate('composing', from);
-
-            // Send question mentioning Meta AI
-            const sentQ = await socket.sendMessage(from, {
-              text: `@${metaAiNum} ${question}`,
-              mentions: [META_AI_JID]
-            });
-
-            // Confirm to user that question was sent
             await socket.sendMessage(sender, {
-              text: `🤖 *Question sent to Meta AI!*\n\n> ${question}\n\n_Waiting for reply..._`
+              text: `🤖 *AI Response*\n\n${_aiReply.trim()}\n\n> *${BOT_NAME_FANCY}*`
             }, { quoted: msg });
-
-            // Listen for Meta AI's response (up to 45 seconds)
-            const aiTimeout = 45000;
-
-            await new Promise((resolve) => {
-              const aiListener = async ({ messages: newMsgs }) => {
-                try {
-                  const newMsg = newMsgs[0];
-                  if (!newMsg || !newMsg.message || newMsg.key.fromMe) return;
-                  if (newMsg.key.remoteJid !== from) return;
-
-                  const senderJid = newMsg.key.participant || newMsg.key.remoteJid;
-                  const senderNum = (senderJid || '').split('@')[0];
-
-                  // Match by number (handles @c.us vs @s.whatsapp.net difference)
-                  const isFromMetaAI = senderNum === metaAiNum ||
-                    senderJid === META_AI_JID ||
-                    (typeof isJidMetaAi === 'function' && isJidMetaAi(senderJid));
-
-                  if (isFromMetaAI) {
-                    socket.ev.off('messages.upsert', aiListener);
-
-                    const aiReplyType = getContentType(newMsg.message);
-                    const aiReplyText =
-                      newMsg.message?.conversation ||
-                      newMsg.message?.extendedTextMessage?.text ||
-                      newMsg.message?.[aiReplyType]?.caption || '';
-
-                    if (aiReplyText) {
-                      await socket.sendMessage(from, {
-                        text: `🤖 *Meta AI Response:*\n\n${aiReplyText}`,
-                        mentions: [nowsender]
-                      }, { quoted: msg });
-                    }
-                    resolve();
-                  }
-                } catch(e) {}
-              };
-
-              socket.ev.on('messages.upsert', aiListener);
-              setTimeout(() => {
-                socket.ev.off('messages.upsert', aiListener);
-                resolve();
-              }, aiTimeout);
-            });
 
           } catch(e) {
             console.error('[AI CMD] Error:', e.message);
@@ -3266,12 +3416,12 @@ break;
 
         // --- 📝 RANDOM QUOTES ---
         const quotes = [
-            "DEVELOPER KEZU 💗",
-            "DARK NIGHT 🥺",
-            "MOON WALKER 🍁",
-            "DRUG USER 🍷",
-            "NATURE LIFE 🌿",
-            "ALONE LIFE 🖤"
+            "DEVELOPER KEZU ♞",
+            "මොකද කරන්නෙ සුදු 😗",
+            "කම්මැලියි අනේ 🥺",
+            "ඔයාට කම්මැලි නැද්ද අලේහ් 😊",
+            "එන්න උම්මා එකක් දෙන්න 😘",
+            "අනේ අනේ 😚"
         ];
         const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
         const userTag = `@${sender.split("@")[0]}`;
@@ -3289,20 +3439,20 @@ if (videoNoteEnabled) {
 
     // ================= MAIN MENU TEXT =================
     const menuText = `
-╭━━━━━━━━━━━━━━━━━╮
-│❯➢ ${greetingText}
-╰━━━━━━━━━━━━━━━━━╯
-│👤 *𝗨𝘀𝗲𝗿*  ┆ ${userTag}
+*┌━━━━━━━━━━━━━━━━━┒*
+*│     ${greetingText}*
+*└━━━━━━━━━━━━━━━━━┘*
+│👤 *ᴜꜱᴇʀ*  ┆ ${userTag}
 
-╭──────────────────╮
-│ 💾 *RAM*     » ${ramUsage} MB
-│ ⏱️ *Uptime*  » ${runtime}
-│ 📅 *Date*    » ${dateStr}
-│ 🕐 *Time*    » ${timeStr}
-╰──────────────────╯
-❰❰ _✦ ${randomQuote} ✦_ ❱❱
+*┌──────────────────┒*
+*│  ʀᴀᴍ     » ${ramUsage} MB*
+*│  ʀᴜɴᴛɪᴍᴇ  » ${runtime}*
+*│  ᴅᴀᴛᴇ    » ${dateStr}*
+*│  ᴛɪᴍᴇ    » ${timeStr}*
+*└──────────────────┘*
+ _*${randomQuote}*_ 
 
-> 🌿 *Select an option below*
+> 🌿 *ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ ʙᴇʟᴏᴡ*
 
 `.trim();
 
@@ -8174,131 +8324,10 @@ case 'setmenuvideo': {
           break;
         }
 
-        // ─── Sri Lanka Exam Results ───────────────────────────────────────────
-        case 'al':
-        case 'alresult':
-        case 'alevels': {
-          try {
-            const indexNo = args[0] ? args[0].trim() : '';
-            if (!indexNo) {
-              await socket.sendMessage(sender, {
-                text: formatMessage(
-                  '📋 A/L RESULT CHECK',
-                  `*Usage:* .al <index number>\n\n*Example:* .al 1234567\n\n> Submit your A/L index number to get the direct result link.`,
-                  BOT_NAME_FANCY
-                )
-              }, { quoted: msg });
-              break;
-            }
-            let examInfo = {};
-            try {
-              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
-                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
-                timeout: 8000
-              });
-              examInfo = infoRes.data || {};
-            } catch (_) {}
-            const examName = examInfo.desAlResult || 'G.C.E.(A/L) EXAMINATION';
-            const examYear = examInfo.yearAlResult || '';
-            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
-            const directUrl = `https://result.doenets.lk/AlResult/`;
-            const msgText = formatMessage(
-              `🎓 A/L RESULT — ${examYear}`,
-              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
-              BOT_NAME_FANCY
-            );
-            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
-          } catch (e) {
-            console.error('[AL CMD]', e);
-            await socket.sendMessage(sender, { text: '❌ A/L result fetch error: ' + e.message }, { quoted: msg });
-          }
-          break;
-        }
-
-        case 'ol':
-        case 'olresult':
-        case 'olevels': {
-          try {
-            const indexNo = args[0] ? args[0].trim() : '';
-            if (!indexNo) {
-              await socket.sendMessage(sender, {
-                text: formatMessage(
-                  '📋 O/L RESULT CHECK',
-                  `*Usage:* .ol <index number>\n\n*Example:* .ol 2345678\n\n> Submit your O/L index number to get the direct result link.`,
-                  BOT_NAME_FANCY
-                )
-              }, { quoted: msg });
-              break;
-            }
-            let examInfo = {};
-            try {
-              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
-                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
-                timeout: 8000
-              });
-              examInfo = infoRes.data || {};
-            } catch (_) {}
-            const examName = examInfo.desOlResult || 'G.C.E.(O/L) EXAMINATION';
-            const examYear = examInfo.yearOlResult || '';
-            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
-            const directUrl = `https://result.doenets.lk/OlResult/`;
-            const msgText = formatMessage(
-              `📚 O/L RESULT — ${examYear}`,
-              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
-              BOT_NAME_FANCY
-            );
-            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
-          } catch (e) {
-            console.error('[OL CMD]', e);
-            await socket.sendMessage(sender, { text: '❌ O/L result fetch error: ' + e.message }, { quoted: msg });
-          }
-          break;
-        }
-
-        case 'sship':
-        case 'scholarship':
-        case 'grade5':
-        case 'gv': {
-          try {
-            const indexNo = args[0] ? args[0].trim() : '';
-            if (!indexNo) {
-              await socket.sendMessage(sender, {
-                text: formatMessage(
-                  '📋 SCHOLARSHIP RESULT CHECK',
-                  `*Usage:* .sship <index number>\n\n*Example:* .sship 3456789\n\n> Submit your Grade 5 Scholarship index number to get the direct result link.`,
-                  BOT_NAME_FANCY
-                )
-              }, { quoted: msg });
-              break;
-            }
-            let examInfo = {};
-            try {
-              const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
-                headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
-                timeout: 8000
-              });
-              examInfo = infoRes.data || {};
-            } catch (_) {}
-            const examName = examInfo.desGvResult || 'GRADE 5 SCHOLARSHIP EXAMINATION';
-            const examYear = examInfo.yearGvResult || '';
-            const resultUrl = `https://www.doenets.lk/examresults/resultview/${indexNo}`;
-            const directUrl = `https://result.doenets.lk/GvResult/`;
-            const msgText = formatMessage(
-              `🏆 SCHOLARSHIP RESULT — ${examYear}`,
-              `📌 *Examination:* ${examName}\n📅 *Year:* ${examYear}\n\n🔢 *Index Number:* ${indexNo}\n\n🌐 *Check Results Here:*\n${resultUrl}\n\n📲 *Direct Result Portal:*\n${directUrl}\n\n_ඉහත link එකට ගිහින් index number enter කර hCaptcha solve කරන්න._`,
-              BOT_NAME_FANCY
-            );
-            await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
-          } catch (e) {
-            console.error('[SSHIP CMD]', e);
-            await socket.sendMessage(sender, { text: '❌ Scholarship result fetch error: ' + e.message }, { quoted: msg });
-          }
-          break;
-        }
-
+        
         case 'examinfo':
-        case 'exams':
-        case 'results': {
+        case 'examsinfo':
+        case 'resultinfo': {
           try {
             const infoRes = await axios.get('https://result.doenets.lk/result/service/examDetails', {
               headers: { 'Origin': 'https://www.doenets.lk', 'Referer': 'https://www.doenets.lk/' },
@@ -8307,7 +8336,7 @@ case 'setmenuvideo': {
             const d = infoRes.data || {};
             const msgText = formatMessage(
               '🇱🇰 SRI LANKA EXAM RESULTS',
-              `*දැනට Available ප්‍රතිඵල:*\n\n🎓 *A/L (උසස් පෙළ)*\n   📌 ${d.desAlResult || 'N/A'}\n   📅 ${d.yearAlResult || 'N/A'}\n   📲 .al <index>\n\n📚 *O/L (සාමාන්‍ය පෙළ)*\n   📌 ${d.desOlResult || 'N/A'}\n   📅 ${d.yearOlResult || 'N/A'}\n   📲 .ol <index>\n\n🏆 *5 ශ්‍රේණිය ශිෂ්‍යත්ව*\n   📌 ${d.desGvResult || 'N/A'}\n   📅 ${d.yearGvResult || 'N/A'}\n   📲 .sship <index>\n\n🌐 *Portal:* https://www.doenets.lk/examresults`,
+              `*දැනට Available ප්‍රතිඵල:use .exam*\n\n🌐 *Portal:* https://www.doenets.lk/examresults`,
               BOT_NAME_FANCY
             );
             await socket.sendMessage(sender, { text: msgText }, { quoted: msg });
