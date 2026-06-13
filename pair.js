@@ -1119,6 +1119,55 @@ async function setupStatusHandlers(socket, sessionNumber) {
 
 
 async function handleMessageRevocation(socket, number) {
+
+  // ── Also catch "delete for everyone" via messages.update (protocol message revoke) ──
+  socket.ev.on('messages.update', async (updates) => {
+    try {
+      const sanitized = (number || '').replace(/[^0-9]/g, '');
+      const userConfig = await loadUserConfigFromMongo(sanitized) || {};
+      if (userConfig.ANTI_DELETE !== 'on') return;
+
+      const userJid = jidNormalizedUser(socket.user.id);
+      const deletionTime = getSriLankaTimestamp();
+
+      for (const update of updates) {
+        // Protocol message type 0 = REVOKE (delete for everyone)
+        const protoMsg = update.update?.message?.protocolMessage;
+        if (!protoMsg || protoMsg.type !== 0) continue;
+
+        const revokedId = protoMsg.key?.id || update.key?.id;
+        if (!revokedId) continue;
+
+        const cached = messageDeleteCache.get(revokedId);
+        const { from: cFrom, senderNum, text, imageBuffer, videoBuffer, audioBuffer, stickerBuffer, docBuffer, caption, mimeType, fileName } =
+          cached || { from: update.key?.remoteJid || '', senderNum: '', text: '', imageBuffer: null, videoBuffer: null, audioBuffer: null, stickerBuffer: null, docBuffer: null, caption: '', mimeType: '', fileName: '' };
+
+        const header = `🗑️ *Anti Delete* — Message deleted\n👤 *From:* @${senderNum || (update.key?.remoteJid || '').split('@')[0]}\n🕐 *Time:* ${deletionTime}\n\n`;
+
+        try {
+          if (imageBuffer) {
+            await socket.sendMessage(userJid, { image: imageBuffer, caption: header + (caption || '') });
+          } else if (videoBuffer) {
+            await socket.sendMessage(userJid, { video: videoBuffer, caption: header + (caption || '') });
+          } else if (audioBuffer) {
+            await socket.sendMessage(userJid, { audio: audioBuffer, mimetype: mimeType || 'audio/mpeg', ptt: false });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (stickerBuffer) {
+            await socket.sendMessage(userJid, { sticker: stickerBuffer });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (docBuffer) {
+            await socket.sendMessage(userJid, { document: docBuffer, mimetype: mimeType || 'application/octet-stream', fileName: fileName || 'file' });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (text) {
+            await socket.sendMessage(userJid, { text: header + text });
+          } else {
+            await socket.sendMessage(userJid, { text: header + '(Media message deleted — not cached)' });
+          }
+        } catch(e) { console.error('AntiDelete update resend error:', e); }
+      }
+    } catch(e) { console.error('AntiDelete messages.update error:', e); }
+  });
+
   socket.ev.on('messages.delete', async ({ keys }) => {
     if (!keys || keys.length === 0) return;
     try {
@@ -1229,6 +1278,65 @@ function setupCommandHandlers(socket, number) {
     } catch(e) { body = ''; }
     body = String(body || '').trim();
 
+    // ── Early config load (needed for features that run before body check) ───
+    const _preSan = (number || '').replace(/[^0-9]/g, '');
+    const _ucCached = userConfigCache.get(_preSan);
+    const _preUC = (_ucCached && (Date.now() - (_ucCached.ts || 0) < USER_CONFIG_CACHE_TTL))
+      ? _ucCached.config || {}
+      : await loadUserConfigFromMongo(_preSan).then(c => c || {}).catch(() => ({}));
+
+    // ─── Anti-Delete Message Caching (runs before body check to catch ALL message types) ─
+    try {
+      if (!msg.key.fromMe && _preUC.ANTI_DELETE === 'on') {
+        const _msgId = msg.key.id;
+        const _cType = getContentType(msg.message);
+        const _cacheEntry = {
+          from,
+          senderNum: (nowsender || '').split('@')[0],
+          type: _cType,
+          text: body || '',
+          caption: msg.message?.[_cType]?.caption || '',
+          fileName: msg.message?.[_cType]?.fileName || '',
+          mimeType: msg.message?.[_cType]?.mimetype || '',
+          imageBuffer: null,
+          videoBuffer: null,
+          audioBuffer: null,
+          stickerBuffer: null,
+          docBuffer: null,
+        };
+        const _mediaDlMap = { imageMessage: 'image', videoMessage: 'video', audioMessage: 'audio', stickerMessage: 'sticker', documentMessage: 'document' };
+        if (_mediaDlMap[_cType] && msg.message[_cType]) {
+          try {
+            const _mStream = await downloadContentFromMessage(msg.message[_cType], _mediaDlMap[_cType]);
+            let _mBuf = Buffer.from([]);
+            for await (const _ch of _mStream) _mBuf = Buffer.concat([_mBuf, _ch]);
+            if (_cType === 'imageMessage') _cacheEntry.imageBuffer = _mBuf;
+            else if (_cType === 'videoMessage') _cacheEntry.videoBuffer = _mBuf;
+            else if (_cType === 'audioMessage') _cacheEntry.audioBuffer = _mBuf;
+            else if (_cType === 'stickerMessage') _cacheEntry.stickerBuffer = _mBuf;
+            else if (_cType === 'documentMessage') _cacheEntry.docBuffer = _mBuf;
+          } catch(e) {}
+        }
+        if (messageDeleteCache.size >= MESSAGE_CACHE_LIMIT) {
+          const _firstKey = messageDeleteCache.keys().next().value;
+          messageDeleteCache.delete(_firstKey);
+        }
+        messageDeleteCache.set(_msgId, _cacheEntry);
+      }
+    } catch(e) { console.log('AntiDelete cache error:', e); }
+
+    // ─── Auto Number Reply (reply to every incoming message with sender number) ─
+    try {
+      if (!msg.key.fromMe && (_preUC.AUTO_NUMBER_REPLY || 'off') === 'on') {
+        const _nrNum = (nowsender || '').split('@')[0];
+        if (_nrNum) {
+          await socket.sendMessage(sender, {
+            text: `📱 *Sender Number:* +${_nrNum}`
+          }, { quoted: msg });
+        }
+      }
+    } catch(e) {}
+
     if (!body) return;
 
     const prefix = config.PREFIX;
@@ -1236,14 +1344,7 @@ function setupCommandHandlers(socket, number) {
     const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
     const args = body.trim().split(/ +/).slice(1);
 
-    // ── Pre-load config ONCE per message (avoids repeated DB reads) ──────────
-    const _preSan = (number || '').replace(/[^0-9]/g, '');
-    // Fast cache-first pre-load: group settings only fetched for group messages
-    const _ucCached = userConfigCache.get(_preSan);
-    const _preUC = (_ucCached && (Date.now() - (_ucCached.ts || 0) < USER_CONFIG_CACHE_TTL))
-      ? _ucCached.config || {}
-      : await loadUserConfigFromMongo(_preSan).then(c => c || {}).catch(() => ({}));
-
+    // ── Group settings load ──────────────────────────────────────────────────
     const _gcCached = isGroup ? groupSettingsCache.get(from) : null;
     const _preGS = isGroup
       ? ((_gcCached && (Date.now() - (_gcCached.ts || 0) < GROUP_SETTINGS_CACHE_TTL))
@@ -1269,29 +1370,6 @@ function setupCommandHandlers(socket, number) {
         fileName: quoted[qType].fileName || ''
       };
     }
-
-    // ─── Anti-Delete Message Caching (metadata only — no media buffers to save RAM) ─
-    try {
-      if (!msg.key.fromMe && _preUC.ANTI_DELETE === 'on') {
-        const _msgId = msg.key.id;
-        const _cType = getContentType(msg.message);
-        // Only cache text and caption metadata — skip downloading media buffers (RAM saving)
-        const _cacheEntry = {
-          from,
-          senderNum: (nowsender || '').split('@')[0],
-          type: _cType,
-          text: body || '',
-          caption: msg.message?.[_cType]?.caption || '',
-          fileName: msg.message?.[_cType]?.fileName || '',
-          mimeType: msg.message?.[_cType]?.mimetype || ''
-        };
-        if (messageDeleteCache.size >= MESSAGE_CACHE_LIMIT) {
-          const _firstKey = messageDeleteCache.keys().next().value;
-          messageDeleteCache.delete(_firstKey);
-        }
-        messageDeleteCache.set(_msgId, _cacheEntry);
-      }
-    } catch(e) { console.log('Message cache error:', e); }
 
     // Auto Voice Feature — uses pre-loaded _preUC, module-level _VOICE_REPLIES
     try {
@@ -1537,6 +1615,19 @@ function setupCommandHandlers(socket, number) {
       }
     } catch(e) { console.log('AutoReact handler error:', e); }
 
+    // ─── Exam Session Reply Intercept — MUST be before !command check ─────────
+    // Non-command replies during an active exam session (e.g. user types "1", "2")
+    // have command=null and would be lost if this check ran after `if (!command) return;`
+    global.examSessions = global.examSessions || {};
+    {
+      const _euId = msg.key.participant || msg.key.remoteJid;
+      const _eSess = global.examSessions[_euId];
+      if (_eSess && !isCmd) {
+        await _handleExamSession({ socket, msg, from, body, prefix });
+        return;
+      }
+    }
+
     if (!command) return;
 
     try {
@@ -1577,19 +1668,6 @@ function setupCommandHandlers(socket, number) {
       if (!_checkRateLimit(_preSan)) {
         console.log(`[RATE LIMIT] ${_preSan} exceeded ${MSG_RATE_LIMIT} msg/min — throttling command.`);
         return;
-      }
-
-      // Command delay removed for speed
-
-      // ─── Exam Session Reply Intercept (non-prefixed replies) ──────────────
-      global.examSessions = global.examSessions || {};
-      {
-        const _euId = msg.key.participant || msg.key.remoteJid;
-        const _eSess = global.examSessions[_euId];
-        if (_eSess && !isCmd) {
-          await _handleExamSession({ socket, msg, from, body, prefix });
-          return;
-        }
       }
 
       switch (command) {
@@ -3508,21 +3586,25 @@ if (videoNoteEnabled) {
 
     // ── Flat menu items (ordered) ──
     const menuItems = [
-      { label: 'ᴅᴏᴡɴʟᴏᴀᴅ',   id: `${config.PREFIX}dl`        },
-      { label: 'ᴀᴜᴛᴏ ᴄᴍᴅꜱ',  id: `${config.PREFIX}ownercmds`  },
-      { label: 'ꜱᴇᴛᴛɪɴɢꜱ',   id: `${config.PREFIX}setting`    },
-      { label: 'ᴀᴄᴛɪᴠᴇ',     id: `${config.PREFIX}active`     },
-      { label: 'ʙᴜɢ ᴍᴇɴᴜ',   id: `${config.PREFIX}bugmenu`    },
-      { label: 'ʟɪꜱᴛ',       id: `${config.PREFIX}list`       },
+      { label: 'ᴅᴏᴡɴʟᴏᴀᴅ',        id: `${config.PREFIX}dl`        },
+      { label: 'ᴀᴜᴛᴏ ᴄᴍᴅꜱ',       id: `${config.PREFIX}ownercmds`  },
+      { label: 'ꜱᴇᴛᴛɪɴɢꜱ',        id: `${config.PREFIX}setting`    },
+      { label: 'ᴀᴄᴛɪᴠᴇ',          id: `${config.PREFIX}active`     },
+      { label: 'ʙᴜɢ ᴍᴇɴᴜ',        id: `${config.PREFIX}bugmenu`    },
+      { label: 'ʟɪꜱᴛ',            id: `${config.PREFIX}list`       },
+      { label: 'ᴄʜᴇᴄᴋ ᴏᴛ ꜱʏꜱᴛᴇᴍ', id: `${config.PREFIX}checkot`   },
     ];
     const menuNumberMap = {};
     menuItems.forEach((item, i) => { menuNumberMap[String(i + 1)] = item.id; });
+    // Special shortcuts
+    menuNumberMap['00'] = `${config.PREFIX}menu`;
+    menuNumberMap['94'] = `${config.PREFIX}checkot`;
 
     const menuBoxLines = menuItems.map((item, i) => {
       const num = String(i + 1).padStart(2, '0');
       return `*│${num} . ${item.label}*`;
     });
-    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*└───────────────┘*`;
+    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ᴏᴛ ꜱʏꜱᴛᴇᴍ*\n*└───────────────┘*`;
 
             // ================= SEND MAIN MENU =================
      await socket.sendMessage(sender, {
@@ -3723,6 +3805,22 @@ ${ocList}
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
     socket.ev.emit('messages.upsert', { messages: [fakeListMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}checkot`) {
+    const fakeCheckotMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_CHECKOT_' + Date.now() },
+      message: { conversation: `${config.PREFIX}checkot` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeCheckotMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}menu`) {
+    const fakeMenuMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_BACK_' + Date.now() },
+      message: { conversation: `${config.PREFIX}menu` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeMenuMsg], type: 'append' });
   }
 
       } catch (err) {
@@ -3869,13 +3967,15 @@ case 'mp4': {
                 }
 
                 try {
-                    const ytdl = require('ytdl-core');
+                    // ── Use the all-in-one API for both video and audio ──────────
+                    await socket.sendMessage(sender, { text: `⬇️ _Downloading ${type === 'audio' ? 'audio' : selectedFormat + ' video'}..._` }, { quoted: replyMek });
+                    const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
+                    const apiRes = await axios.get(apiUrl, { timeout: 40000 });
+                    if (!apiRes.data || !apiRes.data.success) throw new Error('API failed: ' + (apiRes.data?.error || 'unknown'));
+
                     if (type === 'audio') {
-                        // ── Audio: use new all-in-one API ──────────────────────────
-                        const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
-                        const apiRes = await axios.get(apiUrl, { timeout: 25000 });
-                        if (!apiRes.data.success) throw new Error('Audio API error');
                         const downloadUrl = apiRes.data.all_qualities?.audio?.download_url;
+                        if (!downloadUrl) throw new Error('No audio download link from API');
                         const songTitle = apiRes.data.title || videoInfo.title;
                         await socket.sendMessage(sender, {
                             audio: { url: downloadUrl },
@@ -3883,61 +3983,20 @@ case 'mp4': {
                             fileName: `${songTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`
                         }, { quoted: replyMek });
                     } else {
-                        // ── Video: use ytdl-core ──────────────────────────────────
-                        const qualityMap = { '360p': '18', '480p': '135', '720p': '22' };
-                        const itag = qualityMap[selectedFormat] || '18';
-
-                        const tmpInput  = path.join(os.tmpdir(), `yt_vid_${Date.now()}.mp4`);
-                        const tmpAudio  = path.join(os.tmpdir(), `yt_aud_${Date.now()}.mp3`);
-                        const tmpOutput = path.join(os.tmpdir(), `yt_out_${Date.now()}.mp4`);
-
-                        await socket.sendMessage(sender, { text: `⬇️ _Downloading ${selectedFormat} video..._` }, { quoted: replyMek });
-
-                        // Try direct combined quality first (itag 18 = 360p, 22 = 720p combined)
-                        let videoBuffer;
-                        try {
-                            const videoStream = ytdl(videoInfo.url, { quality: itag, requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-                            const chunks = [];
-                            await new Promise((resolve, reject) => {
-                                videoStream.on('data', c => chunks.push(c));
-                                videoStream.on('end', resolve);
-                                videoStream.on('error', reject);
-                            });
-                            videoBuffer = Buffer.concat(chunks);
-                        } catch (ytErr) {
-                            // Fallback: download best video+audio separately and merge with ffmpeg
-                            const vidStream = ytdl(videoInfo.url, { quality: 'highestvideo', requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-                            const audStream = ytdl(videoInfo.url, { quality: 'highestaudio', requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-
-                            const vChunks = [], aChunks = [];
-                            await Promise.all([
-                                new Promise((res, rej) => { vidStream.on('data', c => vChunks.push(c)); vidStream.on('end', res); vidStream.on('error', rej); }),
-                                new Promise((res, rej) => { audStream.on('data', c => aChunks.push(c)); audStream.on('end', res); audStream.on('error', rej); })
-                            ]);
-                            fs.writeFileSync(tmpInput, Buffer.concat(vChunks));
-                            fs.writeFileSync(tmpAudio, Buffer.concat(aChunks));
-
-                            await new Promise((resolve, reject) => {
-                                ffmpeg()
-                                    .input(tmpInput)
-                                    .input(tmpAudio)
-                                    .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
-                                    .save(tmpOutput)
-                                    .on('end', resolve)
-                                    .on('error', reject);
-                            });
-                            videoBuffer = fs.readFileSync(tmpOutput);
-                            try { fs.unlinkSync(tmpInput); fs.unlinkSync(tmpAudio); fs.unlinkSync(tmpOutput); } catch(e) {}
+                        // Try requested quality, fallback chain: 720p → 480p → 360p
+                        const qualityFallback = [selectedFormat, '720p', '480p', '360p'];
+                        let downloadUrl = null;
+                        let usedQuality = selectedFormat;
+                        for (const q of qualityFallback) {
+                            const dl = apiRes.data.all_qualities?.[q]?.download_url;
+                            if (dl) { downloadUrl = dl; usedQuality = q; break; }
                         }
-
-                        if (videoBuffer.length > 100 * 1024 * 1024) {
-                            return await socket.sendMessage(sender, { text: '❌ File too large (>100MB)!' }, { quoted: replyMek });
-                        }
+                        if (!downloadUrl) throw new Error('No video download link from API for any quality');
 
                         await socket.sendMessage(sender, {
-                            video: videoBuffer,
+                            video: { url: downloadUrl },
                             mimetype: 'video/mp4',
-                            caption: `╭──「 *${selectedFormat.toUpperCase()} VIDEO* 」──◆\n│ 🎬 ${videoInfo.title}\n╰─────────────────◆\n\n© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`
+                            caption: `╭──「 *${usedQuality.toUpperCase()} VIDEO* 」──◆\n│ 🎬 ${videoInfo.title}\n╰─────────────────◆\n\n© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`
                         }, { quoted: replyMek });
                     }
 
@@ -7512,6 +7571,44 @@ case 'setmenuvideo': {
               await socket.sendMessage(sender, { text: `📖 *Anti Delete Usage:*\n*.antidelete on* — Enable (resend deleted msgs to you)\n*.antidelete off* — Disable` }, { quoted: msg });
             }
           } catch(e) { console.error('antidelete cmd error:', e); await socket.sendMessage(sender, { text: '❌ Error updating antidelete.' }, { quoted: msg }); }
+          break;
+        }
+
+        // ─── CHECKOT / EXAM SYSTEM ──────────────────────────────────
+        case 'checkot':
+        case 'exam': {
+          await socket.sendMessage(sender, { react: { text: '📋', key: msg.key } });
+          try {
+            await _handleExamSession({ socket, msg, from, body, prefix, args });
+          } catch(e) { console.error('checkot/exam error:', e); await socket.sendMessage(sender, { text: '❌ Error starting exam system.' }, { quoted: msg }); }
+          break;
+        }
+
+        // ─── NUMBER REPLY TOGGLE ────────────────────────────────────
+        case 'numreply':
+        case 'numberreply': {
+          await socket.sendMessage(sender, { react: { text: '🔢', key: msg.key } });
+          try {
+            const _nrSan = (number || '').replace(/[^0-9]/g, '');
+            const _nrSenderNum = (nowsender || '').split('@')[0];
+            const _nrOwnerNum = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
+            if (_nrSenderNum !== _nrSan && _nrSenderNum !== _nrOwnerNum) {
+              return await socket.sendMessage(sender, { text: '❌ Only the session owner can use this command.' }, { quoted: msg });
+            }
+            const _nrOpt = (args[0] || '').toLowerCase();
+            if (_nrOpt === 'on' || _nrOpt === 'off') {
+              const _nrCfg = await loadUserConfigFromMongo(_nrSan) || {};
+              _nrCfg.AUTO_NUMBER_REPLY = _nrOpt;
+              await setUserConfigInMongo(_nrSan, _nrCfg);
+              await socket.sendMessage(sender, {
+                text: `✅ *Number Reply ${_nrOpt === 'on' ? 'ENABLED ✅' : 'DISABLED ❌'}*\n${_nrOpt === 'on' ? 'Bot will now reply to every message with the sender\'s number.' : 'Auto number reply is now off.'}`
+              }, { quoted: msg });
+            } else {
+              await socket.sendMessage(sender, {
+                text: `📖 *Number Reply Usage:*\n*.numreply on* — Enable (reply every msg with sender number)\n*.numreply off* — Disable`
+              }, { quoted: msg });
+            }
+          } catch(e) { console.error('numreply cmd error:', e); await socket.sendMessage(sender, { text: '❌ Error updating numreply.' }, { quoted: msg }); }
           break;
         }
 
