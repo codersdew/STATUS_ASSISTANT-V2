@@ -1690,6 +1690,348 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
+          case 'cine':
+case 'movie':
+case 'film': {
+  try {
+    const CINE_KEY = 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37';
+    const CINE_BASE = 'https://nexoraapi.laksidunimsara.com/cinesubz';
+
+    // ── helpers ──────────────────────────────────────────────────────
+    const cineGet = async (path, params = {}) => {
+      const qs = new URLSearchParams({ api_key: CINE_KEY, ...params }).toString();
+      const res = await axios.get(`${CINE_BASE}${path}?${qs}`, { timeout: 15000 });
+      return res.data;
+    };
+
+    const isTV = (url = '') => url.includes('/tvshows/') || url.includes('/episodes/');
+
+    // ── sub-menu shortcut emitter (00 → menu, 94 → speedping) ────────
+    const attachSmH = (handlerName) => {
+      const smH = async (u) => {
+        try {
+          const _m = u.messages?.[0];
+          if (!_m?.message || _m.key.remoteJid !== sender) return;
+          const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+          if (_t !== '00' && _t !== '94') return;
+          socket.ev.off('messages.upsert', smH);
+          socket.ev.emit('messages.upsert', {
+            messages: [{
+              key: { remoteJid: sender, fromMe: true, id: `CINE_SM_${Date.now()}` },
+              message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` },
+              messageTimestamp: Math.floor(Date.now() / 1000)
+            }],
+            type: 'append'
+          });
+        } catch (e) { socket.ev.off('messages.upsert', smH); }
+      };
+      socket.ev.on('messages.upsert', smH);
+      setTimeout(() => socket.ev.off('messages.upsert', smH), 5 * 60 * 1000);
+      return smH;
+    };
+
+    // ── query check ───────────────────────────────────────────────────
+    const query = args.join(' ').trim();
+    if (!query) {
+      await socket.sendMessage(sender, {
+        text: `🎬 *CINESUBZ සොයාගැනීම*\n\n*භාවිතය:* \`${config.PREFIX}cine <චිත්‍රපටය/TV Series නම>\`\n\n*උදාහරණ:*\n\`${config.PREFIX}cine Spider Man\`\n\`${config.PREFIX}cine Inception\`\n\`${config.PREFIX}cine Breaking Bad\`\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`
+      }, { quoted: msg });
+      break;
+    }
+
+    // ── step 1: search ────────────────────────────────────────────────
+    await socket.sendMessage(sender, { react: { text: '🎬', key: msg.key } });
+    await socket.sendMessage(sender, {
+      text: `🔍 *"${query}"* සොයමින් ඉන්නවා...\n_කරුණාකර රැදී සිටින්න_ ⏳`
+    }, { quoted: msg });
+
+    const searchData = await cineGet('/search', { query });
+
+    if (!searchData?.status || !searchData?.results?.length) {
+      await socket.sendMessage(sender, {
+        text: `❌ *"${query}"* සඳහා ප්‍රතිඵල හමු නොවිණි.\n\nවෙනත් නමකින් සොයා බලන්න.`
+      }, { quoted: msg });
+      break;
+    }
+
+    const results = searchData.results.slice(0, 10);
+
+    // ── build search result caption ───────────────────────────────────
+    const resultLines = results.map((r, i) => {
+      const type = isTV(r.link) ? '📺' : '🎬';
+      const num  = String(i + 1).padStart(2, '0');
+      return `*${num}.* ${type} *${r.title}*\n     ⭐ ${r.imdbRating || 'N/A'} | 🎞️ ${r.quality || 'N/A'}`;
+    }).join('\n\n');
+
+    const searchCaption = `🎬 *CINESUBZ — සෙවීම් ප්‍රතිඵල*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ 🔍 *Query:* ${query}
+┃ 📊 *හමු වූ:* ${searchData.total} ප්‍රතිඵල
+╰━━━━━━━━━━━━━━━━━━━●
+
+${resultLines}
+
+━━━━━━━━━━━━━━━━━━━━
+*│ Reply with number to select*
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+    const searchPoster = results[0]?.poster;
+    let searchSentKey;
+
+    if (searchPoster) {
+      const sent = await socket.sendMessage(sender, {
+        image: { url: searchPoster },
+        caption: searchCaption,
+        footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+        contextInfo: {
+          externalAdReply: {
+            title: `🎬 CINESUBZ — ${query}`,
+            body: `${searchData.total} ප්‍රතිඵල හමු වූ`,
+            mediaType: 1,
+            thumbnail: Buffer.alloc(0),
+            sourceUrl: 'https://cinesubz.net',
+            renderLargerThumbnail: false,
+            showAdAttribution: true
+          }
+        }
+      }, { quoted: msg });
+      searchSentKey = sent?.key;
+    } else {
+      const sent = await socket.sendMessage(sender, { text: searchCaption }, { quoted: msg });
+      searchSentKey = sent?.key;
+    }
+
+    attachSmH('search');
+
+    // ── step 2: selection handler ─────────────────────────────────────
+    const selectionHandler = async (selUpdate) => {
+      try {
+        const selMsg = selUpdate.messages?.[0];
+        if (!selMsg?.message || selMsg.key.remoteJid !== sender) return;
+
+        const selText = (
+          selMsg.message?.conversation ||
+          selMsg.message?.extendedTextMessage?.text ||
+          ''
+        ).trim();
+
+        // pass through 00/94 to global shortcut
+        if (selText === '00' || selText === '94') return;
+
+        const selNum = parseInt(selText, 10);
+        if (isNaN(selNum) || selNum < 1 || selNum > results.length) return;
+
+        socket.ev.off('messages.upsert', selectionHandler);
+
+        const chosen = results[selNum - 1];
+        await socket.sendMessage(sender, { react: { text: '⏳', key: selMsg.key } });
+        await socket.sendMessage(sender, {
+          text: `📡 *${chosen.title}* ගේ details ලබා ගනිමින්...`
+        }, { quoted: selMsg });
+
+        // ── TV Show path ──────────────────────────────────────────────
+        if (isTV(chosen.link)) {
+          const tvData = await cineGet('/tvshow', { url: chosen.link });
+          if (!tvData?.data?.success) {
+            await socket.sendMessage(sender, { text: '❌ TV show details ලබා ගැනීම අසාර්ථකයි.' }, { quoted: selMsg });
+            return;
+          }
+          const tv = tvData.data;
+
+          // get episode list
+          const epiData = await cineGet('/episode', { url: chosen.link });
+          const episodes = epiData?.data?.season_episodes || [];
+
+          const epiLines = episodes.slice(0, 20).map((e, i) => {
+            const n = String(i + 1).padStart(2, '0');
+            return `*${n}.* 📺 *Ep ${e.episode}* — ${e.title}\n     📅 ${e.date}`;
+          }).join('\n\n');
+
+          const tvCaption = `📺 *${tv.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ ⭐ *IMDB:* ${tv.imdb_rating}/10
+┃ 📅 *Year:* ${tv.year}
+┃ 🎭 *Genres:* ${(tv.genres || []).slice(0, 3).join(', ')}
+┃ 🎬 *Type:* TV Series
+╰━━━━━━━━━━━━━━━━━━━●
+
+${tv.description ? `_${tv.description.slice(0, 200)}..._\n\n` : ''}*📋 Episodes (${episodes.length}):*
+━━━━━━━━━━━━━━━━━━━━
+${epiLines || '_Episodes list unavailable_'}
+━━━━━━━━━━━━━━━━━━━━
+*│ Reply with episode number*
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+          if (tv.poster) {
+            await socket.sendMessage(sender, {
+              image: { url: tv.poster },
+              caption: tvCaption,
+              footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+              contextInfo: {
+                externalAdReply: {
+                  title: tv.title,
+                  body: `⭐ ${tv.imdb_rating} | TV Series`,
+                  mediaType: 1,
+                  thumbnail: Buffer.alloc(0),
+                  sourceUrl: chosen.link,
+                  renderLargerThumbnail: false,
+                  showAdAttribution: true
+                }
+              }
+            }, { quoted: selMsg });
+          } else {
+            await socket.sendMessage(sender, { text: tvCaption }, { quoted: selMsg });
+          }
+
+          attachSmH('tv');
+
+          // ── episode selection handler ─────────────────────────────
+          const epiSelHandler = async (epiSelUpdate) => {
+            try {
+              const esMsg = epiSelUpdate.messages?.[0];
+              if (!esMsg?.message || esMsg.key.remoteJid !== sender) return;
+              const esText = (
+                esMsg.message?.conversation ||
+                esMsg.message?.extendedTextMessage?.text ||
+                ''
+              ).trim();
+
+              if (esText === '00' || esText === '94') return;
+
+              const esNum = parseInt(esText, 10);
+              if (isNaN(esNum) || esNum < 1 || esNum > episodes.length) return;
+
+              socket.ev.off('messages.upsert', epiSelHandler);
+
+              const epiChosen = episodes[esNum - 1];
+              await socket.sendMessage(sender, { react: { text: '⬇️', key: esMsg.key } });
+              await socket.sendMessage(sender, {
+                text: `📡 *Ep ${epiChosen.episode}: ${epiChosen.title}* ගේ download links ලබා ගනිමින්...`
+              }, { quoted: esMsg });
+
+              const epiDetail = await cineGet('/details', { url: epiChosen.url });
+
+              if (!epiDetail?.status || !epiDetail?.data?.downloads?.length) {
+                await socket.sendMessage(sender, {
+                  text: `❌ Episode ${epiChosen.episode} සඳහා download links හමු නොවිණි.\n\n🔗 *Direct Link:* ${epiChosen.url}`
+                }, { quoted: esMsg });
+                attachSmH('epi-fail');
+                return;
+              }
+
+              const dlLines = epiDetail.data.downloads.map((d, i) => {
+                return `*${i + 1}.* 🎞️ ${d.quality}\n     🔗 ${d.url}`;
+              }).join('\n\n');
+
+              const epiCaption = `⬇️ *Ep ${epiChosen.episode}: ${epiChosen.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ 📅 *Date:* ${epiChosen.date}
+┃ 📺 *Series:* ${tv.title?.split('|')[0]?.trim()}
+╰━━━━━━━━━━━━━━━━━━━●
+
+*🔗 Download Links:*
+━━━━━━━━━━━━━━━━━━━━
+${dlLines}
+━━━━━━━━━━━━━━━━━━━━
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+              await socket.sendMessage(sender, { text: epiCaption }, { quoted: esMsg });
+              attachSmH('epi-dl');
+
+            } catch (e) {
+              console.error('[CINE epiSel]', e.message);
+              socket.ev.off('messages.upsert', epiSelHandler);
+            }
+          };
+          socket.ev.on('messages.upsert', epiSelHandler);
+          setTimeout(() => socket.ev.off('messages.upsert', epiSelHandler), 5 * 60 * 1000);
+
+        // ── Movie path ────────────────────────────────────────────────
+        } else {
+          const movieData = await cineGet('/details', { url: chosen.link });
+
+          if (!movieData?.status || !movieData?.data) {
+            await socket.sendMessage(sender, { text: '❌ Movie details ලබා ගැනීම අසාර්ථකයි.' }, { quoted: selMsg });
+            return;
+          }
+
+          const mv = movieData.data;
+          const dlLinks = (mv.downloads || []);
+
+          const dlLines = dlLinks.length
+            ? dlLinks.map((d, i) => `*${i + 1}.* 🎞️ ${d.quality}\n     🔗 ${d.url}`).join('\n\n')
+            : '_Download links unavailable_';
+
+          const castStr = (mv.cast || []).slice(0, 5).join(', ');
+
+          const movieCaption = `🎬 *${mv.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ ⭐ *IMDB:* ${mv.imdb_rating}/10
+┃ ⏱️ *Runtime:* ${mv.runtime || 'N/A'}
+┃ 🎥 *Director:* ${(mv.director || 'N/A').split(',')[0].trim()}
+┃ 🌍 *Country:* ${mv.country || 'N/A'}
+┃ 👥 *Cast:* ${castStr || 'N/A'}
+╰━━━━━━━━━━━━━━━━━━━●
+
+${mv.description ? `_${mv.description.slice(0, 250)}_\n\n` : ''}*⬇️ Download Links (${dlLinks.length}):*
+━━━━━━━━━━━━━━━━━━━━
+${dlLines}
+━━━━━━━━━━━━━━━━━━━━
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+          if (mv.poster) {
+            await socket.sendMessage(sender, {
+              image: { url: mv.poster },
+              caption: movieCaption,
+              footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+              contextInfo: {
+                externalAdReply: {
+                  title: mv.title?.split('|')[0]?.trim() || mv.title,
+                  body: `⭐ ${mv.imdb_rating} | ${mv.runtime || ''}`,
+                  mediaType: 1,
+                  thumbnail: Buffer.alloc(0),
+                  sourceUrl: chosen.link,
+                  renderLargerThumbnail: false,
+                  showAdAttribution: true
+                }
+              }
+            }, { quoted: selMsg });
+          } else {
+            await socket.sendMessage(sender, { text: movieCaption }, { quoted: selMsg });
+          }
+
+          attachSmH('movie-dl');
+        }
+
+      } catch (e) {
+        console.error('[CINE selection]', e.message);
+        socket.ev.off('messages.upsert', selectionHandler);
+        await socket.sendMessage(sender, {
+          text: `❌ Error: ${e.message}`
+        }, { quoted: selMsg }).catch(() => {});
+      }
+    };
+
+    socket.ev.on('messages.upsert', selectionHandler);
+    setTimeout(() => socket.ev.off('messages.upsert', selectionHandler), 5 * 60 * 1000);
+
+  } catch (e) {
+    console.error('[CINE]', e.message);
+    await socket.sendMessage(sender, {
+      text: `❌ *CINE command error:*\n${e.message}\n\nකරුණාකර නැවත try කරන්න.`
+    }, { quoted: msg });
+  }
+  break;
+}
+
           case 'tourl':
 case 'url':
 case 'upload': {
