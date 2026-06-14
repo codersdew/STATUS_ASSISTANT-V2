@@ -967,16 +967,26 @@ async function setupStatusHandlers(socket, sessionNumber) {
 
     try {
       // ── Load config ONCE for this session ───────────────────────
-      const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
+      let userEmojis = config.AUTO_LIKE_EMOJI;
+      let autoViewStatus = config.AUTO_VIEW_STATUS;
+      let autoLikeStatus = config.AUTO_LIKE_STATUS;
+      let autoRecording = config.AUTO_RECORDING;
 
-      const userEmojis = (Array.isArray(userCfg.AUTO_LIKE_EMOJI) && userCfg.AUTO_LIKE_EMOJI.length > 0)
-        ? userCfg.AUTO_LIKE_EMOJI : config.AUTO_LIKE_EMOJI;
-      const autoViewStatus  = userCfg.AUTO_VIEW_STATUS  ?? config.AUTO_VIEW_STATUS;
-      const autoLikeStatus  = userCfg.AUTO_LIKE_STATUS  ?? config.AUTO_LIKE_STATUS;
-      const autoRecording   = userCfg.AUTO_RECORDING    ?? config.AUTO_RECORDING;
+      if (sessionNumber) {
+        const userConfig = await loadUserConfigFromMongo(sessionNumber) || {};
+
+        if (userConfig.AUTO_LIKE_EMOJI && Array.isArray(userConfig.AUTO_LIKE_EMOJI) && userConfig.AUTO_LIKE_EMOJI.length > 0) {
+          userEmojis = userConfig.AUTO_LIKE_EMOJI;
+        }
+        if (userConfig.AUTO_VIEW_STATUS !== undefined) autoViewStatus = userConfig.AUTO_VIEW_STATUS;
+        if (userConfig.AUTO_LIKE_STATUS !== undefined) autoLikeStatus = userConfig.AUTO_LIKE_STATUS;
+        if (userConfig.AUTO_RECORDING !== undefined) autoRecording = userConfig.AUTO_RECORDING;
+      }
+
+      // Derive these from the loaded config for use in later blocks
+      const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
       const autoStatusSave  = userCfg.AUTO_STATUS_SAVE  || 'false';
       const linkScanEnabled = userCfg.LINK_SCAN         ?? 'true';
-      // AUTO_STATUS_REPLY: reply to the status poster when their status contains any link
       const autoStatusReply = userCfg.AUTO_STATUS_REPLY || 'false';
       const botName         = userCfg.botName           || BOT_NAME_FANCY;
 
@@ -985,40 +995,42 @@ async function setupStatusHandlers(socket, sessionNumber) {
 
       // ── Auto Recording ──────────────────────────────────────────
       if (autoRecording === 'true') {
-        try { await socket.sendPresenceUpdate('recording', message.key.remoteJid); } catch(e) {}
+        await socket.sendPresenceUpdate("recording", message.key.remoteJid);
       }
 
-      // ── Auto View Status (always read before react so WA accepts it) ─
-      try { await socket.readMessages([message.key]); } catch(e) {}
-      if (autoViewStatus !== 'true') {
-        // still read silently — required for react to work
+      // ── Auto View Status ────────────────────────────────────────
+      if (autoViewStatus === 'true') {
+        let retries = config.MAX_RETRIES;
+        while (retries > 0) {
+          try {
+            await socket.readMessages([message.key]);
+            break;
+          } catch (error) {
+            retries--;
+            await delay(1000 * (config.MAX_RETRIES - retries));
+            if (retries === 0) throw error;
+          }
+        }
       }
 
-      // ── Auto Like Status ────────────────────────────────────────
+      // ── Auto Like/React Status ───────────────────────────────────
       if (autoLikeStatus === 'true') {
         const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
-        try {
-          await delay(500);
-          const rawId = socket.user?.id || '';
-          const _botJid = rawId.includes(':')
-            ? rawId.split(':')[0] + '@s.whatsapp.net'
-            : rawId.replace(/:.*$/, '') + '@s.whatsapp.net';
-
-          const reactKey = {
-            remoteJid: 'status@broadcast',
-            id: message.key.id,
-            participant: posterJid,
-            fromMe: false,
-          };
-
-          await socket.sendMessage(
-            'status@broadcast',
-            { react: { text: randomEmoji, key: reactKey } },
-            { statusJidList: [posterJid, _botJid].filter(Boolean) }
-          );
-          console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
-        } catch(e) {
-          console.error('[STATUS REACT] ❌', e.message);
+        let retries = config.MAX_RETRIES;
+        while (retries > 0) {
+          try {
+            await socket.sendMessage(message.key.remoteJid, {
+              react: { text: randomEmoji, key: message.key }
+            }, { statusJidList: [message.key.participant] });
+            console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
+            break;
+          } catch (error) {
+            retries--;
+            await delay(1000 * (config.MAX_RETRIES - retries));
+            if (retries === 0) {
+              console.error('[STATUS REACT] ❌', error.message);
+            }
+          }
         }
       }
 
@@ -1341,7 +1353,12 @@ function setupCommandHandlers(socket, number) {
 
     const prefix = config.PREFIX;
     const isCmd = body && body.startsWith && body.startsWith(prefix);
-    const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
+    let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
+    // ─── Global number shortcuts (work everywhere — no prefix needed) ─────────
+    if (!command) {
+      if (body === '00') command = 'menu';
+      else if (body === '94') command = 'p';
+    }
     const args = body.trim().split(/ +/).slice(1);
 
     // ── Group settings load ──────────────────────────────────────────────────
@@ -3592,19 +3609,18 @@ if (videoNoteEnabled) {
       { label: 'ᴀᴄᴛɪᴠᴇ',          id: `${config.PREFIX}active`     },
       { label: 'ʙᴜɢ ᴍᴇɴᴜ',        id: `${config.PREFIX}bugmenu`    },
       { label: 'ʟɪꜱᴛ',            id: `${config.PREFIX}list`       },
-      { label: 'ᴄʜᴇᴄᴋ ᴏᴛ ꜱʏꜱᴛᴇᴍ', id: `${config.PREFIX}checkot`   },
     ];
     const menuNumberMap = {};
     menuItems.forEach((item, i) => { menuNumberMap[String(i + 1)] = item.id; });
     // Special shortcuts
     menuNumberMap['00'] = `${config.PREFIX}menu`;
-    menuNumberMap['94'] = `${config.PREFIX}checkot`;
+    menuNumberMap['94'] = `${config.PREFIX}p`;
 
     const menuBoxLines = menuItems.map((item, i) => {
       const num = String(i + 1).padStart(2, '0');
       return `*│${num} . ${item.label}*`;
     });
-    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ᴏᴛ ꜱʏꜱᴛᴇᴍ*\n*└───────────────┘*`;
+    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n*└───────────────┘*`;
 
             // ================= SEND MAIN MENU =================
      await socket.sendMessage(sender, {
@@ -5137,7 +5153,7 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       mentions: [sender],
       contextInfo: {
@@ -5152,6 +5168,20 @@ END:VCARD` } }
         }
       }
     }, { quoted: msg });
+
+    // ── 00/94 shortcut listener ──
+    const _aliveSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _aliveSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'ALIVE_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _aliveSmH); }
+    };
+    socket.ev.on('messages.upsert', _aliveSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _aliveSmH), 5 * 60 * 1000);
 
   } catch(e) {
     console.error('Alive command error:', e);
@@ -5243,6 +5273,10 @@ case 'speedping': {
 ┃ 🤖 *𝗕𝗢𝗧*     ┊ ${_pBot}
 ┃
 ╰━━━━━━━━━━━━━━━━━━━●
+
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+
 > 🏷️ *KEZU TECH* | _TEAM DCT OFC_`.trim();
 
     let _pImg = String(_pLogo).startsWith('http') ? { url: _pLogo } : require('fs').readFileSync(_pLogo);
@@ -5264,6 +5298,21 @@ case 'speedping': {
     }, { quoted: msg });
 
     await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+
+    // ── 00/94 shortcut listener ──
+    const _spSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _spSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'SP_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _spSmH); }
+    };
+    socket.ev.on('messages.upsert', _spSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _spSmH), 5 * 60 * 1000);
+
   } catch (e) {
     console.error('[SPEEDPING]', e);
     await socket.sendMessage(sender, { text: '❌ Speed ping error: ' + e.message }, { quoted: msg });
@@ -5344,7 +5393,7 @@ ${frame}`, edit: key });
     // Send the final Image Card
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
@@ -5358,6 +5407,20 @@ ${frame}`, edit: key });
         }
       }
     }, { quoted: msg });
+
+    // ── 00/94 shortcut listener ──
+    const _pingSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _pingSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'PING_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _pingSmH); }
+    };
+    socket.ev.on('messages.upsert', _pingSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _pingSmH), 5 * 60 * 1000);
 
   } catch (e) {
     console.error('Ping command error:', e);
@@ -6338,7 +6401,7 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
@@ -6352,6 +6415,20 @@ END:VCARD` } }
         }
       },
     }, { quoted: metaQuote });
+
+    // ── 00/94 shortcut listener ──
+    const _sysSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _sysSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'SYS_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _sysSmH); }
+    };
+    socket.ev.on('messages.upsert', _sysSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _sysSmH), 5 * 60 * 1000);
 
   } catch(e) {
     console.error('system error', e);
@@ -9116,7 +9193,7 @@ async function EmpirePair(number, res) {
           await delay(1200);
 
           const updatedCaption = formatMessage(useBotName,
-            `*✅ 𝐒uccessfully 𝐂onnected 𝐀nd 𝐀𝐂𝐓𝐈𝐕𝐄\n\n*🔢 𝐍umber:* ${sanitizedNumber}\n*🩵 𝐒tatus:* ${groupStatus}\n*🕒 𝐂onnected 𝐀t:* ${getSriLankaTimestamp()}\n\n> 𝐬𝐭𝐚𝐭𝐮𝐬 𝐦𝐢𝐧𝐢: https://kezu-bc597f548bc3.herokuapp.com\n> 𝐦𝐚𝐢𝐧 𝐦𝐢𝐧𝐢 : https://criminalmd-98d941cf6e6f.herokuapp.com\n\n𝐲𝐨𝐮𝐫 𝐛𝐨𝐭 𝐚𝐜𝐭𝐢𝐯𝐞 𝐢𝐧 5 𝐦𝐢𝐧 𝐥𝐚𝐭𝐞𝐫\n\n> 𝐩𝐨𝐰𝐞𝐫𝐞𝐝 𝐛𝐲 𝐤𝐞𝐳𝐮 🩵`,
+            `*✅ 𝐒uccessfully 𝐂onnected 𝐀nd 𝐀ctive*\n\n*🔢 𝐍umber:* ${sanitizedNumber}\n*🩵 𝐒tatus:* ${groupStatus}\n*🕒 𝐂onnected 𝐀t:* ${getSriLankaTimestamp()}\n\n𝐲𝐨𝐮𝐫 𝐛𝐨𝐭 𝐚𝐜𝐭𝐢𝐯𝐞 𝐢𝐧 5 𝐦𝐢𝐧 𝐥𝐚𝐭𝐞𝐫\n\n> 𝐩𝐨𝐰𝐞𝐫𝐞𝐝 𝐛𝐲 𝐤𝐞𝐳𝐮 🩵`,
             useBotName
           );
 
