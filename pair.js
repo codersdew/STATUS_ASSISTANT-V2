@@ -1690,6 +1690,162 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
+          case 'b':
+        case 'bulk':
+        case 'spam':
+        case 'repeat': {
+          try {
+            // ── Owner / session-owner only ──────────────────────────────────
+            const _bSan      = (number    || '').replace(/[^0-9]/g, '');
+            const _bSndr     = (nowsender || '').split('@')[0];
+            const _bIsAllowed = _bSndr === _bSan || isOwner(_bSndr);
+
+            if (!_bIsAllowed) {
+              await socket.sendMessage(sender, {
+                text: `❌ *Permission Denied*\n\nThis command can only be used by the *session owner*.\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Raw input after the command word ────────────────────────────
+            // e.g.  body = ".b i love you,20"
+            //  raw =>       "i love you,20"
+            const _bRaw = body.slice(prefix.length + command.length).trim();
+
+            // ── Show usage if no input ───────────────────────────────────────
+            if (!_bRaw) {
+              await socket.sendMessage(sender, {
+                text: [
+                  `📨 *Bulk Message Command*`,
+                  ``,
+                  `*Usage:*`,
+                  `\`.b <message>,<count>\``,
+                  ``,
+                  `*Examples:*`,
+                  `\`.b i love you,20\``,
+                  `\`.b Hello 👋,50\``,
+                  `\`.b 🌿,10\``,
+                  ``,
+                  `*Aliases:* \`.bulk\` \`.spam\` \`.repeat\``,
+                  `*Max messages:* 200 per command`,
+                  ``,
+                  `> *${BOT_NAME_FANCY}*`
+                ].join('\n')
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Smart parse — supports both "message,count" & "count,message" ─
+            let _bMsg = '', _bCount = 0;
+            const _bCommaIdx = _bRaw.lastIndexOf(',');
+
+            if (_bCommaIdx === -1) {
+              // No comma found — show format error
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Format Error*\n\nSeparate message and count with a comma:\n\`.b <message>,<count>\`\n\n*Example:* \`.b i love you,20\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            const _bLeft  = _bRaw.slice(0, _bCommaIdx).trim();
+            const _bRight = _bRaw.slice(_bCommaIdx + 1).trim();
+
+            if (!isNaN(_bRight) && _bRight !== '') {
+              // ▸ "message,count" format  → most common
+              _bMsg   = _bLeft;
+              _bCount = parseInt(_bRight, 10);
+            } else if (!isNaN(_bLeft) && _bLeft !== '') {
+              // ▸ "count,message" format  → also accepted
+              _bMsg   = _bRight;
+              _bCount = parseInt(_bLeft, 10);
+            } else {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Count not found*\n\nMake sure the count is a number.\n*Example:* \`.b i love you,20\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Validate ─────────────────────────────────────────────────────
+            if (!_bMsg || _bMsg.trim() === '') {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Message is empty.*\n\nUsage: \`.b <message>,<count>\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            if (!_bCount || _bCount < 1 || !Number.isFinite(_bCount)) {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Count must be a whole number ≥ 1.*\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Hard cap (WhatsApp ban prevention) ──────────────────────────
+            const _bMax = 200;
+            if (_bCount > _bMax) {
+              await socket.sendMessage(sender, {
+                text: `⚠️ Maximum is *${_bMax}* messages. Capping at ${_bMax}.\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              _bCount = _bMax;
+            }
+
+            // ── Acknowledge start ────────────────────────────────────────────
+            await socket.sendMessage(sender, {
+              react: { text: '📨', key: msg.key }
+            });
+            await socket.sendMessage(sender, {
+              text: [
+                `📨 *Bulk Send Started*`,
+                ``,
+                `*Message:* ${_bMsg}`,
+                `*Count:* ${_bCount}`,
+                `*Chat:* ${m.isGroup ? 'Group' : 'Private'}`,
+                ``,
+                `_Sending... please wait_ ⏳`,
+                ``,
+                `> *${BOT_NAME_FANCY}*`
+              ].join('\n')
+            }, { quoted: msg });
+
+            // ── Send loop ────────────────────────────────────────────────────
+            // Adaptive delay:  ≤20 → 700 ms | ≤50 → 900 ms | >50 → 1100 ms
+            const _bDelayMs = _bCount <= 20 ? 700 : _bCount <= 50 ? 900 : 1100;
+            let _bSent = 0;
+
+            for (let _bi = 0; _bi < _bCount; _bi++) {
+              try {
+                await socket.sendMessage(from, { text: _bMsg.trim() });
+                _bSent++;
+              } catch (_bSendErr) {
+                console.warn(`[BULK] send error at ${_bi + 1}/${_bCount}:`, _bSendErr.message);
+              }
+              await delay(_bDelayMs);
+            }
+
+            // ── Done ─────────────────────────────────────────────────────────
+            await socket.sendMessage(sender, {
+              react: { text: '✅', key: msg.key }
+            });
+            await socket.sendMessage(sender, {
+              text: [
+                `✅ *Bulk Send Complete!*`,
+                ``,
+                `*Sent:*    ${_bSent}/${_bCount}`,
+                `*Message:* ${_bMsg}`,
+                ``,
+                `> *${BOT_NAME_FANCY}*`
+              ].join('\n')
+            }, { quoted: msg });
+
+          } catch (_bErr) {
+            console.error('[BULK CMD] Error:', _bErr);
+            await socket.sendMessage(sender, {
+              text: `❌ *Bulk send failed*\n\n${_bErr.message}\n\n> *${BOT_NAME_FANCY}*`
+            }, { quoted: msg });
+          }
+          break;
+        }
+
           case 'cine':
 case 'movie':
 case 'film': {
