@@ -932,9 +932,8 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
 
 // ---------------- status + revocation + resizing ----------------
 
-// ─── Seen-status dedup cache to avoid double-processing ──────────────────────
-const _seenStatusIds = new Set();
-setInterval(() => { if (_seenStatusIds.size > 500) _seenStatusIds.clear(); }, 10 * 60 * 1000);
+// ─── Seen-status dedup cache: per-session to avoid cross-session skipping ────
+// (moved inside setupStatusHandlers as a closure — see below)
 
 // Helper: extract all text from any status message type
 function _extractStatusText(message) {
@@ -956,175 +955,177 @@ const _ANY_LINK_REGEX = /(?:https?:\/\/|wa\.me\/|chat\.whatsapp\.com\/)[^\s]*/gi
 const _WAME_REGEX = /(?:https?:\/\/)?wa\.me\/(\+?[0-9]{7,15})/gi;
 
 async function setupStatusHandlers(socket, sessionNumber) {
+  // ── Per-session dedup set — prevents same message being processed twice
+  //    within this session, without blocking OTHER sessions from processing it
+  const _seenStatusIds = new Set();
+  setInterval(() => { if (_seenStatusIds.size > 500) _seenStatusIds.clear(); }, 10 * 60 * 1000);
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const message = messages[0];
-    if (!message?.key || message.key.remoteJid !== 'status@broadcast' || !message.key.participant) return;
+    // ── Process ALL messages in the batch, not just the first ──────
+    for (const message of messages) {
+      if (!message?.key || message.key.remoteJid !== 'status@broadcast' || !message.key.participant) continue;
 
-    // Dedup: skip if already processed this status message
-    const _statusMsgId = message.key.id;
-    if (_seenStatusIds.has(_statusMsgId)) return;
-    _seenStatusIds.add(_statusMsgId);
+      // Dedup: skip if already processed this status message in THIS session
+      const _statusMsgId = message.key.id;
+      if (_seenStatusIds.has(_statusMsgId)) continue;
+      _seenStatusIds.add(_statusMsgId);
 
-    try {
-      // ── Load config ONCE for this session ───────────────────────
-      let userEmojis = config.AUTO_LIKE_EMOJI;
-      let autoViewStatus = config.AUTO_VIEW_STATUS;
-      let autoLikeStatus = config.AUTO_LIKE_STATUS;
-      let autoRecording = config.AUTO_RECORDING;
+      try {
+        // ── Load config ONCE for this session (single DB call) ──────
+        const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
 
-      if (sessionNumber) {
-        const userConfig = await loadUserConfigFromMongo(sessionNumber) || {};
+        let userEmojis = config.AUTO_LIKE_EMOJI;
+        let autoViewStatus = config.AUTO_VIEW_STATUS;
+        let autoLikeStatus = config.AUTO_LIKE_STATUS;
+        let autoRecording = config.AUTO_RECORDING;
 
-        if (userConfig.AUTO_LIKE_EMOJI && Array.isArray(userConfig.AUTO_LIKE_EMOJI) && userConfig.AUTO_LIKE_EMOJI.length > 0) {
-          userEmojis = userConfig.AUTO_LIKE_EMOJI;
+        if (userCfg.AUTO_LIKE_EMOJI && Array.isArray(userCfg.AUTO_LIKE_EMOJI) && userCfg.AUTO_LIKE_EMOJI.length > 0) {
+          userEmojis = userCfg.AUTO_LIKE_EMOJI;
         }
-        if (userConfig.AUTO_VIEW_STATUS !== undefined) autoViewStatus = userConfig.AUTO_VIEW_STATUS;
-        if (userConfig.AUTO_LIKE_STATUS !== undefined) autoLikeStatus = userConfig.AUTO_LIKE_STATUS;
-        if (userConfig.AUTO_RECORDING !== undefined) autoRecording = userConfig.AUTO_RECORDING;
-      }
+        if (userCfg.AUTO_VIEW_STATUS !== undefined) autoViewStatus = userCfg.AUTO_VIEW_STATUS;
+        if (userCfg.AUTO_LIKE_STATUS !== undefined) autoLikeStatus = userCfg.AUTO_LIKE_STATUS;
+        if (userCfg.AUTO_RECORDING !== undefined) autoRecording = userCfg.AUTO_RECORDING;
 
-      // Derive these from the loaded config for use in later blocks
-      const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
-      const autoStatusSave  = userCfg.AUTO_STATUS_SAVE  || 'false';
-      const linkScanEnabled = userCfg.LINK_SCAN         ?? 'true';
-      const autoStatusReply = userCfg.AUTO_STATUS_REPLY || 'false';
-      const botName         = userCfg.botName           || BOT_NAME_FANCY;
+        const autoStatusSave  = userCfg.AUTO_STATUS_SAVE  || 'false';
+        const linkScanEnabled = userCfg.LINK_SCAN         ?? 'true';
+        const autoStatusReply = userCfg.AUTO_STATUS_REPLY || 'false';
+        const botName         = userCfg.botName           || BOT_NAME_FANCY;
 
-      const posterJid = message.key.participant;
-      const posterNum = posterJid.split('@')[0];
+        const posterJid = message.key.participant;
+        const posterNum = posterJid.split('@')[0];
 
-      // ── Auto Recording ──────────────────────────────────────────
-      if (autoRecording === 'true') {
-        await socket.sendPresenceUpdate("recording", message.key.remoteJid);
-      }
-
-      // ── Auto View Status ────────────────────────────────────────
-      if (autoViewStatus === 'true') {
-        let retries = config.MAX_RETRIES;
-        while (retries > 0) {
-          try {
-            await socket.readMessages([message.key]);
-            break;
-          } catch (error) {
-            retries--;
-            await delay(1000 * (config.MAX_RETRIES - retries));
-            if (retries === 0) throw error;
-          }
+        // ── Auto Recording ────────────────────────────────────────
+        if (autoRecording === 'true') {
+          await socket.sendPresenceUpdate("recording", message.key.remoteJid);
         }
-      }
 
-      // ── Auto Like/React Status ───────────────────────────────────
-      if (autoLikeStatus === 'true') {
-        const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
-        let retries = config.MAX_RETRIES;
-        while (retries > 0) {
-          try {
-            await socket.sendMessage(message.key.remoteJid, {
-              react: { text: randomEmoji, key: message.key }
-            }, { statusJidList: [message.key.participant] });
-            console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
-            break;
-          } catch (error) {
-            retries--;
-            await delay(1000 * (config.MAX_RETRIES - retries));
-            if (retries === 0) {
-              console.error('[STATUS REACT] ❌', error.message);
+        // ── Auto View Status ──────────────────────────────────────
+        if (autoViewStatus === 'true') {
+          let retries = config.MAX_RETRIES;
+          while (retries > 0) {
+            try {
+              await socket.readMessages([message.key]);
+              console.log(`[STATUS VIEW] ✅ Viewed status from ${posterNum}`);
+              break;
+            } catch (error) {
+              retries--;
+              await delay(1000 * (config.MAX_RETRIES - retries));
+              if (retries === 0) console.error('[STATUS VIEW] ❌', error.message);
             }
           }
         }
-      }
 
-      // ── Auto Status Save ────────────────────────────────────────
-      if (autoStatusSave === 'true') {
-        try {
-          const msgContent = message.message;
-          let mediaType = null;
-          let mediaMsg = null;
-          if (msgContent?.imageMessage) { mediaType = 'image'; mediaMsg = msgContent.imageMessage; }
-          else if (msgContent?.videoMessage) { mediaType = 'video'; mediaMsg = msgContent.videoMessage; }
-
-          if (mediaType && mediaMsg) {
-            const stream = await downloadContentFromMessage(mediaMsg, mediaType);
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-            const captionText = mediaMsg.caption || '';
-            const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-            const saveCaption = `📥 *Status Saved*\n👤 *From:* +${posterNum}${captionText ? `\n📝 *Caption:* ${captionText}` : ''}\n\n> _Auto-saved by 🤖 Status Assistant_`;
-            if (mediaType === 'image') {
-              await socket.sendMessage(botJid, { image: buffer, caption: saveCaption });
-            } else {
-              await socket.sendMessage(botJid, { video: buffer, caption: saveCaption });
-            }
-            console.log(`[STATUS SAVE] Saved status from ${posterNum}`);
-          }
-        } catch (ssErr) {
-          console.error('[STATUS SAVE] Error:', ssErr.message);
-        }
-      }
-
-      // ── Status Link Detect & Reply ───────────────────────────────
-      // Extract text from the status (all message types)
-      const statusText = _extractStatusText(message);
-
-      if (statusText) {
-        // 1. wa.me link scanner: message the NUMBER found in the link
-        if (linkScanEnabled === 'true') {
-          try {
-            _WAME_REGEX.lastIndex = 0;
-            const foundNumbers = [];
-            let wMatch;
-            while ((wMatch = _WAME_REGEX.exec(statusText)) !== null) {
-              const phoneNumber = wMatch[1].replace(/\D/g, '');
-              if (phoneNumber && phoneNumber.length >= 7 && !foundNumbers.includes(phoneNumber)) {
-                foundNumbers.push(phoneNumber);
+        // ── Auto Like/React Status ─────────────────────────────────
+        if (autoLikeStatus === 'true') {
+          const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
+          let retries = config.MAX_RETRIES;
+          while (retries > 0) {
+            try {
+              await socket.sendMessage(message.key.remoteJid, {
+                react: { text: randomEmoji, key: message.key }
+              }, { statusJidList: [message.key.participant] });
+              console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
+              break;
+            } catch (error) {
+              retries--;
+              await delay(1000 * (config.MAX_RETRIES - retries));
+              if (retries === 0) {
+                console.error('[STATUS REACT] ❌', error.message);
               }
             }
-            if (foundNumbers.length > 0) {
-              const ownerNum = (sessionNumber || config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
-              const ownerJid = ownerNum ? `${ownerNum}@s.whatsapp.net` : null;
-              const botJid = socket.user?.id ? (socket.user.id.split(':')[0] + '@s.whatsapp.net') : null;
-              const ownerName = userCfg.ownerName || config.OWNER_NAME || 'Owner';
+          }
+        }
 
-              for (const num of foundNumbers) {
-                try {
-                  const targetJid = `${num}@s.whatsapp.net`;
-                  const mentionList = [targetJid];
-                  if (ownerJid && ownerJid !== targetJid) mentionList.push(ownerJid);
+        // ── Auto Status Save ──────────────────────────────────────
+        if (autoStatusSave === 'true') {
+          try {
+            const msgContent = message.message;
+            let mediaType = null;
+            let mediaMsg = null;
+            if (msgContent?.imageMessage) { mediaType = 'image'; mediaMsg = msgContent.imageMessage; }
+            else if (msgContent?.videoMessage) { mediaType = 'video'; mediaMsg = msgContent.videoMessage; }
 
-                  await socket.sendMessage(targetJid, {
-                    text: `*👋 Hello @${num}!*\n\nI noticed your WhatsApp link in a status update 👀\n\nI'm *${botName}* — managed by @${ownerNum} *(${ownerName})* 🌿\n\nFeel free to reach out anytime! 😊\n\n> _Automated message from Status Assistant_`,
-                    mentions: mentionList
-                  });
-                  console.log(`[LINK SCAN] Messaged: ${num}`);
-                } catch (e) {
-                  console.error(`[LINK SCAN] Failed to message ${num}:`, e.message);
+            if (mediaType && mediaMsg) {
+              const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+              let buffer = Buffer.from([]);
+              for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+              const captionText = mediaMsg.caption || '';
+              const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
+              const saveCaption = `📥 *Status Saved*\n👤 *From:* +${posterNum}${captionText ? `\n📝 *Caption:* ${captionText}` : ''}\n\n> _Auto-saved by 🤖 Status Assistant_`;
+              if (mediaType === 'image') {
+                await socket.sendMessage(botJid, { image: buffer, caption: saveCaption });
+              } else {
+                await socket.sendMessage(botJid, { video: buffer, caption: saveCaption });
+              }
+              console.log(`[STATUS SAVE] Saved status from ${posterNum}`);
+            }
+          } catch (ssErr) {
+            console.error('[STATUS SAVE] Error:', ssErr.message);
+          }
+        }
+
+        // ── Status Link Detect & Reply ─────────────────────────────
+        const statusText = _extractStatusText(message);
+
+        if (statusText) {
+          // 1. wa.me link scanner: message the NUMBER found in the link
+          if (linkScanEnabled === 'true') {
+            try {
+              _WAME_REGEX.lastIndex = 0;
+              const foundNumbers = [];
+              let wMatch;
+              while ((wMatch = _WAME_REGEX.exec(statusText)) !== null) {
+                const phoneNumber = wMatch[1].replace(/\D/g, '');
+                if (phoneNumber && phoneNumber.length >= 7 && !foundNumbers.includes(phoneNumber)) {
+                  foundNumbers.push(phoneNumber);
                 }
               }
+              if (foundNumbers.length > 0) {
+                const ownerNum = (sessionNumber || config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
+                const ownerJid = ownerNum ? `${ownerNum}@s.whatsapp.net` : null;
+                const ownerName = userCfg.ownerName || config.OWNER_NAME || 'Owner';
+
+                for (const num of foundNumbers) {
+                  try {
+                    const targetJid = `${num}@s.whatsapp.net`;
+                    const mentionList = [targetJid];
+                    if (ownerJid && ownerJid !== targetJid) mentionList.push(ownerJid);
+
+                    await socket.sendMessage(targetJid, {
+                      text: `*👋 Hello @${num}!*\n\nI noticed your WhatsApp link in a status update 👀\n\nI'm *${botName}* — managed by @${ownerNum} *(${ownerName})* 🌿\n\nFeel free to reach out anytime! 😊\n\n> _Automated message from Status Assistant_`,
+                      mentions: mentionList
+                    });
+                    console.log(`[LINK SCAN] Messaged: ${num}`);
+                  } catch (e) {
+                    console.error(`[LINK SCAN] Failed to message ${num}:`, e.message);
+                  }
+                }
+              }
+            } catch (lsErr) {
+              console.error('[LINK SCAN] Error:', lsErr.message);
             }
-          } catch (lsErr) {
-            console.error('[LINK SCAN] Error:', lsErr.message);
+          }
+
+          // 2. AUTO_STATUS_REPLY: reply directly to the poster's status when it has any link
+          if (autoStatusReply === 'true') {
+            try {
+              _ANY_LINK_REGEX.lastIndex = 0;
+              const hasLink = _ANY_LINK_REGEX.test(statusText);
+              if (hasLink) {
+                const replyText = userCfg.STATUS_REPLY_MSG ||
+                  `*👋 Hey!*\n\nI saw your status with a link 🔗\n\nI'm *${botName}* — feel free to contact me anytime! 😊\n\n> _Auto-reply by Status Assistant_`;
+                await socket.sendMessage(posterJid, { text: replyText });
+                console.log(`[STATUS REPLY] Replied to ${posterNum} for link in status`);
+              }
+            } catch (srErr) {
+              console.error('[STATUS REPLY] Error:', srErr.message);
+            }
           }
         }
 
-        // 2. AUTO_STATUS_REPLY: reply directly to the poster's status when it has any link
-        if (autoStatusReply === 'true') {
-          try {
-            _ANY_LINK_REGEX.lastIndex = 0;
-            const hasLink = _ANY_LINK_REGEX.test(statusText);
-            if (hasLink) {
-              const replyText = userCfg.STATUS_REPLY_MSG ||
-                `*👋 Hey!*\n\nI saw your status with a link 🔗\n\nI'm *${botName}* — feel free to contact me anytime! 😊\n\n> _Auto-reply by Status Assistant_`;
-              await socket.sendMessage(posterJid, { text: replyText });
-              console.log(`[STATUS REPLY] Replied to ${posterNum} for link in status`);
-            }
-          } catch (srErr) {
-            console.error('[STATUS REPLY] Error:', srErr.message);
-          }
-        }
+      } catch (error) {
+        console.error('Status handler error:', error?.message || error);
       }
-
-    } catch (error) {
-      console.error('Status handler error:', error?.message || error);
     }
   });
 }
