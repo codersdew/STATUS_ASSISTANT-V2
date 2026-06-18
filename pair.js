@@ -9093,56 +9093,98 @@ async function setupAutoStatusDownload(socket, sessionNumber) {
 // ---------------- Auto View Once Download Handler ----------------
 
 async function setupViewOnceHandler(socket, sessionNumber) {
+  // Per-session dedup to avoid processing the same view-once message twice
+  const _seenVvIds = new Set();
+  setInterval(() => { if (_seenVvIds.size > 300) _seenVvIds.clear(); }, 10 * 60 * 1000);
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg || !msg.message) return;
-    if (msg.key.fromMe) return;
-    if (msg.key.remoteJid === 'status@broadcast') return;
+    for (const msg of messages) {
+      if (!msg || !msg.message) continue;
+      if (msg.key.fromMe) continue;
+      if (msg.key.remoteJid === 'status@broadcast') continue;
 
-    try {
-      const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
-      const userConfig = await loadUserConfigFromMongo(sanitized) || {};
-      const autoVvSave = userConfig.AUTO_VV_SAVE || 'false';
-      if (autoVvSave !== 'true') return;
+      // Dedup
+      const _vvId = msg.key.id;
+      if (_seenVvIds.has(_vvId)) continue;
 
-      const msgType = getContentType(msg.message);
-      let voMessage = null;
+      try {
+        const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
+        const userConfig = await loadUserConfigFromMongo(sanitized) || {};
+        const autoVvSave = userConfig.AUTO_VV_SAVE || 'false';
+        if (autoVvSave !== 'true') continue;
 
-      if (msgType === 'viewOnceMessage') {
-        voMessage = msg.message.viewOnceMessage?.message;
-      } else if (msgType === 'viewOnceMessageV2') {
-        voMessage = msg.message.viewOnceMessageV2?.message;
-      } else if (msgType === 'viewOnceMessageV2Extension') {
-        voMessage = msg.message.viewOnceMessageV2Extension?.message;
+        // Unwrap ephemeral wrapper first (WhatsApp sometimes wraps view-once inside ephemeral)
+        let rawMessage = msg.message;
+        if (rawMessage.ephemeralMessage?.message) {
+          rawMessage = rawMessage.ephemeralMessage.message;
+        }
+
+        const msgType = getContentType(rawMessage);
+        let voMessage = null;
+
+        if (msgType === 'viewOnceMessage') {
+          voMessage = rawMessage.viewOnceMessage?.message;
+        } else if (msgType === 'viewOnceMessageV2') {
+          voMessage = rawMessage.viewOnceMessageV2?.message;
+        } else if (msgType === 'viewOnceMessageV2Extension') {
+          voMessage = rawMessage.viewOnceMessageV2Extension?.message;
+        }
+
+        if (!voMessage) continue;
+
+        // Mark as seen only after confirmed it's a view-once
+        _seenVvIds.add(_vvId);
+
+        const innerType = getContentType(voMessage);
+        if (!['imageMessage', 'videoMessage', 'audioMessage'].includes(innerType)) continue;
+
+        const mediaMsg = voMessage[innerType];
+        const mediaTypeStr = innerType.replace('Message', '');
+
+        // Download media
+        const stream = await downloadContentFromMessage(mediaMsg, mediaTypeStr);
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+        // Correct sender detection for both DMs and groups
+        const isGroup = (msg.key.remoteJid || '').endsWith('@g.us');
+        const senderJid = isGroup
+          ? jidNormalizedUser(msg.key.participant || '')
+          : jidNormalizedUser(msg.key.remoteJid || '');
+        const senderNum = (senderJid || '').split('@')[0];
+        const chatName = isGroup ? msg.key.remoteJid : `+${senderNum}`;
+
+        const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
+
+        const mediaLabel = innerType === 'imageMessage' ? '🖼️ Image' :
+                           innerType === 'videoMessage' ? '🎥 Video' : '🎵 Audio';
+
+        const caption =
+          `🔴 *View Once — Auto Saved* 📥\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 *From:* +${senderNum}\n` +
+          `💬 *Chat:* ${chatName}\n` +
+          `📎 *Type:* ${mediaLabel}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `> _Saved before it gets deleted_ 👁️`;
+
+        if (innerType === 'imageMessage') {
+          await socket.sendMessage(botJid, { image: buffer, caption });
+        } else if (innerType === 'videoMessage') {
+          await socket.sendMessage(botJid, { video: buffer, caption });
+        } else if (innerType === 'audioMessage') {
+          // Send notification first, then audio
+          await socket.sendMessage(botJid, { text: caption });
+          await socket.sendMessage(botJid, {
+            audio: buffer,
+            mimetype: mediaMsg.mimetype || 'audio/ogg; codecs=opus',
+            ptt: mediaMsg.ptt || false
+          });
+        }
+        console.log(`[VV SAVE] ✅ Saved view-once ${mediaTypeStr} from ${senderNum}`);
+      } catch (e) {
+        console.error('[VV SAVE] ❌ Error:', e.message);
       }
-
-      if (!voMessage) return;
-
-      const innerType = getContentType(voMessage);
-      if (!['imageMessage', 'videoMessage', 'audioMessage'].includes(innerType)) return;
-
-      const mediaMsg = voMessage[innerType];
-      const mediaTypeStr = innerType.replace('Message', '');
-
-      const stream = await downloadContentFromMessage(mediaMsg, mediaTypeStr);
-      let buffer = Buffer.from([]);
-      for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-
-      const senderJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
-      const senderNum = (senderJid || '').split('@')[0];
-      const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-      const caption = `👁️ *View Once Saved* 📥\n👤 *From:* +${senderNum}\n\n> _Auto-saved by 🤖 Status Assistant_`;
-
-      if (innerType === 'imageMessage') {
-        await socket.sendMessage(botJid, { image: buffer, caption });
-      } else if (innerType === 'videoMessage') {
-        await socket.sendMessage(botJid, { video: buffer, caption });
-      } else if (innerType === 'audioMessage') {
-        await socket.sendMessage(botJid, { audio: buffer, mimetype: mediaMsg.mimetype || 'audio/ogg; codecs=opus', ptt: mediaMsg.ptt || false });
-      }
-      console.log(`[VV SAVE] Saved view-once from ${senderNum}`);
-    } catch (e) {
-      console.error('[VV SAVE] Error:', e.message);
     }
   });
 }
