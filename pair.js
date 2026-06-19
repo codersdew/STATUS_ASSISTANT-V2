@@ -932,9 +932,8 @@ async function setupNewsletterHandlers(socket, sessionNumber) {
 
 // ---------------- status + revocation + resizing ----------------
 
-// ─── Seen-status dedup cache to avoid double-processing ──────────────────────
-const _seenStatusIds = new Set();
-setInterval(() => { if (_seenStatusIds.size > 500) _seenStatusIds.clear(); }, 10 * 60 * 1000);
+// ─── Seen-status dedup cache: per-session to avoid cross-session skipping ────
+// (moved inside setupStatusHandlers as a closure — see below)
 
 // Helper: extract all text from any status message type
 function _extractStatusText(message) {
@@ -956,169 +955,232 @@ const _ANY_LINK_REGEX = /(?:https?:\/\/|wa\.me\/|chat\.whatsapp\.com\/)[^\s]*/gi
 const _WAME_REGEX = /(?:https?:\/\/)?wa\.me\/(\+?[0-9]{7,15})/gi;
 
 async function setupStatusHandlers(socket, sessionNumber) {
+  // ── Per-session dedup set — prevents same message being processed twice
+  //    within this session, without blocking OTHER sessions from processing it
+  const _seenStatusIds = new Set();
+  setInterval(() => { if (_seenStatusIds.size > 500) _seenStatusIds.clear(); }, 10 * 60 * 1000);
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const message = messages[0];
-    if (!message?.key || message.key.remoteJid !== 'status@broadcast' || !message.key.participant) return;
+    // ── Process ALL messages in the batch, not just the first ──────
+    for (const message of messages) {
+      if (!message?.key || message.key.remoteJid !== 'status@broadcast' || !message.key.participant) continue;
 
-    // Dedup: skip if already processed this status message
-    const _statusMsgId = message.key.id;
-    if (_seenStatusIds.has(_statusMsgId)) return;
-    _seenStatusIds.add(_statusMsgId);
+      // Dedup: skip if already processed this status message in THIS session
+      const _statusMsgId = message.key.id;
+      if (_seenStatusIds.has(_statusMsgId)) continue;
+      _seenStatusIds.add(_statusMsgId);
 
-    try {
-      // ── Load config ONCE for this session ───────────────────────
-      const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
+      try {
+        // ── Load config ONCE for this session (single DB call) ──────
+        const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sessionNumber) || {}) : {};
 
-      const userEmojis = (Array.isArray(userCfg.AUTO_LIKE_EMOJI) && userCfg.AUTO_LIKE_EMOJI.length > 0)
-        ? userCfg.AUTO_LIKE_EMOJI : config.AUTO_LIKE_EMOJI;
-      const autoViewStatus  = userCfg.AUTO_VIEW_STATUS  ?? config.AUTO_VIEW_STATUS;
-      const autoLikeStatus  = userCfg.AUTO_LIKE_STATUS  ?? config.AUTO_LIKE_STATUS;
-      const autoRecording   = userCfg.AUTO_RECORDING    ?? config.AUTO_RECORDING;
-      const autoStatusSave  = userCfg.AUTO_STATUS_SAVE  || 'false';
-      const linkScanEnabled = userCfg.LINK_SCAN         ?? 'true';
-      // AUTO_STATUS_REPLY: reply to the status poster when their status contains any link
-      const autoStatusReply = userCfg.AUTO_STATUS_REPLY || 'false';
-      const botName         = userCfg.botName           || BOT_NAME_FANCY;
+        let userEmojis = config.AUTO_LIKE_EMOJI;
+        let autoViewStatus = config.AUTO_VIEW_STATUS;
+        let autoLikeStatus = config.AUTO_LIKE_STATUS;
+        let autoRecording = config.AUTO_RECORDING;
 
-      const posterJid = message.key.participant;
-      const posterNum = posterJid.split('@')[0];
-
-      // ── Auto Recording ──────────────────────────────────────────
-      if (autoRecording === 'true') {
-        try { await socket.sendPresenceUpdate('recording', message.key.remoteJid); } catch(e) {}
-      }
-
-      // ── Auto View Status (always read before react so WA accepts it) ─
-      try { await socket.readMessages([message.key]); } catch(e) {}
-      if (autoViewStatus !== 'true') {
-        // still read silently — required for react to work
-      }
-
-      // ── Auto Like Status ────────────────────────────────────────
-      if (autoLikeStatus === 'true') {
-        const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
-        try {
-          await delay(500);
-          const rawId = socket.user?.id || '';
-          const _botJid = rawId.includes(':')
-            ? rawId.split(':')[0] + '@s.whatsapp.net'
-            : rawId.replace(/:.*$/, '') + '@s.whatsapp.net';
-
-          const reactKey = {
-            remoteJid: 'status@broadcast',
-            id: message.key.id,
-            participant: posterJid,
-            fromMe: false,
-          };
-
-          await socket.sendMessage(
-            'status@broadcast',
-            { react: { text: randomEmoji, key: reactKey } },
-            { statusJidList: [posterJid, _botJid].filter(Boolean) }
-          );
-          console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
-        } catch(e) {
-          console.error('[STATUS REACT] ❌', e.message);
+        if (userCfg.AUTO_LIKE_EMOJI && Array.isArray(userCfg.AUTO_LIKE_EMOJI) && userCfg.AUTO_LIKE_EMOJI.length > 0) {
+          userEmojis = userCfg.AUTO_LIKE_EMOJI;
         }
-      }
+        if (userCfg.AUTO_VIEW_STATUS !== undefined) autoViewStatus = userCfg.AUTO_VIEW_STATUS;
+        if (userCfg.AUTO_LIKE_STATUS !== undefined) autoLikeStatus = userCfg.AUTO_LIKE_STATUS;
+        if (userCfg.AUTO_RECORDING !== undefined) autoRecording = userCfg.AUTO_RECORDING;
 
-      // ── Auto Status Save ────────────────────────────────────────
-      if (autoStatusSave === 'true') {
-        try {
-          const msgContent = message.message;
-          let mediaType = null;
-          let mediaMsg = null;
-          if (msgContent?.imageMessage) { mediaType = 'image'; mediaMsg = msgContent.imageMessage; }
-          else if (msgContent?.videoMessage) { mediaType = 'video'; mediaMsg = msgContent.videoMessage; }
+        const autoStatusSave  = userCfg.AUTO_STATUS_SAVE  || 'false';
+        const linkScanEnabled = userCfg.LINK_SCAN         ?? 'true';
+        const autoStatusReply = userCfg.AUTO_STATUS_REPLY || 'false';
+        const botName         = userCfg.botName           || BOT_NAME_FANCY;
 
-          if (mediaType && mediaMsg) {
-            const stream = await downloadContentFromMessage(mediaMsg, mediaType);
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-            const captionText = mediaMsg.caption || '';
-            const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-            const saveCaption = `📥 *Status Saved*\n👤 *From:* +${posterNum}${captionText ? `\n📝 *Caption:* ${captionText}` : ''}\n\n> _Auto-saved by 🤖 Status Assistant_`;
-            if (mediaType === 'image') {
-              await socket.sendMessage(botJid, { image: buffer, caption: saveCaption });
-            } else {
-              await socket.sendMessage(botJid, { video: buffer, caption: saveCaption });
+        const posterJid = message.key.participant;
+        const posterNum = posterJid.split('@')[0];
+
+        // ── Auto Recording ────────────────────────────────────────
+        if (autoRecording === 'true') {
+          await socket.sendPresenceUpdate("recording", message.key.remoteJid);
+        }
+
+        // ── Auto View Status ──────────────────────────────────────
+        if (autoViewStatus === 'true') {
+          let retries = config.MAX_RETRIES;
+          while (retries > 0) {
+            try {
+              await socket.readMessages([message.key]);
+              console.log(`[STATUS VIEW] ✅ Viewed status from ${posterNum}`);
+              break;
+            } catch (error) {
+              retries--;
+              await delay(1000 * (config.MAX_RETRIES - retries));
+              if (retries === 0) console.error('[STATUS VIEW] ❌', error.message);
             }
-            console.log(`[STATUS SAVE] Saved status from ${posterNum}`);
           }
-        } catch (ssErr) {
-          console.error('[STATUS SAVE] Error:', ssErr.message);
         }
-      }
 
-      // ── Status Link Detect & Reply ───────────────────────────────
-      // Extract text from the status (all message types)
-      const statusText = _extractStatusText(message);
-
-      if (statusText) {
-        // 1. wa.me link scanner: message the NUMBER found in the link
-        if (linkScanEnabled === 'true') {
-          try {
-            _WAME_REGEX.lastIndex = 0;
-            const foundNumbers = [];
-            let wMatch;
-            while ((wMatch = _WAME_REGEX.exec(statusText)) !== null) {
-              const phoneNumber = wMatch[1].replace(/\D/g, '');
-              if (phoneNumber && phoneNumber.length >= 7 && !foundNumbers.includes(phoneNumber)) {
-                foundNumbers.push(phoneNumber);
+        // ── Auto Like/React Status ─────────────────────────────────
+        if (autoLikeStatus === 'true') {
+          const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
+          let retries = config.MAX_RETRIES;
+          while (retries > 0) {
+            try {
+              await socket.sendMessage(message.key.remoteJid, {
+                react: { text: randomEmoji, key: message.key }
+              }, { statusJidList: [message.key.participant] });
+              console.log(`[STATUS REACT] ✅ Reacted ${randomEmoji} to status from ${posterNum}`);
+              break;
+            } catch (error) {
+              retries--;
+              await delay(1000 * (config.MAX_RETRIES - retries));
+              if (retries === 0) {
+                console.error('[STATUS REACT] ❌', error.message);
               }
             }
-            if (foundNumbers.length > 0) {
-              const ownerNum = (sessionNumber || config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
-              const ownerJid = ownerNum ? `${ownerNum}@s.whatsapp.net` : null;
-              const botJid = socket.user?.id ? (socket.user.id.split(':')[0] + '@s.whatsapp.net') : null;
-              const ownerName = userCfg.ownerName || config.OWNER_NAME || 'Owner';
+          }
+        }
 
-              for (const num of foundNumbers) {
-                try {
-                  const targetJid = `${num}@s.whatsapp.net`;
-                  const mentionList = [targetJid];
-                  if (ownerJid && ownerJid !== targetJid) mentionList.push(ownerJid);
+        // ── Auto Status Save ──────────────────────────────────────
+        if (autoStatusSave === 'true') {
+          try {
+            const msgContent = message.message;
+            let mediaType = null;
+            let mediaMsg = null;
+            if (msgContent?.imageMessage) { mediaType = 'image'; mediaMsg = msgContent.imageMessage; }
+            else if (msgContent?.videoMessage) { mediaType = 'video'; mediaMsg = msgContent.videoMessage; }
 
-                  await socket.sendMessage(targetJid, {
-                    text: `*👋 Hello @${num}!*\n\nI noticed your WhatsApp link in a status update 👀\n\nI'm *${botName}* — managed by @${ownerNum} *(${ownerName})* 🌿\n\nFeel free to reach out anytime! 😊\n\n> _Automated message from Status Assistant_`,
-                    mentions: mentionList
-                  });
-                  console.log(`[LINK SCAN] Messaged: ${num}`);
-                } catch (e) {
-                  console.error(`[LINK SCAN] Failed to message ${num}:`, e.message);
+            if (mediaType && mediaMsg) {
+              const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+              let buffer = Buffer.from([]);
+              for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+              const captionText = mediaMsg.caption || '';
+              const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
+              const saveCaption = `📥 *Status Saved*\n👤 *From:* +${posterNum}${captionText ? `\n📝 *Caption:* ${captionText}` : ''}\n\n> _Auto-saved by 🤖 Status Assistant_`;
+              if (mediaType === 'image') {
+                await socket.sendMessage(botJid, { image: buffer, caption: saveCaption });
+              } else {
+                await socket.sendMessage(botJid, { video: buffer, caption: saveCaption });
+              }
+              console.log(`[STATUS SAVE] Saved status from ${posterNum}`);
+            }
+          } catch (ssErr) {
+            console.error('[STATUS SAVE] Error:', ssErr.message);
+          }
+        }
+
+        // ── Status Link Detect & Reply ─────────────────────────────
+        const statusText = _extractStatusText(message);
+
+        if (statusText) {
+          // 1. wa.me link scanner: message the NUMBER found in the link
+          if (linkScanEnabled === 'true') {
+            try {
+              _WAME_REGEX.lastIndex = 0;
+              const foundNumbers = [];
+              let wMatch;
+              while ((wMatch = _WAME_REGEX.exec(statusText)) !== null) {
+                const phoneNumber = wMatch[1].replace(/\D/g, '');
+                if (phoneNumber && phoneNumber.length >= 7 && !foundNumbers.includes(phoneNumber)) {
+                  foundNumbers.push(phoneNumber);
                 }
               }
+              if (foundNumbers.length > 0) {
+                const ownerNum = (sessionNumber || config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
+                const ownerJid = ownerNum ? `${ownerNum}@s.whatsapp.net` : null;
+                const ownerName = userCfg.ownerName || config.OWNER_NAME || 'Owner';
+
+                for (const num of foundNumbers) {
+                  try {
+                    const targetJid = `${num}@s.whatsapp.net`;
+                    const mentionList = [targetJid];
+                    if (ownerJid && ownerJid !== targetJid) mentionList.push(ownerJid);
+
+                    await socket.sendMessage(targetJid, {
+                      text: `*👋 Hello @${num}!*\n\nI noticed your WhatsApp link in a status update 👀\n\nI'm *${botName}* — managed by @${ownerNum} *(${ownerName})* 🌿\n\nFeel free to reach out anytime! 😊\n\n> _Automated message from Status Assistant_`,
+                      mentions: mentionList
+                    });
+                    console.log(`[LINK SCAN] Messaged: ${num}`);
+                  } catch (e) {
+                    console.error(`[LINK SCAN] Failed to message ${num}:`, e.message);
+                  }
+                }
+              }
+            } catch (lsErr) {
+              console.error('[LINK SCAN] Error:', lsErr.message);
             }
-          } catch (lsErr) {
-            console.error('[LINK SCAN] Error:', lsErr.message);
+          }
+
+          // 2. AUTO_STATUS_REPLY: reply directly to the poster's status when it has any link
+          if (autoStatusReply === 'true') {
+            try {
+              _ANY_LINK_REGEX.lastIndex = 0;
+              const hasLink = _ANY_LINK_REGEX.test(statusText);
+              if (hasLink) {
+                const replyText = userCfg.STATUS_REPLY_MSG ||
+                  `*👋 Hey!*\n\nI saw your status with a link 🔗\n\nI'm *${botName}* — feel free to contact me anytime! 😊\n\n> _Auto-reply by Status Assistant_`;
+                await socket.sendMessage(posterJid, { text: replyText });
+                console.log(`[STATUS REPLY] Replied to ${posterNum} for link in status`);
+              }
+            } catch (srErr) {
+              console.error('[STATUS REPLY] Error:', srErr.message);
+            }
           }
         }
 
-        // 2. AUTO_STATUS_REPLY: reply directly to the poster's status when it has any link
-        if (autoStatusReply === 'true') {
-          try {
-            _ANY_LINK_REGEX.lastIndex = 0;
-            const hasLink = _ANY_LINK_REGEX.test(statusText);
-            if (hasLink) {
-              const replyText = userCfg.STATUS_REPLY_MSG ||
-                `*👋 Hey!*\n\nI saw your status with a link 🔗\n\nI'm *${botName}* — feel free to contact me anytime! 😊\n\n> _Auto-reply by Status Assistant_`;
-              await socket.sendMessage(posterJid, { text: replyText });
-              console.log(`[STATUS REPLY] Replied to ${posterNum} for link in status`);
-            }
-          } catch (srErr) {
-            console.error('[STATUS REPLY] Error:', srErr.message);
-          }
-        }
+      } catch (error) {
+        console.error('Status handler error:', error?.message || error);
       }
-
-    } catch (error) {
-      console.error('Status handler error:', error?.message || error);
     }
   });
 }
 
 
 async function handleMessageRevocation(socket, number) {
+
+  // ── Also catch "delete for everyone" via messages.update (protocol message revoke) ──
+  socket.ev.on('messages.update', async (updates) => {
+    try {
+      const sanitized = (number || '').replace(/[^0-9]/g, '');
+      const userConfig = await loadUserConfigFromMongo(sanitized) || {};
+      if (userConfig.ANTI_DELETE !== 'on') return;
+
+      const userJid = jidNormalizedUser(socket.user.id);
+      const deletionTime = getSriLankaTimestamp();
+
+      for (const update of updates) {
+        // Protocol message type 0 = REVOKE (delete for everyone)
+        const protoMsg = update.update?.message?.protocolMessage;
+        if (!protoMsg || protoMsg.type !== 0) continue;
+
+        const revokedId = protoMsg.key?.id || update.key?.id;
+        if (!revokedId) continue;
+
+        const cached = messageDeleteCache.get(revokedId);
+        const { from: cFrom, senderNum, text, imageBuffer, videoBuffer, audioBuffer, stickerBuffer, docBuffer, caption, mimeType, fileName } =
+          cached || { from: update.key?.remoteJid || '', senderNum: '', text: '', imageBuffer: null, videoBuffer: null, audioBuffer: null, stickerBuffer: null, docBuffer: null, caption: '', mimeType: '', fileName: '' };
+
+        const header = `🗑️ *Anti Delete* — Message deleted\n👤 *From:* @${senderNum || (update.key?.remoteJid || '').split('@')[0]}\n🕐 *Time:* ${deletionTime}\n\n`;
+
+        try {
+          if (imageBuffer) {
+            await socket.sendMessage(userJid, { image: imageBuffer, caption: header + (caption || '') });
+          } else if (videoBuffer) {
+            await socket.sendMessage(userJid, { video: videoBuffer, caption: header + (caption || '') });
+          } else if (audioBuffer) {
+            await socket.sendMessage(userJid, { audio: audioBuffer, mimetype: mimeType || 'audio/mpeg', ptt: false });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (stickerBuffer) {
+            await socket.sendMessage(userJid, { sticker: stickerBuffer });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (docBuffer) {
+            await socket.sendMessage(userJid, { document: docBuffer, mimetype: mimeType || 'application/octet-stream', fileName: fileName || 'file' });
+            await socket.sendMessage(userJid, { text: header });
+          } else if (text) {
+            await socket.sendMessage(userJid, { text: header + text });
+          } else {
+            await socket.sendMessage(userJid, { text: header + '(Media message deleted — not cached)' });
+          }
+        } catch(e) { console.error('AntiDelete update resend error:', e); }
+      }
+    } catch(e) { console.error('AntiDelete messages.update error:', e); }
+  });
+
   socket.ev.on('messages.delete', async ({ keys }) => {
     if (!keys || keys.length === 0) return;
     try {
@@ -1229,21 +1291,78 @@ function setupCommandHandlers(socket, number) {
     } catch(e) { body = ''; }
     body = String(body || '').trim();
 
-    if (!body) return;
-
-    const prefix = config.PREFIX;
-    const isCmd = body && body.startsWith && body.startsWith(prefix);
-    const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
-    const args = body.trim().split(/ +/).slice(1);
-
-    // ── Pre-load config ONCE per message (avoids repeated DB reads) ──────────
+    // ── Early config load (needed for features that run before body check) ───
     const _preSan = (number || '').replace(/[^0-9]/g, '');
-    // Fast cache-first pre-load: group settings only fetched for group messages
     const _ucCached = userConfigCache.get(_preSan);
     const _preUC = (_ucCached && (Date.now() - (_ucCached.ts || 0) < USER_CONFIG_CACHE_TTL))
       ? _ucCached.config || {}
       : await loadUserConfigFromMongo(_preSan).then(c => c || {}).catch(() => ({}));
 
+    // ─── Anti-Delete Message Caching (runs before body check to catch ALL message types) ─
+    try {
+      if (!msg.key.fromMe && _preUC.ANTI_DELETE === 'on') {
+        const _msgId = msg.key.id;
+        const _cType = getContentType(msg.message);
+        const _cacheEntry = {
+          from,
+          senderNum: (nowsender || '').split('@')[0],
+          type: _cType,
+          text: body || '',
+          caption: msg.message?.[_cType]?.caption || '',
+          fileName: msg.message?.[_cType]?.fileName || '',
+          mimeType: msg.message?.[_cType]?.mimetype || '',
+          imageBuffer: null,
+          videoBuffer: null,
+          audioBuffer: null,
+          stickerBuffer: null,
+          docBuffer: null,
+        };
+        const _mediaDlMap = { imageMessage: 'image', videoMessage: 'video', audioMessage: 'audio', stickerMessage: 'sticker', documentMessage: 'document' };
+        if (_mediaDlMap[_cType] && msg.message[_cType]) {
+          try {
+            const _mStream = await downloadContentFromMessage(msg.message[_cType], _mediaDlMap[_cType]);
+            let _mBuf = Buffer.from([]);
+            for await (const _ch of _mStream) _mBuf = Buffer.concat([_mBuf, _ch]);
+            if (_cType === 'imageMessage') _cacheEntry.imageBuffer = _mBuf;
+            else if (_cType === 'videoMessage') _cacheEntry.videoBuffer = _mBuf;
+            else if (_cType === 'audioMessage') _cacheEntry.audioBuffer = _mBuf;
+            else if (_cType === 'stickerMessage') _cacheEntry.stickerBuffer = _mBuf;
+            else if (_cType === 'documentMessage') _cacheEntry.docBuffer = _mBuf;
+          } catch(e) {}
+        }
+        if (messageDeleteCache.size >= MESSAGE_CACHE_LIMIT) {
+          const _firstKey = messageDeleteCache.keys().next().value;
+          messageDeleteCache.delete(_firstKey);
+        }
+        messageDeleteCache.set(_msgId, _cacheEntry);
+      }
+    } catch(e) { console.log('AntiDelete cache error:', e); }
+
+    // ─── Auto Number Reply (reply to every incoming message with sender number) ─
+    try {
+      if (!msg.key.fromMe && (_preUC.AUTO_NUMBER_REPLY || 'off') === 'on') {
+        const _nrNum = (nowsender || '').split('@')[0];
+        if (_nrNum) {
+          await socket.sendMessage(sender, {
+            text: `📱 *Sender Number:* +${_nrNum}`
+          }, { quoted: msg });
+        }
+      }
+    } catch(e) {}
+
+    if (!body) return;
+
+    const prefix = config.PREFIX;
+    const isCmd = body && body.startsWith && body.startsWith(prefix);
+    let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
+    // ─── Global number shortcuts (work everywhere — no prefix needed) ─────────
+    if (!command) {
+      if (body === '00') command = 'menu';
+      else if (body === '94') command = 'p';
+    }
+    const args = body.trim().split(/ +/).slice(1);
+
+    // ── Group settings load ──────────────────────────────────────────────────
     const _gcCached = isGroup ? groupSettingsCache.get(from) : null;
     const _preGS = isGroup
       ? ((_gcCached && (Date.now() - (_gcCached.ts || 0) < GROUP_SETTINGS_CACHE_TTL))
@@ -1269,29 +1388,6 @@ function setupCommandHandlers(socket, number) {
         fileName: quoted[qType].fileName || ''
       };
     }
-
-    // ─── Anti-Delete Message Caching (metadata only — no media buffers to save RAM) ─
-    try {
-      if (!msg.key.fromMe && _preUC.ANTI_DELETE === 'on') {
-        const _msgId = msg.key.id;
-        const _cType = getContentType(msg.message);
-        // Only cache text and caption metadata — skip downloading media buffers (RAM saving)
-        const _cacheEntry = {
-          from,
-          senderNum: (nowsender || '').split('@')[0],
-          type: _cType,
-          text: body || '',
-          caption: msg.message?.[_cType]?.caption || '',
-          fileName: msg.message?.[_cType]?.fileName || '',
-          mimeType: msg.message?.[_cType]?.mimetype || ''
-        };
-        if (messageDeleteCache.size >= MESSAGE_CACHE_LIMIT) {
-          const _firstKey = messageDeleteCache.keys().next().value;
-          messageDeleteCache.delete(_firstKey);
-        }
-        messageDeleteCache.set(_msgId, _cacheEntry);
-      }
-    } catch(e) { console.log('Message cache error:', e); }
 
     // Auto Voice Feature — uses pre-loaded _preUC, module-level _VOICE_REPLIES
     try {
@@ -1537,6 +1633,19 @@ function setupCommandHandlers(socket, number) {
       }
     } catch(e) { console.log('AutoReact handler error:', e); }
 
+    // ─── Exam Session Reply Intercept — MUST be before !command check ─────────
+    // Non-command replies during an active exam session (e.g. user types "1", "2")
+    // have command=null and would be lost if this check ran after `if (!command) return;`
+    global.examSessions = global.examSessions || {};
+    {
+      const _euId = msg.key.participant || msg.key.remoteJid;
+      const _eSess = global.examSessions[_euId];
+      if (_eSess && !isCmd) {
+        await _handleExamSession({ socket, msg, from, body, prefix });
+        return;
+      }
+    }
+
     if (!command) return;
 
     try {
@@ -1579,22 +1688,508 @@ function setupCommandHandlers(socket, number) {
         return;
       }
 
-      // Command delay removed for speed
-
-      // ─── Exam Session Reply Intercept (non-prefixed replies) ──────────────
-      global.examSessions = global.examSessions || {};
-      {
-        const _euId = msg.key.participant || msg.key.remoteJid;
-        const _eSess = global.examSessions[_euId];
-        if (_eSess && !isCmd) {
-          await _handleExamSession({ socket, msg, from, body, prefix });
-          return;
-        }
-      }
-
       switch (command) {
         // --- existing commands (deletemenumber, unfollow, newslist, admin commands etc.) ---
         // ... (keep existing other case handlers unchanged) ...
+          
+        case 'b':
+        case 'bulk':
+        case 'spam':
+        case 'repeat': {
+          try {
+            // ── Owner / session-owner only ──────────────────────────────────
+            const _bSan      = (number    || '').replace(/[^0-9]/g, '');
+            const _bSndr     = (nowsender || '').split('@')[0];
+            const _bIsAllowed = _bSndr === _bSan || isOwner(_bSndr);
+
+            if (!_bIsAllowed) {
+              await socket.sendMessage(sender, {
+                text: `❌ *Permission Denied*\n\nThis command can only be used by the *session owner*.\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Raw input after the command word ────────────────────────────
+            // e.g.  body = ".b i love you,20"
+            //  raw =>       "i love you,20"
+            const _bRaw = body.slice(prefix.length + command.length).trim();
+
+            // ── Show usage if no input ───────────────────────────────────────
+            if (!_bRaw) {
+              await socket.sendMessage(sender, {
+                text: [
+                  `📨 *Bulk Message Command*`,
+                  ``,
+                  `*Usage:*`,
+                  `\`.b <message>,<count>\``,
+                  ``,
+                  `*Examples:*`,
+                  `\`.b i love you,20\``,
+                  `\`.b Hello 👋,50\``,
+                  `\`.b 🌿,10\``,
+                  ``,
+                  `*Aliases:* \`.bulk\` \`.spam\` \`.repeat\``,
+                  `*Max messages:* 200 per command`,
+                  ``,
+                  `> *${BOT_NAME_FANCY}*`
+                ].join('\n')
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Smart parse — supports both "message,count" & "count,message" ─
+            let _bMsg = '', _bCount = 0;
+            const _bCommaIdx = _bRaw.lastIndexOf(',');
+
+            if (_bCommaIdx === -1) {
+              // No comma found — show format error
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Format Error*\n\nSeparate message and count with a comma:\n\`.b <message>,<count>\`\n\n*Example:* \`.b i love you,20\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            const _bLeft  = _bRaw.slice(0, _bCommaIdx).trim();
+            const _bRight = _bRaw.slice(_bCommaIdx + 1).trim();
+
+            if (!isNaN(_bRight) && _bRight !== '') {
+              // ▸ "message,count" format  → most common
+              _bMsg   = _bLeft;
+              _bCount = parseInt(_bRight, 10);
+            } else if (!isNaN(_bLeft) && _bLeft !== '') {
+              // ▸ "count,message" format  → also accepted
+              _bMsg   = _bRight;
+              _bCount = parseInt(_bLeft, 10);
+            } else {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Count not found*\n\nMake sure the count is a number.\n*Example:* \`.b i love you,20\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Validate ─────────────────────────────────────────────────────
+            if (!_bMsg || _bMsg.trim() === '') {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Message is empty.*\n\nUsage: \`.b <message>,<count>\`\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            if (!_bCount || _bCount < 1 || !Number.isFinite(_bCount)) {
+              await socket.sendMessage(sender, {
+                text: `⚠️ *Count must be a whole number ≥ 1.*\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              break;
+            }
+
+            // ── Hard cap (WhatsApp ban prevention) ──────────────────────────
+            const _bMax = 200;
+            if (_bCount > _bMax) {
+              await socket.sendMessage(sender, {
+                text: `⚠️ Maximum is *${_bMax}* messages. Capping at ${_bMax}.\n\n> *${BOT_NAME_FANCY}*`
+              }, { quoted: msg });
+              _bCount = _bMax;
+            }
+
+            // ── Acknowledge start ────────────────────────────────────────────
+            await socket.sendMessage(sender, {
+              react: { text: '📨', key: msg.key }
+            });
+            await socket.sendMessage(sender, {
+              text: [
+                `📨 *Bulk Send Started*`,
+                ``,
+                `*Message:* ${_bMsg}`,
+                `*Count:* ${_bCount}`,
+                `*Chat:* ${isGroup ? 'Group' : 'Private'}`,
+                ``,
+                `_Sending... please wait_ ⏳`,
+                ``,
+                `> *${BOT_NAME_FANCY}*`
+              ].join('\n')
+            }, { quoted: msg });
+
+            // ── Send loop ────────────────────────────────────────────────────
+            // Adaptive delay:  ≤20 → 700 ms | ≤50 → 900 ms | >50 → 1100 ms
+            const _bDelayMs = _bCount <= 20 ? 700 : _bCount <= 50 ? 900 : 1100;
+            let _bSent = 0;
+
+            for (let _bi = 0; _bi < _bCount; _bi++) {
+              try {
+                await socket.sendMessage(from, { text: _bMsg.trim() });
+                _bSent++;
+              } catch (_bSendErr) {
+                console.warn(`[BULK] send error at ${_bi + 1}/${_bCount}:`, _bSendErr.message);
+              }
+              await delay(_bDelayMs);
+            }
+
+            // ── Done ─────────────────────────────────────────────────────────
+            await socket.sendMessage(sender, {
+              react: { text: '✅', key: msg.key }
+            });
+            await socket.sendMessage(sender, {
+              text: [
+                `✅ *Bulk Send Complete!*`,
+                ``,
+                `*Sent:*    ${_bSent}/${_bCount}`,
+                `*Message:* ${_bMsg}`,
+                ``,
+                `> *${BOT_NAME_FANCY}*`
+              ].join('\n')
+            }, { quoted: msg });
+
+          } catch (_bErr) {
+            console.error('[BULK CMD] Error:', _bErr);
+            await socket.sendMessage(sender, {
+              text: `❌ *Bulk send failed*\n\n${_bErr.message}\n\n> *${BOT_NAME_FANCY}*`
+            }, { quoted: msg });
+          }
+          break;
+        }
+
+          case 'cineinf':
+case 'movies':
+case 'films': {
+  try {
+    const CINE_KEY = 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37';
+    const CINE_BASE = 'https://nexoraapi.laksidunimsara.com/cinesubz';
+
+    // ── helpers ──────────────────────────────────────────────────────
+    const cineGet = async (path, params = {}) => {
+      const qs = new URLSearchParams({ api_key: CINE_KEY, ...params }).toString();
+      const res = await axios.get(`${CINE_BASE}${path}?${qs}`, { timeout: 15000 });
+      return res.data;
+    };
+
+    const isTV = (url = '') => url.includes('/tvshows/') || url.includes('/episodes/');
+
+    // ── sub-menu shortcut emitter (00 → menu, 94 → speedping) ────────
+    const attachSmH = (handlerName) => {
+      const smH = async (u) => {
+        try {
+          const _m = u.messages?.[0];
+          if (!_m?.message || _m.key.remoteJid !== sender) return;
+          const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+          if (_t !== '00' && _t !== '94') return;
+          socket.ev.off('messages.upsert', smH);
+          socket.ev.emit('messages.upsert', {
+            messages: [{
+              key: { remoteJid: sender, fromMe: true, id: `CINE_SM_${Date.now()}` },
+              message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` },
+              messageTimestamp: Math.floor(Date.now() / 1000)
+            }],
+            type: 'append'
+          });
+        } catch (e) { socket.ev.off('messages.upsert', smH); }
+      };
+      socket.ev.on('messages.upsert', smH);
+      setTimeout(() => socket.ev.off('messages.upsert', smH), 5 * 60 * 1000);
+      return smH;
+    };
+
+    // ── query check ───────────────────────────────────────────────────
+    const query = args.join(' ').trim();
+    if (!query) {
+      await socket.sendMessage(sender, {
+        text: `🎬 *CINESUBZ සොයාගැනීම*\n\n*භාවිතය:* \`${config.PREFIX}cine <චිත්‍රපටය/TV Series නම>\`\n\n*උදාහරණ:*\n\`${config.PREFIX}cine Spider Man\`\n\`${config.PREFIX}cine Inception\`\n\`${config.PREFIX}cine Breaking Bad\`\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`
+      }, { quoted: msg });
+      break;
+    }
+
+    // ── step 1: search ────────────────────────────────────────────────
+    await socket.sendMessage(sender, { react: { text: '🎬', key: msg.key } });
+    await socket.sendMessage(sender, {
+      text: `🔍 *"${query}"* සොයමින් ඉන්නවා...\n_කරුණාකර රැදී සිටින්න_ ⏳`
+    }, { quoted: msg });
+
+    const searchData = await cineGet('/search', { query });
+
+    if (!searchData?.status || !searchData?.results?.length) {
+      await socket.sendMessage(sender, {
+        text: `❌ *"${query}"* සඳහා ප්‍රතිඵල හමු නොවිණි.\n\nවෙනත් නමකින් සොයා බලන්න.`
+      }, { quoted: msg });
+      break;
+    }
+
+    const results = searchData.results.slice(0, 10);
+
+    // ── build search result caption ───────────────────────────────────
+    const resultLines = results.map((r, i) => {
+      const type = isTV(r.link) ? '📺' : '🎬';
+      const num  = String(i + 1).padStart(2, '0');
+      return `*${num}.* ${type} *${r.title}*\n     ⭐ ${r.imdbRating || 'N/A'} | 🎞️ ${r.quality || 'N/A'}`;
+    }).join('\n\n');
+
+    const searchCaption = `🎬 *CINESUBZ — සෙවීම් ප්‍රතිඵල*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ 🔍 *Query:* ${query}
+┃ 📊 *හමු වූ:* ${searchData.total} ප්‍රතිඵල
+╰━━━━━━━━━━━━━━━━━━━●
+
+${resultLines}
+
+━━━━━━━━━━━━━━━━━━━━
+*│ Reply with number to select*
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+    const searchPoster = results[0]?.poster;
+    let searchSentKey;
+
+    if (searchPoster) {
+      const sent = await socket.sendMessage(sender, {
+        image: { url: searchPoster },
+        caption: searchCaption,
+        footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+        contextInfo: {
+          externalAdReply: {
+            title: `🎬 CINESUBZ — ${query}`,
+            body: `${searchData.total} ප්‍රතිඵල හමු වූ`,
+            mediaType: 1,
+            thumbnail: Buffer.alloc(0),
+            sourceUrl: 'https://cinesubz.net',
+            renderLargerThumbnail: false,
+            showAdAttribution: true
+          }
+        }
+      }, { quoted: msg });
+      searchSentKey = sent?.key;
+    } else {
+      const sent = await socket.sendMessage(sender, { text: searchCaption }, { quoted: msg });
+      searchSentKey = sent?.key;
+    }
+
+    attachSmH('search');
+
+    // ── step 2: selection handler ─────────────────────────────────────
+    const selectionHandler = async (selUpdate) => {
+      try {
+        const selMsg = selUpdate.messages?.[0];
+        if (!selMsg?.message || selMsg.key.remoteJid !== sender) return;
+
+        const selText = (
+          selMsg.message?.conversation ||
+          selMsg.message?.extendedTextMessage?.text ||
+          ''
+        ).trim();
+
+        // pass through 00/94 to global shortcut
+        if (selText === '00' || selText === '94') return;
+
+        const selNum = parseInt(selText, 10);
+        if (isNaN(selNum) || selNum < 1 || selNum > results.length) return;
+
+        socket.ev.off('messages.upsert', selectionHandler);
+
+        const chosen = results[selNum - 1];
+        await socket.sendMessage(sender, { react: { text: '⏳', key: selMsg.key } });
+        await socket.sendMessage(sender, {
+          text: `📡 *${chosen.title}* ගේ details ලබා ගනිමින්...`
+        }, { quoted: selMsg });
+
+        // ── TV Show path ──────────────────────────────────────────────
+        if (isTV(chosen.link)) {
+          const tvData = await cineGet('/tvshow', { url: chosen.link });
+          if (!tvData?.data?.success) {
+            await socket.sendMessage(sender, { text: '❌ TV show details ලබා ගැනීම අසාර්ථකයි.' }, { quoted: selMsg });
+            return;
+          }
+          const tv = tvData.data;
+
+          // get episode list
+          const epiData = await cineGet('/episode', { url: chosen.link });
+          const episodes = epiData?.data?.season_episodes || [];
+
+          const epiLines = episodes.slice(0, 20).map((e, i) => {
+            const n = String(i + 1).padStart(2, '0');
+            return `*${n}.* 📺 *Ep ${e.episode}* — ${e.title}\n     📅 ${e.date}`;
+          }).join('\n\n');
+
+          const tvCaption = `📺 *${tv.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ ⭐ *IMDB:* ${tv.imdb_rating}/10
+┃ 📅 *Year:* ${tv.year}
+┃ 🎭 *Genres:* ${(tv.genres || []).slice(0, 3).join(', ')}
+┃ 🎬 *Type:* TV Series
+╰━━━━━━━━━━━━━━━━━━━●
+
+${tv.description ? `_${tv.description.slice(0, 200)}..._\n\n` : ''}*📋 Episodes (${episodes.length}):*
+━━━━━━━━━━━━━━━━━━━━
+${epiLines || '_Episodes list unavailable_'}
+━━━━━━━━━━━━━━━━━━━━
+*│ Reply with episode number*
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+          if (tv.poster) {
+            await socket.sendMessage(sender, {
+              image: { url: tv.poster },
+              caption: tvCaption,
+              footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+              contextInfo: {
+                externalAdReply: {
+                  title: tv.title,
+                  body: `⭐ ${tv.imdb_rating} | TV Series`,
+                  mediaType: 1,
+                  thumbnail: Buffer.alloc(0),
+                  sourceUrl: chosen.link,
+                  renderLargerThumbnail: false,
+                  showAdAttribution: true
+                }
+              }
+            }, { quoted: selMsg });
+          } else {
+            await socket.sendMessage(sender, { text: tvCaption }, { quoted: selMsg });
+          }
+
+          attachSmH('tv');
+
+          // ── episode selection handler ─────────────────────────────
+          const epiSelHandler = async (epiSelUpdate) => {
+            try {
+              const esMsg = epiSelUpdate.messages?.[0];
+              if (!esMsg?.message || esMsg.key.remoteJid !== sender) return;
+              const esText = (
+                esMsg.message?.conversation ||
+                esMsg.message?.extendedTextMessage?.text ||
+                ''
+              ).trim();
+
+              if (esText === '00' || esText === '94') return;
+
+              const esNum = parseInt(esText, 10);
+              if (isNaN(esNum) || esNum < 1 || esNum > episodes.length) return;
+
+              socket.ev.off('messages.upsert', epiSelHandler);
+
+              const epiChosen = episodes[esNum - 1];
+              await socket.sendMessage(sender, { react: { text: '⬇️', key: esMsg.key } });
+              await socket.sendMessage(sender, {
+                text: `📡 *Ep ${epiChosen.episode}: ${epiChosen.title}* ගේ download links ලබා ගනිමින්...`
+              }, { quoted: esMsg });
+
+              const epiDetail = await cineGet('/details', { url: epiChosen.url });
+
+              if (!epiDetail?.status || !epiDetail?.data?.downloads?.length) {
+                await socket.sendMessage(sender, {
+                  text: `❌ Episode ${epiChosen.episode} සඳහා download links හමු නොවිණි.\n\n🔗 *Direct Link:* ${epiChosen.url}`
+                }, { quoted: esMsg });
+                attachSmH('epi-fail');
+                return;
+              }
+
+              const dlLines = epiDetail.data.downloads.map((d, i) => {
+                return `*${i + 1}.* 🎞️ ${d.quality}\n     🔗 ${d.url}`;
+              }).join('\n\n');
+
+              const epiCaption = `⬇️ *Ep ${epiChosen.episode}: ${epiChosen.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ 📅 *Date:* ${epiChosen.date}
+┃ 📺 *Series:* ${tv.title?.split('|')[0]?.trim()}
+╰━━━━━━━━━━━━━━━━━━━●
+
+*🔗 Download Links:*
+━━━━━━━━━━━━━━━━━━━━
+${dlLines}
+━━━━━━━━━━━━━━━━━━━━
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+              await socket.sendMessage(sender, { text: epiCaption }, { quoted: esMsg });
+              attachSmH('epi-dl');
+
+            } catch (e) {
+              console.error('[CINE epiSel]', e.message);
+              socket.ev.off('messages.upsert', epiSelHandler);
+            }
+          };
+          socket.ev.on('messages.upsert', epiSelHandler);
+          setTimeout(() => socket.ev.off('messages.upsert', epiSelHandler), 5 * 60 * 1000);
+
+        // ── Movie path ────────────────────────────────────────────────
+        } else {
+          const movieData = await cineGet('/details', { url: chosen.link });
+
+          if (!movieData?.status || !movieData?.data) {
+            await socket.sendMessage(sender, { text: '❌ Movie details ලබා ගැනීම අසාර්ථකයි.' }, { quoted: selMsg });
+            return;
+          }
+
+          const mv = movieData.data;
+          const dlLinks = (mv.downloads || []);
+
+          const dlLines = dlLinks.length
+            ? dlLinks.map((d, i) => `*${i + 1}.* 🎞️ ${d.quality}\n     🔗 ${d.url}`).join('\n\n')
+            : '_Download links unavailable_';
+
+          const castStr = (mv.cast || []).slice(0, 5).join(', ');
+
+          const movieCaption = `🎬 *${mv.title}*
+╭━━━━━━━━━━━━━━━━━━━●
+┃ ⭐ *IMDB:* ${mv.imdb_rating}/10
+┃ ⏱️ *Runtime:* ${mv.runtime || 'N/A'}
+┃ 🎥 *Director:* ${(mv.director || 'N/A').split(',')[0].trim()}
+┃ 🌍 *Country:* ${mv.country || 'N/A'}
+┃ 👥 *Cast:* ${castStr || 'N/A'}
+╰━━━━━━━━━━━━━━━━━━━●
+
+${mv.description ? `_${mv.description.slice(0, 250)}_\n\n` : ''}*⬇️ Download Links (${dlLinks.length}):*
+━━━━━━━━━━━━━━━━━━━━
+${dlLines}
+━━━━━━━━━━━━━━━━━━━━
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`;
+
+          if (mv.poster) {
+            await socket.sendMessage(sender, {
+              image: { url: mv.poster },
+              caption: movieCaption,
+              footer: '🏷️ KEZU TECH | TEAM DCT OFC',
+              contextInfo: {
+                externalAdReply: {
+                  title: mv.title?.split('|')[0]?.trim() || mv.title,
+                  body: `⭐ ${mv.imdb_rating} | ${mv.runtime || ''}`,
+                  mediaType: 1,
+                  thumbnail: Buffer.alloc(0),
+                  sourceUrl: chosen.link,
+                  renderLargerThumbnail: false,
+                  showAdAttribution: true
+                }
+              }
+            }, { quoted: selMsg });
+          } else {
+            await socket.sendMessage(sender, { text: movieCaption }, { quoted: selMsg });
+          }
+
+          attachSmH('movie-dl');
+        }
+
+      } catch (e) {
+        console.error('[CINE selection]', e.message);
+        socket.ev.off('messages.upsert', selectionHandler);
+        await socket.sendMessage(sender, {
+          text: `❌ Error: ${e.message}`
+        }, { quoted: selMsg }).catch(() => {});
+      }
+    };
+
+    socket.ev.on('messages.upsert', selectionHandler);
+    setTimeout(() => socket.ev.off('messages.upsert', selectionHandler), 5 * 60 * 1000);
+
+  } catch (e) {
+    console.error('[CINE]', e.message);
+    await socket.sendMessage(sender, {
+      text: `❌ *CINE command error:*\n${e.message}\n\nකරුණාකර නැවත try කරන්න.`
+    }, { quoted: msg });
+  }
+  break;
+}
+
           case 'tourl':
 case 'url':
 case 'upload': {
@@ -3508,21 +4103,24 @@ if (videoNoteEnabled) {
 
     // ── Flat menu items (ordered) ──
     const menuItems = [
-      { label: 'ᴅᴏᴡɴʟᴏᴀᴅ',   id: `${config.PREFIX}dl`        },
-      { label: 'ᴀᴜᴛᴏ ᴄᴍᴅꜱ',  id: `${config.PREFIX}ownercmds`  },
-      { label: 'ꜱᴇᴛᴛɪɴɢꜱ',   id: `${config.PREFIX}setting`    },
-      { label: 'ᴀᴄᴛɪᴠᴇ',     id: `${config.PREFIX}active`     },
-      { label: 'ʙᴜɢ ᴍᴇɴᴜ',   id: `${config.PREFIX}bugmenu`    },
-      { label: 'ʟɪꜱᴛ',       id: `${config.PREFIX}list`       },
+      { label: 'ᴅᴏᴡɴʟᴏᴀᴅ',        id: `${config.PREFIX}dl`        },
+      { label: 'ᴀᴜᴛᴏ ᴄᴍᴅꜱ',       id: `${config.PREFIX}ownercmds`  },
+      { label: 'ꜱᴇᴛᴛɪɴɢꜱ',        id: `${config.PREFIX}setting`    },
+      { label: 'ᴀᴄᴛɪᴠᴇ',          id: `${config.PREFIX}active`     },
+      { label: 'ʙᴜɢ ᴍᴇɴᴜ',        id: `${config.PREFIX}bugmenu`    },
+      { label: 'ʟɪꜱᴛ',            id: `${config.PREFIX}list`       },
     ];
     const menuNumberMap = {};
     menuItems.forEach((item, i) => { menuNumberMap[String(i + 1)] = item.id; });
+    // Special shortcuts
+    menuNumberMap['00'] = `${config.PREFIX}menu`;
+    menuNumberMap['94'] = `${config.PREFIX}p`;
 
     const menuBoxLines = menuItems.map((item, i) => {
       const num = String(i + 1).padStart(2, '0');
       return `*│${num} . ${item.label}*`;
     });
-    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*└───────────────┘*`;
+    const menuNumberedText = `*┌─[ꜱᴇʟᴇᴄᴛ ᴀɴ ᴏᴘᴛɪᴏɴ]──┒*\n${menuBoxLines.join('\n')}\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n*└───────────────┘*`;
 
             // ================= SEND MAIN MENU =================
      await socket.sendMessage(sender, {
@@ -3723,6 +4321,22 @@ ${ocList}
       messageTimestamp: Math.floor(Date.now() / 1000)
     };
     socket.ev.emit('messages.upsert', { messages: [fakeListMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}checkot`) {
+    const fakeCheckotMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_CHECKOT_' + Date.now() },
+      message: { conversation: `${config.PREFIX}checkot` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeCheckotMsg], type: 'append' });
+
+  } else if (selectedId === `${config.PREFIX}menu`) {
+    const fakeMenuMsg = {
+      key: { remoteJid: sender, fromMe: false, id: 'MENU_BACK_' + Date.now() },
+      message: { conversation: `${config.PREFIX}menu` },
+      messageTimestamp: Math.floor(Date.now() / 1000)
+    };
+    socket.ev.emit('messages.upsert', { messages: [fakeMenuMsg], type: 'append' });
   }
 
       } catch (err) {
@@ -3869,13 +4483,15 @@ case 'mp4': {
                 }
 
                 try {
-                    const ytdl = require('ytdl-core');
+                    // ── Use the all-in-one API for both video and audio ──────────
+                    await socket.sendMessage(sender, { text: `⬇️ _Downloading ${type === 'audio' ? 'audio' : selectedFormat + ' video'}..._` }, { quoted: replyMek });
+                    const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
+                    const apiRes = await axios.get(apiUrl, { timeout: 40000 });
+                    if (!apiRes.data || !apiRes.data.success) throw new Error('API failed: ' + (apiRes.data?.error || 'unknown'));
+
                     if (type === 'audio') {
-                        // ── Audio: use new all-in-one API ──────────────────────────
-                        const apiUrl = `${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoInfo.url)}&api_key=${config.NEXORA_API_KEY}`;
-                        const apiRes = await axios.get(apiUrl, { timeout: 25000 });
-                        if (!apiRes.data.success) throw new Error('Audio API error');
                         const downloadUrl = apiRes.data.all_qualities?.audio?.download_url;
+                        if (!downloadUrl) throw new Error('No audio download link from API');
                         const songTitle = apiRes.data.title || videoInfo.title;
                         await socket.sendMessage(sender, {
                             audio: { url: downloadUrl },
@@ -3883,61 +4499,20 @@ case 'mp4': {
                             fileName: `${songTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`
                         }, { quoted: replyMek });
                     } else {
-                        // ── Video: use ytdl-core ──────────────────────────────────
-                        const qualityMap = { '360p': '18', '480p': '135', '720p': '22' };
-                        const itag = qualityMap[selectedFormat] || '18';
-
-                        const tmpInput  = path.join(os.tmpdir(), `yt_vid_${Date.now()}.mp4`);
-                        const tmpAudio  = path.join(os.tmpdir(), `yt_aud_${Date.now()}.mp3`);
-                        const tmpOutput = path.join(os.tmpdir(), `yt_out_${Date.now()}.mp4`);
-
-                        await socket.sendMessage(sender, { text: `⬇️ _Downloading ${selectedFormat} video..._` }, { quoted: replyMek });
-
-                        // Try direct combined quality first (itag 18 = 360p, 22 = 720p combined)
-                        let videoBuffer;
-                        try {
-                            const videoStream = ytdl(videoInfo.url, { quality: itag, requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-                            const chunks = [];
-                            await new Promise((resolve, reject) => {
-                                videoStream.on('data', c => chunks.push(c));
-                                videoStream.on('end', resolve);
-                                videoStream.on('error', reject);
-                            });
-                            videoBuffer = Buffer.concat(chunks);
-                        } catch (ytErr) {
-                            // Fallback: download best video+audio separately and merge with ffmpeg
-                            const vidStream = ytdl(videoInfo.url, { quality: 'highestvideo', requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-                            const audStream = ytdl(videoInfo.url, { quality: 'highestaudio', requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
-
-                            const vChunks = [], aChunks = [];
-                            await Promise.all([
-                                new Promise((res, rej) => { vidStream.on('data', c => vChunks.push(c)); vidStream.on('end', res); vidStream.on('error', rej); }),
-                                new Promise((res, rej) => { audStream.on('data', c => aChunks.push(c)); audStream.on('end', res); audStream.on('error', rej); })
-                            ]);
-                            fs.writeFileSync(tmpInput, Buffer.concat(vChunks));
-                            fs.writeFileSync(tmpAudio, Buffer.concat(aChunks));
-
-                            await new Promise((resolve, reject) => {
-                                ffmpeg()
-                                    .input(tmpInput)
-                                    .input(tmpAudio)
-                                    .outputOptions(['-c:v copy', '-c:a aac', '-shortest'])
-                                    .save(tmpOutput)
-                                    .on('end', resolve)
-                                    .on('error', reject);
-                            });
-                            videoBuffer = fs.readFileSync(tmpOutput);
-                            try { fs.unlinkSync(tmpInput); fs.unlinkSync(tmpAudio); fs.unlinkSync(tmpOutput); } catch(e) {}
+                        // Try requested quality, fallback chain: 720p → 480p → 360p
+                        const qualityFallback = [selectedFormat, '720p', '480p', '360p'];
+                        let downloadUrl = null;
+                        let usedQuality = selectedFormat;
+                        for (const q of qualityFallback) {
+                            const dl = apiRes.data.all_qualities?.[q]?.download_url;
+                            if (dl) { downloadUrl = dl; usedQuality = q; break; }
                         }
-
-                        if (videoBuffer.length > 100 * 1024 * 1024) {
-                            return await socket.sendMessage(sender, { text: '❌ File too large (>100MB)!' }, { quoted: replyMek });
-                        }
+                        if (!downloadUrl) throw new Error('No video download link from API for any quality');
 
                         await socket.sendMessage(sender, {
-                            video: videoBuffer,
+                            video: { url: downloadUrl },
                             mimetype: 'video/mp4',
-                            caption: `╭──「 *${selectedFormat.toUpperCase()} VIDEO* 」──◆\n│ 🎬 ${videoInfo.title}\n╰─────────────────◆\n\n© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`
+                            caption: `╭──「 *${usedQuality.toUpperCase()} VIDEO* 」──◆\n│ 🎬 ${videoInfo.title}\n╰─────────────────◆\n\n© ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}`
                         }, { quoted: replyMek });
                     }
 
@@ -5078,7 +5653,7 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> *${config.PREFIX}menu* | *${config.PREFIX}ping*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       mentions: [sender],
       contextInfo: {
@@ -5093,6 +5668,20 @@ END:VCARD` } }
         }
       }
     }, { quoted: msg });
+
+    // ── 00/94 shortcut listener ──
+    const _aliveSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _aliveSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'ALIVE_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _aliveSmH); }
+    };
+    socket.ev.on('messages.upsert', _aliveSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _aliveSmH), 5 * 60 * 1000);
 
   } catch(e) {
     console.error('Alive command error:', e);
@@ -5184,6 +5773,10 @@ case 'speedping': {
 ┃ 🤖 *𝗕𝗢𝗧*     ┊ ${_pBot}
 ┃
 ╰━━━━━━━━━━━━━━━━━━━●
+
+*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*
+*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*
+
 > 🏷️ *KEZU TECH* | _TEAM DCT OFC_`.trim();
 
     let _pImg = String(_pLogo).startsWith('http') ? { url: _pLogo } : require('fs').readFileSync(_pLogo);
@@ -5205,6 +5798,21 @@ case 'speedping': {
     }, { quoted: msg });
 
     await socket.sendMessage(sender, { react: { text: '✅', key: msg.key } });
+
+    // ── 00/94 shortcut listener ──
+    const _spSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _spSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'SP_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _spSmH); }
+    };
+    socket.ev.on('messages.upsert', _spSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _spSmH), 5 * 60 * 1000);
+
   } catch (e) {
     console.error('[SPEEDPING]', e);
     await socket.sendMessage(sender, { text: '❌ Speed ping error: ' + e.message }, { quoted: msg });
@@ -5285,7 +5893,7 @@ ${frame}`, edit: key });
     // Send the final Image Card
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> *${config.PREFIX}menu* | *${config.PREFIX}alive*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
@@ -5299,6 +5907,20 @@ ${frame}`, edit: key });
         }
       }
     }, { quoted: msg });
+
+    // ── 00/94 shortcut listener ──
+    const _pingSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _pingSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'PING_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _pingSmH); }
+    };
+    socket.ev.on('messages.upsert', _pingSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _pingSmH), 5 * 60 * 1000);
 
   } catch (e) {
     console.error('Ping command error:', e);
@@ -6279,7 +6901,7 @@ END:VCARD` } }
 
     await socket.sendMessage(sender, {
       image: imagePayload,
-      caption: text + `\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
+      caption: text + `\n*│00 . ʙᴀᴄᴋ ᴛᴏ ᴍᴇɴᴜ*\n*│94 . ᴄʜᴇᴄᴋ ʙᴏᴛ ꜱᴘᴇᴇᴅ*\n\n> 🏷️ *KEZU TECH* | _TEAM DCT OFC_`,
       footer: `🏷️ KEZU TECH | TEAM DCT OFC`,
       contextInfo: {
         externalAdReply: {
@@ -6293,6 +6915,20 @@ END:VCARD` } }
         }
       },
     }, { quoted: metaQuote });
+
+    // ── 00/94 shortcut listener ──
+    const _sysSmH = async (u) => {
+      try {
+        const _m = u.messages?.[0];
+        if (!_m?.message || _m.key.remoteJid !== sender) return;
+        const _t = (_m.message?.conversation || _m.message?.extendedTextMessage?.text || '').trim();
+        if (_t !== '00' && _t !== '94') return;
+        socket.ev.off('messages.upsert', _sysSmH);
+        socket.ev.emit('messages.upsert', { messages: [{ key: { remoteJid: sender, fromMe: true, id: 'SYS_SM_' + Date.now() }, message: { conversation: _t === '00' ? `${config.PREFIX}menu` : `${config.PREFIX}p` }, messageTimestamp: Math.floor(Date.now() / 1000) }], type: 'append' });
+      } catch(e) { socket.ev.off('messages.upsert', _sysSmH); }
+    };
+    socket.ev.on('messages.upsert', _sysSmH);
+    setTimeout(() => socket.ev.off('messages.upsert', _sysSmH), 5 * 60 * 1000);
 
   } catch(e) {
     console.error('system error', e);
@@ -7515,6 +8151,44 @@ case 'setmenuvideo': {
           break;
         }
 
+        // ─── CHECKOT / EXAM SYSTEM ──────────────────────────────────
+        case 'checkot':
+        case 'exam': {
+          await socket.sendMessage(sender, { react: { text: '📋', key: msg.key } });
+          try {
+            await _handleExamSession({ socket, msg, from, body, prefix, args });
+          } catch(e) { console.error('checkot/exam error:', e); await socket.sendMessage(sender, { text: '❌ Error starting exam system.' }, { quoted: msg }); }
+          break;
+        }
+
+        // ─── NUMBER REPLY TOGGLE ────────────────────────────────────
+        case 'numreply':
+        case 'numberreply': {
+          await socket.sendMessage(sender, { react: { text: '🔢', key: msg.key } });
+          try {
+            const _nrSan = (number || '').replace(/[^0-9]/g, '');
+            const _nrSenderNum = (nowsender || '').split('@')[0];
+            const _nrOwnerNum = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
+            if (_nrSenderNum !== _nrSan && _nrSenderNum !== _nrOwnerNum) {
+              return await socket.sendMessage(sender, { text: '❌ Only the session owner can use this command.' }, { quoted: msg });
+            }
+            const _nrOpt = (args[0] || '').toLowerCase();
+            if (_nrOpt === 'on' || _nrOpt === 'off') {
+              const _nrCfg = await loadUserConfigFromMongo(_nrSan) || {};
+              _nrCfg.AUTO_NUMBER_REPLY = _nrOpt;
+              await setUserConfigInMongo(_nrSan, _nrCfg);
+              await socket.sendMessage(sender, {
+                text: `✅ *Number Reply ${_nrOpt === 'on' ? 'ENABLED ✅' : 'DISABLED ❌'}*\n${_nrOpt === 'on' ? 'Bot will now reply to every message with the sender\'s number.' : 'Auto number reply is now off.'}`
+              }, { quoted: msg });
+            } else {
+              await socket.sendMessage(sender, {
+                text: `📖 *Number Reply Usage:*\n*.numreply on* — Enable (reply every msg with sender number)\n*.numreply off* — Disable`
+              }, { quoted: msg });
+            }
+          } catch(e) { console.error('numreply cmd error:', e); await socket.sendMessage(sender, { text: '❌ Error updating numreply.' }, { quoted: msg }); }
+          break;
+        }
+
         // ─── STATUS DOWNLOAD TOGGLE ─────────────────────────────────
         case 'statusdl':
         case 'stsdl':
@@ -8419,56 +9093,98 @@ async function setupAutoStatusDownload(socket, sessionNumber) {
 // ---------------- Auto View Once Download Handler ----------------
 
 async function setupViewOnceHandler(socket, sessionNumber) {
+  // Per-session dedup to avoid processing the same view-once message twice
+  const _seenVvIds = new Set();
+  setInterval(() => { if (_seenVvIds.size > 300) _seenVvIds.clear(); }, 10 * 60 * 1000);
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg || !msg.message) return;
-    if (msg.key.fromMe) return;
-    if (msg.key.remoteJid === 'status@broadcast') return;
+    for (const msg of messages) {
+      if (!msg || !msg.message) continue;
+      if (msg.key.fromMe) continue;
+      if (msg.key.remoteJid === 'status@broadcast') continue;
 
-    try {
-      const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
-      const userConfig = await loadUserConfigFromMongo(sanitized) || {};
-      const autoVvSave = userConfig.AUTO_VV_SAVE || 'false';
-      if (autoVvSave !== 'true') return;
+      // Dedup
+      const _vvId = msg.key.id;
+      if (_seenVvIds.has(_vvId)) continue;
 
-      const msgType = getContentType(msg.message);
-      let voMessage = null;
+      try {
+        const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
+        const userConfig = await loadUserConfigFromMongo(sanitized) || {};
+        const autoVvSave = userConfig.AUTO_VV_SAVE || 'false';
+        if (autoVvSave !== 'true') continue;
 
-      if (msgType === 'viewOnceMessage') {
-        voMessage = msg.message.viewOnceMessage?.message;
-      } else if (msgType === 'viewOnceMessageV2') {
-        voMessage = msg.message.viewOnceMessageV2?.message;
-      } else if (msgType === 'viewOnceMessageV2Extension') {
-        voMessage = msg.message.viewOnceMessageV2Extension?.message;
+        // Unwrap ephemeral wrapper first (WhatsApp sometimes wraps view-once inside ephemeral)
+        let rawMessage = msg.message;
+        if (rawMessage.ephemeralMessage?.message) {
+          rawMessage = rawMessage.ephemeralMessage.message;
+        }
+
+        const msgType = getContentType(rawMessage);
+        let voMessage = null;
+
+        if (msgType === 'viewOnceMessage') {
+          voMessage = rawMessage.viewOnceMessage?.message;
+        } else if (msgType === 'viewOnceMessageV2') {
+          voMessage = rawMessage.viewOnceMessageV2?.message;
+        } else if (msgType === 'viewOnceMessageV2Extension') {
+          voMessage = rawMessage.viewOnceMessageV2Extension?.message;
+        }
+
+        if (!voMessage) continue;
+
+        // Mark as seen only after confirmed it's a view-once
+        _seenVvIds.add(_vvId);
+
+        const innerType = getContentType(voMessage);
+        if (!['imageMessage', 'videoMessage', 'audioMessage'].includes(innerType)) continue;
+
+        const mediaMsg = voMessage[innerType];
+        const mediaTypeStr = innerType.replace('Message', '');
+
+        // Download media
+        const stream = await downloadContentFromMessage(mediaMsg, mediaTypeStr);
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+        // Correct sender detection for both DMs and groups
+        const isGroup = (msg.key.remoteJid || '').endsWith('@g.us');
+        const senderJid = isGroup
+          ? jidNormalizedUser(msg.key.participant || '')
+          : jidNormalizedUser(msg.key.remoteJid || '');
+        const senderNum = (senderJid || '').split('@')[0];
+        const chatName = isGroup ? msg.key.remoteJid : `+${senderNum}`;
+
+        const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
+
+        const mediaLabel = innerType === 'imageMessage' ? '🖼️ Image' :
+                           innerType === 'videoMessage' ? '🎥 Video' : '🎵 Audio';
+
+        const caption =
+          `🔴 *View Once — Auto Saved* 📥\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `👤 *From:* +${senderNum}\n` +
+          `💬 *Chat:* ${chatName}\n` +
+          `📎 *Type:* ${mediaLabel}\n` +
+          `━━━━━━━━━━━━━━━━━━\n` +
+          `> _Saved before it gets deleted_ 👁️`;
+
+        if (innerType === 'imageMessage') {
+          await socket.sendMessage(botJid, { image: buffer, caption });
+        } else if (innerType === 'videoMessage') {
+          await socket.sendMessage(botJid, { video: buffer, caption });
+        } else if (innerType === 'audioMessage') {
+          // Send notification first, then audio
+          await socket.sendMessage(botJid, { text: caption });
+          await socket.sendMessage(botJid, {
+            audio: buffer,
+            mimetype: mediaMsg.mimetype || 'audio/ogg; codecs=opus',
+            ptt: mediaMsg.ptt || false
+          });
+        }
+        console.log(`[VV SAVE] ✅ Saved view-once ${mediaTypeStr} from ${senderNum}`);
+      } catch (e) {
+        console.error('[VV SAVE] ❌ Error:', e.message);
       }
-
-      if (!voMessage) return;
-
-      const innerType = getContentType(voMessage);
-      if (!['imageMessage', 'videoMessage', 'audioMessage'].includes(innerType)) return;
-
-      const mediaMsg = voMessage[innerType];
-      const mediaTypeStr = innerType.replace('Message', '');
-
-      const stream = await downloadContentFromMessage(mediaMsg, mediaTypeStr);
-      let buffer = Buffer.from([]);
-      for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-
-      const senderJid = jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
-      const senderNum = (senderJid || '').split('@')[0];
-      const botJid = socket.user.id.split(':')[0] + '@s.whatsapp.net';
-      const caption = `👁️ *View Once Saved* 📥\n👤 *From:* +${senderNum}\n\n> _Auto-saved by 🤖 Status Assistant_`;
-
-      if (innerType === 'imageMessage') {
-        await socket.sendMessage(botJid, { image: buffer, caption });
-      } else if (innerType === 'videoMessage') {
-        await socket.sendMessage(botJid, { video: buffer, caption });
-      } else if (innerType === 'audioMessage') {
-        await socket.sendMessage(botJid, { audio: buffer, mimetype: mediaMsg.mimetype || 'audio/ogg; codecs=opus', ptt: mediaMsg.ptt || false });
-      }
-      console.log(`[VV SAVE] Saved view-once from ${senderNum}`);
-    } catch (e) {
-      console.error('[VV SAVE] Error:', e.message);
     }
   });
 }
@@ -9019,7 +9735,7 @@ async function EmpirePair(number, res) {
           await delay(1200);
 
           const updatedCaption = formatMessage(useBotName,
-            `*✅ 𝐒uccessfully 𝐂onnected 𝐀nd 𝐀𝐂𝐓𝐈𝐕𝐄\n\n*🔢 𝐍umber:* ${sanitizedNumber}\n*🩵 𝐒tatus:* ${groupStatus}\n*🕒 𝐂onnected 𝐀t:* ${getSriLankaTimestamp()}\n\n> 𝐬𝐭𝐚𝐭𝐮𝐬 𝐦𝐢𝐧𝐢: https://kezu-bc597f548bc3.herokuapp.com\n> 𝐦𝐚𝐢𝐧 𝐦𝐢𝐧𝐢 : https://criminalmd-98d941cf6e6f.herokuapp.com\n\n𝐲𝐨𝐮𝐫 𝐛𝐨𝐭 𝐚𝐜𝐭𝐢𝐯𝐞 𝐢𝐧 5 𝐦𝐢𝐧 𝐥𝐚𝐭𝐞𝐫\n\n> 𝐩𝐨𝐰𝐞𝐫𝐞𝐝 𝐛𝐲 𝐤𝐞𝐳𝐮 🩵`,
+            `*✅ 𝐒uccessfully 𝐂onnected 𝐀nd 𝐀ctive*\n\n*🔢 𝐍umber:* ${sanitizedNumber}\n*🩵 𝐒tatus:* ${groupStatus}\n*🕒 𝐂onnected 𝐀t:* ${getSriLankaTimestamp()}\n\n𝐲𝐨𝐮𝐫 𝐛𝐨𝐭 𝐚𝐜𝐭𝐢𝐯𝐞 𝐢𝐧 5 𝐦𝐢𝐧 𝐥𝐚𝐭𝐞𝐫\n\n> 𝐩𝐨𝐰𝐞𝐫𝐞𝐝 𝐛𝐲 𝐤𝐞𝐳𝐮 🩵`,
             useBotName
           );
 
