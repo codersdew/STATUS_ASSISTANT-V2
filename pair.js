@@ -643,17 +643,23 @@ const {
 
 // ─── STICKER HELPER FUNCTIONS ─────────────────────────────────────────────────
 
-// Convert any image buffer → 512×512 webp sticker buffer (uses ffmpeg)
+// Convert any image buffer → 512×512 webp sticker buffer via ffmpeg
+// NOTE: no format=rgba — VP8 (lossy) does not carry alpha; white padding is safe
 async function _imgBufToWebpSticker(inputBuf, ext = 'jpg') {
-  const _tmpIn  = path.join(os.tmpdir(), `stk_in_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
-  const _tmpOut = path.join(os.tmpdir(), `stk_out_${Date.now()}_${Math.random().toString(36).slice(2)}.webp`);
+  const _uid   = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const _tmpIn  = path.join(os.tmpdir(), `stk_in_${_uid}.${ext}`);
+  const _tmpOut = path.join(os.tmpdir(), `stk_out_${_uid}.webp`);
   try {
     fs.writeFileSync(_tmpIn, inputBuf);
     await new Promise((res, rej) => {
       ffmpeg(_tmpIn)
         .outputOptions([
-          '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:0x00000000,format=rgba',
-          '-c:v', 'libwebp', '-q:v', '80', '-an', '-vsync', '0'
+          '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white',
+          '-c:v', 'libwebp',
+          '-quality', '80',
+          '-lossless', '0',
+          '-compression_level', '6',
+          '-an', '-vsync', '0'
         ])
         .output(_tmpOut)
         .on('end', res)
@@ -667,7 +673,25 @@ async function _imgBufToWebpSticker(inputBuf, ext = 'jpg') {
   }
 }
 
-// Inject sticker pack metadata (packname / author) into a webp buffer
+// Convert webp buffer → png buffer via ffmpeg  (jimp cannot read webp)
+async function _webpBufToPng(webpBuf) {
+  const _uid   = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const _tmpIn  = path.join(os.tmpdir(), `s2i_in_${_uid}.webp`);
+  const _tmpOut = path.join(os.tmpdir(), `s2i_out_${_uid}.png`);
+  try {
+    fs.writeFileSync(_tmpIn, webpBuf);
+    await new Promise((res, rej) => {
+      ffmpeg(_tmpIn).output(_tmpOut).on('end', res).on('error', rej).run();
+    });
+    return fs.readFileSync(_tmpOut);
+  } finally {
+    try { fs.unlinkSync(_tmpIn);  } catch(e) {}
+    try { fs.unlinkSync(_tmpOut); } catch(e) {}
+  }
+}
+
+// Inject sticker pack metadata into a webp buffer.
+// Properly promotes VP8/VP8L → VP8X extended format so the EXIF chunk is valid.
 function _injectStickerMeta(webpBuf, packname = 'KEZU-MD', author = 'KEZU') {
   try {
     const json = JSON.stringify({
@@ -677,42 +701,58 @@ function _injectStickerMeta(webpBuf, packname = 'KEZU-MD', author = 'KEZU') {
       'emojis': ['']
     });
     const jsonBuf  = Buffer.from(json, 'utf8');
-    const exifAttr = Buffer.from([0x49,0x49,0x2A,0x00,0x08,0x00,0x00,0x00,0x01,0x00,0x41,0x57,0x07,0x00]);
-    const exifData = Buffer.concat([exifAttr, jsonBuf]);
+    // minimal TIFF-LE header + WhatsApp tag (0x5741) payload
+    const exifAttr  = Buffer.from([0x49,0x49,0x2A,0x00,0x08,0x00,0x00,0x00,0x01,0x00,0x41,0x57,0x07,0x00]);
+    const exifPayload = Buffer.concat([exifAttr, jsonBuf]);
 
-    const chunkId  = Buffer.from('EXIF');
-    const chunkSz  = Buffer.alloc(4);
-    chunkSz.writeUInt32LE(exifData.length, 0);
-    const exifChunk = Buffer.concat([chunkId, chunkSz, exifData,
-      exifData.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)]);
+    // Build EXIF RIFF chunk (even-padded)
+    const exifSzBuf = Buffer.alloc(4);
+    exifSzBuf.writeUInt32LE(exifPayload.length, 0);
+    const exifChunk = Buffer.concat([
+      Buffer.from('EXIF'), exifSzBuf, exifPayload,
+      exifPayload.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)
+    ]);
 
-    const riff = webpBuf.slice(0, 4);   // "RIFF"
-    const webp = webpBuf.slice(8, 12);  // "WEBP"
-    const rest = webpBuf.slice(12);
+    const firstChunk = webpBuf.slice(12, 16).toString();
 
-    const body    = Buffer.concat([exifChunk, rest]);
-    const newSize = Buffer.alloc(4);
-    newSize.writeUInt32LE(body.length + 4, 0);
-    return Buffer.concat([riff, newSize, webp, body]);
-  } catch(e) { return webpBuf; }
+    if (firstChunk === 'VP8X') {
+      // Already extended — set EXIF flag (bit 3) in the flags byte and append chunk
+      const out = Buffer.from(webpBuf);
+      out[20] = out[20] | 0x08; // flags byte of VP8X data
+      const newSz = Buffer.alloc(4);
+      newSz.writeUInt32LE(out.length - 8 + exifChunk.length, 0);
+      newSz.copy(out, 4);
+      return Buffer.concat([out, exifChunk]);
+    }
+
+    // VP8 or VP8L → build VP8X wrapper
+    const imgChunk  = webpBuf.slice(12); // everything after RIFF+SZ+WEBP
+    const vp8xData  = Buffer.alloc(10, 0);
+    vp8xData[0] = 0x08;                        // flags: EXIF present
+    vp8xData.writeUIntLE(512 - 1, 4, 3);       // canvas width  - 1
+    vp8xData.writeUIntLE(512 - 1, 7, 3);       // canvas height - 1
+    const vp8xSzBuf = Buffer.alloc(4);
+    vp8xSzBuf.writeUInt32LE(10, 0);
+    const vp8xChunk = Buffer.concat([Buffer.from('VP8X'), vp8xSzBuf, vp8xData]);
+
+    const body   = Buffer.concat([vp8xChunk, imgChunk, exifChunk]);
+    const riffSz = Buffer.alloc(4);
+    riffSz.writeUInt32LE(body.length + 4, 0); // +4 for 'WEBP'
+    return Buffer.concat([Buffer.from('RIFF'), riffSz, Buffer.from('WEBP'), body]);
+  } catch(e) { console.log('_injectStickerMeta err:', e.message); return webpBuf; }
 }
 
-// Create a 512×512 text-sticker buffer from plain text (jimp → ffmpeg → webp)
+// Create a 512×512 text-sticker buffer (jimp renders PNG → ffmpeg → webp)
 async function _textToStickerBuf(text) {
-  const _tmpPng = path.join(os.tmpdir(), `txtstk_${Date.now()}.png`);
-  try {
-    const img  = new Jimp(512, 512, 0x1a1a2eff); // dark-blue background
-    const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
-    img.print(
-      font, 16, 0,
-      { text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER, alignmentY: Jimp.VERTICAL_ALIGN_MIDDLE },
-      480, 512
-    );
-    const pngBuf = await img.getBufferAsync(Jimp.MIME_PNG);
-    return await _imgBufToWebpSticker(pngBuf, 'png');
-  } finally {
-    try { fs.unlinkSync(_tmpPng); } catch(e) {}
-  }
+  const img  = new Jimp(512, 512, 0x1a1a2eff); // dark-blue background
+  const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+  img.print(
+    font, 16, 0,
+    { text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER, alignmentY: Jimp.VERTICAL_ALIGN_MIDDLE },
+    480, 512
+  );
+  const pngBuf = await img.getBufferAsync(Jimp.MIME_PNG);
+  return await _imgBufToWebpSticker(pngBuf, 'png');
 }
 
 // Clean up stale spam tracker entries every 2 minutes to prevent memory leak
@@ -2142,8 +2182,7 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(sender, { text: '⏳ Converting...' }, { quoted: msg });
             const _s2iMedia = await downloadQuotedMedia(_s2iQ);
             if (!_s2iMedia?.buffer) throw new Error('Download failed');
-            const _s2iJimp = await Jimp.read(_s2iMedia.buffer);
-            const _pngBuf  = await _s2iJimp.getBufferAsync(Jimp.MIME_PNG);
+            const _pngBuf = await _webpBufToPng(_s2iMedia.buffer);
             await socket.sendMessage(sender, { image: _pngBuf, caption: '✅ *Sticker → Image*' }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
