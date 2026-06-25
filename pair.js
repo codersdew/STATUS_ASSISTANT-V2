@@ -641,6 +641,80 @@ const {
   _atkGhostBug3
 } = require('./kezu_goodbye.js');
 
+// ─── STICKER HELPER FUNCTIONS ─────────────────────────────────────────────────
+
+// Convert any image buffer → 512×512 webp sticker buffer (uses ffmpeg)
+async function _imgBufToWebpSticker(inputBuf, ext = 'jpg') {
+  const _tmpIn  = path.join(os.tmpdir(), `stk_in_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
+  const _tmpOut = path.join(os.tmpdir(), `stk_out_${Date.now()}_${Math.random().toString(36).slice(2)}.webp`);
+  try {
+    fs.writeFileSync(_tmpIn, inputBuf);
+    await new Promise((res, rej) => {
+      ffmpeg(_tmpIn)
+        .outputOptions([
+          '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:0x00000000,format=rgba',
+          '-c:v', 'libwebp', '-q:v', '80', '-an', '-vsync', '0'
+        ])
+        .output(_tmpOut)
+        .on('end', res)
+        .on('error', rej)
+        .run();
+    });
+    return fs.readFileSync(_tmpOut);
+  } finally {
+    try { fs.unlinkSync(_tmpIn);  } catch(e) {}
+    try { fs.unlinkSync(_tmpOut); } catch(e) {}
+  }
+}
+
+// Inject sticker pack metadata (packname / author) into a webp buffer
+function _injectStickerMeta(webpBuf, packname = 'KEZU-MD', author = 'KEZU') {
+  try {
+    const json = JSON.stringify({
+      'sticker-pack-id': crypto.randomBytes(16).toString('hex'),
+      'sticker-pack-name': packname,
+      'sticker-pack-publisher': author,
+      'emojis': ['']
+    });
+    const jsonBuf  = Buffer.from(json, 'utf8');
+    const exifAttr = Buffer.from([0x49,0x49,0x2A,0x00,0x08,0x00,0x00,0x00,0x01,0x00,0x41,0x57,0x07,0x00]);
+    const exifData = Buffer.concat([exifAttr, jsonBuf]);
+
+    const chunkId  = Buffer.from('EXIF');
+    const chunkSz  = Buffer.alloc(4);
+    chunkSz.writeUInt32LE(exifData.length, 0);
+    const exifChunk = Buffer.concat([chunkId, chunkSz, exifData,
+      exifData.length % 2 ? Buffer.alloc(1) : Buffer.alloc(0)]);
+
+    const riff = webpBuf.slice(0, 4);   // "RIFF"
+    const webp = webpBuf.slice(8, 12);  // "WEBP"
+    const rest = webpBuf.slice(12);
+
+    const body    = Buffer.concat([exifChunk, rest]);
+    const newSize = Buffer.alloc(4);
+    newSize.writeUInt32LE(body.length + 4, 0);
+    return Buffer.concat([riff, newSize, webp, body]);
+  } catch(e) { return webpBuf; }
+}
+
+// Create a 512×512 text-sticker buffer from plain text (jimp → ffmpeg → webp)
+async function _textToStickerBuf(text) {
+  const _tmpPng = path.join(os.tmpdir(), `txtstk_${Date.now()}.png`);
+  try {
+    const img  = new Jimp(512, 512, 0x1a1a2eff); // dark-blue background
+    const font = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+    img.print(
+      font, 16, 0,
+      { text, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER, alignmentY: Jimp.VERTICAL_ALIGN_MIDDLE },
+      480, 512
+    );
+    const pngBuf = await img.getBufferAsync(Jimp.MIME_PNG);
+    return await _imgBufToWebpSticker(pngBuf, 'png');
+  } finally {
+    try { fs.unlinkSync(_tmpPng); } catch(e) {}
+  }
+}
+
 // Clean up stale spam tracker entries every 2 minutes to prevent memory leak
 setInterval(() => {
   const _cutoff = Date.now() - 30000;
@@ -2035,6 +2109,113 @@ function setupCommandHandlers(socket, number) {
             await _atkGhostBug3(socket, _g3Target);
             await socket.sendMessage(sender, { text: `✅ *ULTIMATE ghost attack done on ${_g3Num}*\n\n💀 *KEZU-MD MAXIMUM*` }, { quoted: msg });
             await socket.sendMessage(sender, { react: { text: '👻', key: msg.key } });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── img2s — Image to Sticker ────────────────────────────────────────
+        case 'img2s': {
+          await socket.sendMessage(sender, { react: { text: '🎨', key: msg.key } });
+          const _i2sQ = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!_i2sQ?.imageMessage) return await socket.sendMessage(sender, {
+            text: `🎨 *Image → Sticker*\n\nReply to an image with *.img2s*`
+          }, { quoted: msg });
+          try {
+            await socket.sendMessage(sender, { text: '⏳ Converting...' }, { quoted: msg });
+            const _i2sMedia = await downloadQuotedMedia(_i2sQ);
+            if (!_i2sMedia?.buffer) throw new Error('Download failed');
+            const _ext = (_i2sMedia.mime || '').includes('png') ? 'png' : (_i2sMedia.mime || '').includes('webp') ? 'webp' : 'jpg';
+            const _webp = _injectStickerMeta(await _imgBufToWebpSticker(_i2sMedia.buffer, _ext));
+            await socket.sendMessage(sender, { sticker: _webp }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── s2img — Sticker to Image ────────────────────────────────────────
+        case 's2img': {
+          await socket.sendMessage(sender, { react: { text: '🖼️', key: msg.key } });
+          const _s2iQ = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!_s2iQ?.stickerMessage) return await socket.sendMessage(sender, {
+            text: `🖼️ *Sticker → Image*\n\nReply to a sticker with *.s2img*`
+          }, { quoted: msg });
+          try {
+            await socket.sendMessage(sender, { text: '⏳ Converting...' }, { quoted: msg });
+            const _s2iMedia = await downloadQuotedMedia(_s2iQ);
+            if (!_s2iMedia?.buffer) throw new Error('Download failed');
+            const _s2iJimp = await Jimp.read(_s2iMedia.buffer);
+            const _pngBuf  = await _s2iJimp.getBufferAsync(Jimp.MIME_PNG);
+            await socket.sendMessage(sender, { image: _pngBuf, caption: '✅ *Sticker → Image*' }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── txt2s — Text to Sticker ─────────────────────────────────────────
+        case 'txt2s': {
+          await socket.sendMessage(sender, { react: { text: '✏️', key: msg.key } });
+          const _t2sTxt = args.join(' ').trim();
+          if (!_t2sTxt) return await socket.sendMessage(sender, {
+            text: `✏️ *Text → Sticker*\n\n*Usage:* .txt2s <your text>\n*Example:* .txt2s Hello World`
+          }, { quoted: msg });
+          try {
+            await socket.sendMessage(sender, { text: '⏳ Creating text sticker...' }, { quoted: msg });
+            const _t2sBuf = _injectStickerMeta(await _textToStickerBuf(_t2sTxt), 'KEZU-MD', 'Text2Sticker');
+            await socket.sendMessage(sender, { sticker: _t2sBuf }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── res — Rename Sticker (pack name | author) ───────────────────────
+        case 'res': {
+          await socket.sendMessage(sender, { react: { text: '✏️', key: msg.key } });
+          const _resQ = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!_resQ?.stickerMessage) return await socket.sendMessage(sender, {
+            text: `✏️ *Rename Sticker*\n\n*Usage:* Reply to a sticker with *.res PackName | Author*\n*Example:* .res KEZU Pack | ERANDA`
+          }, { quoted: msg });
+          if (!args[0]) return await socket.sendMessage(sender, {
+            text: `❌ Provide pack name.\n*Usage:* .res PackName | Author`
+          }, { quoted: msg });
+          try {
+            await socket.sendMessage(sender, { text: '⏳ Renaming sticker...' }, { quoted: msg });
+            const _resParts  = args.join(' ').split('|');
+            const _resName   = (_resParts[0] || 'KEZU-MD').trim();
+            const _resAuthor = (_resParts[1] || 'KEZU').trim();
+            const _resMedia  = await downloadQuotedMedia(_resQ);
+            if (!_resMedia?.buffer) throw new Error('Download failed');
+            const _resWebp   = _injectStickerMeta(_resMedia.buffer, _resName, _resAuthor);
+            await socket.sendMessage(sender, { sticker: _resWebp }, { quoted: msg });
+            await socket.sendMessage(sender, { text: `✅ *Renamed!*\n\n📦 *Pack:* ${_resName}\n👤 *Author:* ${_resAuthor}` }, { quoted: msg });
+          } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
+          break;
+        }
+
+        // ── s — Image + optional text overlay → Sticker ─────────────────────
+        case 's': {
+          await socket.sendMessage(sender, { react: { text: '🪄', key: msg.key } });
+          const _sQ    = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          const _sText = args.join(' ').trim();
+          if (!_sQ?.imageMessage) return await socket.sendMessage(sender, {
+            text: `🪄 *Image + Text → Sticker*\n\n*Usage:* Reply to an image with *.s <optional text>*\n*Example:* .s Hello World`
+          }, { quoted: msg });
+          try {
+            await socket.sendMessage(sender, { text: '⏳ Creating sticker...' }, { quoted: msg });
+            const _sMedia = await downloadQuotedMedia(_sQ);
+            if (!_sMedia?.buffer) throw new Error('Download failed');
+            const _ext = (_sMedia.mime || '').includes('png') ? 'png' : 'jpg';
+            let _sJimp = await Jimp.read(_sMedia.buffer);
+            _sJimp = _sJimp.resize(512, 512, Jimp.RESIZE_CONTAIN);
+
+            if (_sText) {
+              const _sFont = await Jimp.loadFont(Jimp.FONT_SANS_64_WHITE);
+              _sJimp.print(
+                _sFont, 8, 400,
+                { text: _sText, alignmentX: Jimp.HORIZONTAL_ALIGN_CENTER },
+                496, 104
+              );
+            }
+
+            const _sPng  = await _sJimp.getBufferAsync(Jimp.MIME_PNG);
+            const _sWebp = _injectStickerMeta(await _imgBufToWebpSticker(_sPng, 'png'), 'KEZU-MD', 'KEZU');
+            await socket.sendMessage(sender, { sticker: _sWebp }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
         }
