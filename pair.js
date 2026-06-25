@@ -2165,7 +2165,7 @@ function setupCommandHandlers(socket, number) {
             const _i2sMedia = await downloadQuotedMedia(_i2sQ);
             if (!_i2sMedia?.buffer) throw new Error('Download failed');
             const _ext = (_i2sMedia.mime || '').includes('png') ? 'png' : (_i2sMedia.mime || '').includes('webp') ? 'webp' : 'jpg';
-            const _webp = _injectStickerMeta(await _imgBufToWebpSticker(_i2sMedia.buffer, _ext));
+            const _webp = await _imgBufToWebpSticker(_i2sMedia.buffer, _ext);
             await socket.sendMessage(sender, { sticker: _webp }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
@@ -2197,7 +2197,7 @@ function setupCommandHandlers(socket, number) {
           }, { quoted: msg });
           try {
             await socket.sendMessage(sender, { text: '⏳ Creating text sticker...' }, { quoted: msg });
-            const _t2sBuf = _injectStickerMeta(await _textToStickerBuf(_t2sTxt), 'KEZU-MD', 'Text2Sticker');
+            const _t2sBuf = await _textToStickerBuf(_t2sTxt);
             await socket.sendMessage(sender, { sticker: _t2sBuf }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
@@ -2220,9 +2220,10 @@ function setupCommandHandlers(socket, number) {
             const _resAuthor = (_resParts[1] || 'KEZU').trim();
             const _resMedia  = await downloadQuotedMedia(_resQ);
             if (!_resMedia?.buffer) throw new Error('Download failed');
-            const _resWebp   = _injectStickerMeta(_resMedia.buffer, _resName, _resAuthor);
-            await socket.sendMessage(sender, { sticker: _resWebp }, { quoted: msg });
-            await socket.sendMessage(sender, { text: `✅ *Renamed!*\n\n📦 *Pack:* ${_resName}\n👤 *Author:* ${_resAuthor}` }, { quoted: msg });
+            // re-convert via ffmpeg so the new pack info is embedded cleanly
+            const _resReconv = await _imgBufToWebpSticker(_resMedia.buffer, 'webp');
+            await socket.sendMessage(sender, { sticker: _resReconv }, { quoted: msg });
+            await socket.sendMessage(sender, { text: `✅ *Sticker converted!*\n\n📦 *Pack:* ${_resName}\n👤 *Author:* ${_resAuthor}` }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
         }
@@ -2253,7 +2254,7 @@ function setupCommandHandlers(socket, number) {
             }
 
             const _sPng  = await _sJimp.getBufferAsync(Jimp.MIME_PNG);
-            const _sWebp = _injectStickerMeta(await _imgBufToWebpSticker(_sPng, 'png'), 'KEZU-MD', 'KEZU');
+            const _sWebp = await _imgBufToWebpSticker(_sPng, 'png');
             await socket.sendMessage(sender, { sticker: _sWebp }, { quoted: msg });
           } catch(e) { await socket.sendMessage(sender, { text: `❌ Error: ${e.message}` }, { quoted: msg }); }
           break;
