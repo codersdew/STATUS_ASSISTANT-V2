@@ -213,9 +213,9 @@ const activeSockets = new Map();
 const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
 const userMenuState = new Map();
-const messageStore = new Map(); // Anti-delete & ViewOnce store
+const messageStore = new Map();
 
-// ──────────────── CHANNEL / META CONTEXT HELPER ─────────────────
+// ──────────────── CHANNEL / CONTEXT HELPER ──────────────────────
 function getForwardedContext(cfg, customTitle = null) {
   return {
     forwardingScore: 9999,
@@ -237,7 +237,15 @@ async function sendFancyMsg(socket, to, content, quoted = null, cfg = {}) {
   return await socket.sendMessage(to, { ...content, contextInfo }, { quoted });
 }
 
-// ──────────────── MEDIA BUFFER DOWNLOADER ───────────────────────
+// ──────────────── MEDIA BUFFER HELPERS ──────────────────────────
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function downloadMediaMessage(message) {
   let type = Object.keys(message)[0];
   let msg = message[type];
@@ -247,25 +255,24 @@ async function downloadMediaMessage(message) {
     msg = msg[type];
   }
   const stream = await downloadContentFromMessage(msg, type.replace('Message', ''));
-  let buffer = Buffer.from([]);
-  for await (const chunk of stream) {
-    buffer = Buffer.concat([buffer, chunk]);
-  }
-  return buffer;
+  return await streamToBuffer(stream);
 }
 
 // ──────────────── STATUS SEEN & AUTO REACT ──────────────────────
-const _seenStatusIds = new Set();
+const processedStatus = new Set();
+const MAX_STATUS_CACHE = 1000;
+const STATUS_REACTION_DELAY = 1500;
 
 function setupStatusHandlers(socket, sessionNumber) {
   socket.ev.on('messages.upsert', async ({ messages }) => {
-    const message = messages[0];
-    if (!message?.key || message.key.remoteJid !== 'status@broadcast') return;
+    const msg = messages[0];
+    if (!msg?.key || msg.key.remoteJid !== 'status@broadcast' || !msg.key.participant) return;
 
-    const _statusMsgId = message.key.id;
-    if (_seenStatusIds.has(_statusMsgId)) return;
-    _seenStatusIds.add(_statusMsgId);
-    if (_seenStatusIds.size > 2500) _seenStatusIds.clear();
+    const botJid = jidNormalizedUser(socket.user.id);
+    if (msg.key.participant === botJid) return; // Do not react to self status
+
+    const statusId = `${msg.key.participant}_${msg.key.id}`;
+    if (processedStatus.has(statusId)) return;
 
     try {
       const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
@@ -273,37 +280,49 @@ function setupStatusHandlers(socket, sessionNumber) {
 
       const autoView = userCfg.AUTO_VIEW_STATUS ?? config.AUTO_VIEW_STATUS;
       const autoLike = userCfg.AUTO_LIKE_STATUS ?? config.AUTO_LIKE_STATUS;
+      const autoRecording = userCfg.AUTO_RECORDING ?? config.AUTO_RECORDING;
 
-      const posterParticipant = message.key.participant || message.participant;
-      if (!posterParticipant) return;
-      const posterJid = jidNormalizedUser(posterParticipant);
+      if (autoRecording === 'true') {
+        await socket.sendPresenceUpdate("recording", msg.key.remoteJid).catch(() => {});
+      }
 
+      await delay(STATUS_REACTION_DELAY);
+
+      // Auto View Status
       if (autoView === 'true') {
-        await socket.readMessages([message.key]).catch(()=>{});
+        try {
+          await socket.readMessages([msg.key]);
+        } catch (error) {
+          console.warn('⚠️ Failed to read status:', error.message);
+        }
       }
 
+      // Auto Like / React Status
       if (autoLike === 'true') {
-        await delay(1000);
         const emojis = userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)] || '❤️';
 
-        await socket.sendMessage(
-          'status@broadcast',
-          {
-            react: {
-              text: randomEmoji,
-              key: {
-                remoteJid: 'status@broadcast',
-                id: message.key.id,
-                participant: posterJid,
-                fromMe: false
-              }
-            }
-          },
-          { statusJidList: [posterJid, jidNormalizedUser(socket.user.id)] }
-        ).catch(()=>{});
+        try {
+          await socket.sendMessage(
+            msg.key.remoteJid,
+            { react: { text: randomEmoji, key: msg.key } },
+            { statusJidList: [msg.key.participant] }
+          );
+          console.log(`🌸 [Status React Success] ${randomEmoji} on ${msg.key.participant}`);
+        } catch (error) {
+          console.warn('⚠️ Failed to react to status:', error.message);
+        }
       }
-    } catch (e) {}
+
+      processedStatus.add(statusId);
+      if (processedStatus.size > MAX_STATUS_CACHE) {
+        const firstEntry = processedStatus.values().next().value;
+        processedStatus.delete(firstEntry);
+      }
+
+    } catch (error) {
+      console.error('❌ Error in status handler:', error.message);
+    }
   });
 }
 
@@ -337,7 +356,6 @@ function setupCommandHandlers(socket, number) {
     const msg = messages[0];
     if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
-    // Cache message for Anti-Delete & View-Once
     if (msg.key?.id) {
       messageStore.set(msg.key.id, JSON.parse(JSON.stringify(msg)));
       if (messageStore.size > 2000) {
@@ -373,11 +391,9 @@ function setupCommandHandlers(socket, number) {
     const botLogo = userCfg.logo || config.DEFAULT_LOGO;
     const botFooter = userCfg.footer || config.BOT_FOOTER;
 
-    // ── Group Moderation Checks (Antilink, Antibot, Antibadword) ──
     if (isGroup && !msg.key.fromMe) {
       const gSettings = await getGroupSettings(from);
 
-      // Anti-Link
       if (gSettings.antilink && /(chat\.whatsapp\.com\/|wa\.me\/)/i.test(body)) {
         if (!isOwnerUser) {
           await socket.sendMessage(from, { delete: msg.key });
@@ -386,7 +402,6 @@ function setupCommandHandlers(socket, number) {
         }
       }
 
-      // Anti-Badword
       if (gSettings.antibadword && Array.isArray(gSettings.badwords)) {
         const foundBad = gSettings.badwords.some(bw => body.toLowerCase().includes(bw.toLowerCase()));
         if (foundBad && !isOwnerUser) {
@@ -397,7 +412,6 @@ function setupCommandHandlers(socket, number) {
       }
     }
 
-    // ── Custom Auto-Reply Trigger (Text, Voice/Audio, Sticker, Image, Video) ──
     if (!msg.key.fromMe && body) {
       const allReplies = await getAutoReplies(sanitizedNum);
       const matchReply = allReplies.find(r => r.trigger.toLowerCase() === body.toLowerCase());
@@ -418,18 +432,15 @@ function setupCommandHandlers(socket, number) {
       }
     }
 
-    // ── Auto Typing / Recording Presence ──
     if (userCfg.AUTO_TYPING === 'true') await socket.sendPresenceUpdate('composing', from);
     if (userCfg.AUTO_RECORDING === 'true') await socket.sendPresenceUpdate('recording', from);
 
-    // ── Number Selection / Menu Logic ──
     const quotedMsgId = messageContent?.extendedTextMessage?.contextInfo?.stanzaId;
     const lastMenuId = userMenuState.get(from);
     let isCmd = body.startsWith(prefix);
     let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
     let args = body.trim().split(/ +/).slice(1);
 
-    // If user replies with a number to the Main Category Menu
     if (!isCmd && /^[0-9]+$/.test(body) && (quotedMsgId === lastMenuId || !quotedMsgId)) {
       const choice = body.trim();
       switch (choice) {
@@ -446,11 +457,8 @@ function setupCommandHandlers(socket, number) {
 
     if (!command) return;
 
-    // ─────────────────────── COMMAND IMPLEMENTATIONS ───────────────────────
     try {
       switch (command) {
-
-        // 🌸 MAIN CATEGORIZED MENU 🌸
         case 'menu':
         case 'help':
         case 'panel': {
@@ -493,7 +501,6 @@ ${botFooter}`.trim();
           break;
         }
 
-        // 📥 SUB-MENU 1: DOWNLOADERS
         case 'dlmenu': {
           const dlText = `
 *╭───❰ 📥 DOWNLOAD MENU ❱───*
@@ -509,7 +516,6 @@ ${botFooter}`;
           break;
         }
 
-        // 👥 SUB-MENU 2: GROUP COMMANDS
         case 'groupmenu': {
           const gText = `
 *╭───❰ 👥 GROUP COMMANDS ❱───*
@@ -533,7 +539,6 @@ ${botFooter}`;
           break;
         }
 
-        // 🛠️ SUB-MENU 3: UTILITIES
         case 'utilmenu': {
           const uText = `
 *╭───❰ 🛠️ UTILITY COMMANDS ❱───*
@@ -551,7 +556,6 @@ ${botFooter}`;
           break;
         }
 
-        // 🎭 SUB-MENU 4: FUN & GAMES
         case 'funmenu': {
           const fText = `
 *╭───❰ 🎭 FUN & GAMES ❱───*
@@ -567,7 +571,6 @@ ${botFooter}`;
           break;
         }
 
-        // ⚙️ SUB-MENU 5: SETTINGS & TOGGLES
         case 'settingsmenu':
         case 'settings': {
           const sText = `
@@ -591,7 +594,6 @@ ${botFooter}`;
           break;
         }
 
-        // 📢 SUB-MENU 6: CHANNEL & NEWSLETTER
         case 'channelmenu': {
           const chText = `
 *╭───❰ 📢 CHANNEL COMMANDS ❱───*
@@ -604,7 +606,6 @@ ${botFooter}`;
           break;
         }
 
-        // 🎨 SUB-MENU 7: BOT CUSTOMIZE
         case 'customizemenu': {
           const cText = `
 *╭───❰ 🎨 CUSTOMIZE BOT ❱───*
@@ -622,7 +623,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── VIEW ONCE RECOVERY (VV) ──────────────────
         case 'vv':
         case 'readviewonce': {
           const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -636,8 +636,7 @@ ${botFooter}`;
           }
 
           const stream = await downloadContentFromMessage(vo[mtype], mtype.replace('Message', ''));
-          let buffer = Buffer.from([]);
-          for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+          const buffer = await streamToBuffer(stream);
 
           if (mtype.includes('image')) {
             await socket.sendMessage(from, { image: buffer, caption: `🔓 *View-Once Image Recovered!*` }, { quoted: msg });
@@ -649,7 +648,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── STICKER MAKER (.s / .sticker) ────────────
         case 's':
         case 'sticker': {
           let targetMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage || msg.message;
@@ -667,7 +665,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── STICKER RENAME (.take / .wm) ─────────────
         case 'take':
         case 'wm': {
           const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -679,7 +676,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── STATUS SAVER (.ss / .savestatus) ─────────
         case 'ss':
         case 'savestatus': {
           const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -694,16 +690,12 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── JID ──────────────────
         case 'jid': {
           const target = msg.message?.extendedTextMessage?.contextInfo?.participant || from;
           await socket.sendMessage(from, { text: `🆔 *JID:* \`${target}\`` }, { quoted: msg });
           break;
         }
 
-        // ────────────────── AUTO REPLY MANAGEMENT ────────────────────
-        // .addreply text|hello|Hello there!
-        // .addreply voice|gm|https://example.com/gm.ogg
         case 'addreply':
         case 'addautoreply': {
           if (!isOwnerUser) return;
@@ -741,7 +733,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── GROUP ADMIN COMMANDS ─────────────────────
         case 'tagall': {
           if (!isGroup) return;
           const groupMeta = await socket.groupMetadata(from);
@@ -857,7 +848,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── FUN & GAMES ───────────────────────────────
         case 'ship': {
           const rand = Math.floor(Math.random() * 100) + 1;
           await sendFancyMsg(socket, from, { text: `💖 *LOVE COMPATIBILITY:* *${rand}%* 💞\n\n> 🌸 Match rating by ${botName}` }, msg, userCfg);
@@ -878,7 +868,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── BOT CUSTOMIZATION ────────────────────────
         case 'setbotname': {
           if (!isOwnerUser) return;
           const newName = args.join(' ').trim();
@@ -919,7 +908,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── DOWNLOADERS ──────────────────────────────
         case 'song':
         case 'play': {
           if (!args.length) return await socket.sendMessage(from, { text: `❌ *Usage:* \`${prefix}song <song_name>\`` }, { quoted: msg });
@@ -969,7 +957,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── TOGGLE COMMANDS ──────────────────────────
         case 'autotyping':
         case 'autorecording':
         case 'antidelete':
@@ -993,7 +980,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── ALIVE & PING ─────────────────────────────
         case 'ping': {
           const start = Date.now();
           await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
