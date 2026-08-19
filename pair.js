@@ -33,62 +33,48 @@ const {
   fetchLatestBaileysVersion
 } = require('@whiskeysockets/baileys');
 
-const isJidMetaAi = (jid) => typeof jid === 'string' && jid.includes('@lid') && META_AI_JID && jid === META_AI_JID;
-
-// ────────────────────────────────────────────────
+// ───────────────────── FFMPEG SETUP ───────────────────────────
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-// ───────────────────── CONFIG SETTING ───────────────────────────
-const BOT_NAME_FANCY = '🤖 Status Assistant';
+// ───────────────────── DEFAULT CONFIG ───────────────────────────
+const DEFAULT_BOT_NAME = '𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠🌸⃘̬ٜٜٜ͠';
 
 const config = {
+  BOT_NAME: DEFAULT_BOT_NAME,
+  PREFIX: '.',
   AUTO_VIEW_STATUS: 'true',
   AUTO_LIKE_STATUS: 'true',
   AUTO_RECORDING: 'false',
-  AUTO_LIKE_EMOJI: ['💙', '🩷', '💜', '🧡', '🩵', '💛', '♥️', '💗', '❤️‍🔥'],
-  PREFIX: '.',
-  MAX_RETRIES: 3,
-  GROUP_INVITE_LINK: 'xxxxxxxxxxx',
-  KEZU_IMG: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
-  NEWSLETTER_JID: '000000000000000@newsletter',
-  OTP_EXPIRY: 300000,
-  WORK_TYPE: 'public',
+  AUTO_TYPING: 'false',
+  ANTI_DELETE: 'off',
+  AUTO_LIKE_EMOJI: ['🌸', '💖', '💗', '❤️‍🔥', '✨', '🐾', '💙', '💜'],
   OWNER_NUMBER: process.env.OWNER_NUMBER || '94711214607,94705851067',
-  CHANNEL_LINK: 'https://whatsapp.com/channel/xxxxxxxxxxxxx',
-  BOT_NAME: '🤖 Status Assistant',
-  BOT_VERSION: '1.0.0V',
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿 | ERANDA',
-  IMAGE_PATH: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
-  BOT_FOOTER: '> *🤖 Status Assistant*',
-  API_YTMP3_URL: 'https://nexora.laksidunimsara.com/api/ytmp3',
-  API_YTMP4_URL: 'https://nexora.laksidunimsara.com/api/youtube/mp4',
+  NEWSLETTER_JID: '120363144038483540@newsletter',
+  NEWSLETTER_NAME: '𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠ Official 🌸',
+  DEFAULT_LOGO: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
+  BOT_FOOTER: '> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠🌸⃘̬ٜٜٜ͠*',
   API_YT_ALL_URL: 'https://nexoraapi.laksidunimsara.com/api/youtube/all',
   NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
-  BOT_IMAGES: { ALIVE: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png' }
+  BOT_VERSION: '2.5.0V PRO'
 };
 
-// ─────────── OWNER HELPER ───────────────────────
-const isOwner = (num) => {
-  const clean = (n) => (n || '').replace(/[^0-9]/g, '');
-  return config.OWNER_NUMBER.split(',').map(clean).includes(clean(num));
-};
-
-// ---------------- MONGO SETUP ----------------
+// ───────────────────── MONGO DATABASE SETUP ─────────────────────
 const MONGO_URI = process.env.MONGO_URI;
 const MONGO_DB = process.env.MONGO_DB;
 let mongoClient, mongoDB;
-let sessionsCol, numbersCol, adminsCol, newsletterCol, configsCol, newsletterReactsCol, groupSettingsCol, autoTTSendCol, autoSongSendCol;
+let sessionsCol, numbersCol, configsCol, groupSettingsCol, customRepliesCol;
 
 const userConfigCache = new Map();
-const USER_CONFIG_CACHE_TTL = 10 * 60 * 1000;
+const USER_CONFIG_CACHE_TTL = 5 * 60 * 1000;
 
 let _mongoReady = false;
 async function initMongo() {
   if (_mongoReady) return;
   try {
-    if (mongoClient && mongoClient.topology && mongoClient.topology.isConnected && mongoClient.topology.isConnected()) {
+    if (mongoClient?.topology?.isConnected?.()) {
       _mongoReady = true;
       return;
     }
@@ -96,28 +82,23 @@ async function initMongo() {
   if (!MONGO_URI) return;
   mongoClient = new MongoClient(MONGO_URI);
   await mongoClient.connect();
-  mongoDB = mongoClient.db(MONGO_DB || 'whatsapp_bot');
+  mongoDB = mongoClient.db(MONGO_DB || 'sakura_bot_db');
 
   sessionsCol = mongoDB.collection('sessions');
   numbersCol = mongoDB.collection('numbers');
-  adminsCol = mongoDB.collection('admins');
-  newsletterCol = mongoDB.collection('newsletter_list');
   configsCol = mongoDB.collection('configs');
-  newsletterReactsCol = mongoDB.collection('newsletter_reacts');
   groupSettingsCol = mongoDB.collection('group_settings');
-  autoTTSendCol = mongoDB.collection('autottsend');
-  autoSongSendCol = mongoDB.collection('autosongsend');
+  customRepliesCol = mongoDB.collection('custom_replies');
 
   await sessionsCol.createIndex({ number: 1 }, { unique: true }).catch(()=>{});
   await numbersCol.createIndex({ number: 1 }, { unique: true }).catch(()=>{});
-  await newsletterCol.createIndex({ jid: 1 }, { unique: true }).catch(()=>{});
-  await newsletterReactsCol.createIndex({ jid: 1 }, { unique: true }).catch(()=>{});
   await configsCol.createIndex({ number: 1 }, { unique: true }).catch(()=>{});
+  await groupSettingsCol.createIndex({ jid: 1 }, { unique: true }).catch(()=>{});
   _mongoReady = true;
-  console.log('✅ Mongo initialized and collections ready');
+  console.log('✅ [Sakura DB] MongoDB connected and collections ready');
 }
 
-// ---------------- Mongo helpers ----------------
+// ───────────────────── MONGO HELPERS ────────────────────────────
 async function saveCredsToMongo(number, creds, keys = null, sessionPath = null) {
   try {
     await initMongo();
@@ -126,29 +107,24 @@ async function saveCredsToMongo(number, creds, keys = null, sessionPath = null) 
     if (sessionPath && fs.existsSync(sessionPath)) {
       const dirFiles = fs.readdirSync(sessionPath);
       for (const fname of dirFiles) {
-        try {
-          files[fname] = fs.readFileSync(path.join(sessionPath, fname), 'utf8');
-        } catch(e) {}
+        try { files[fname] = fs.readFileSync(path.join(sessionPath, fname), 'utf8'); } catch(e) {}
       }
     }
-    const doc = { number: sanitized, creds, keys, files, updatedAt: new Date() };
-    await sessionsCol.updateOne({ number: sanitized }, { $set: doc }, { upsert: true });
+    await sessionsCol.updateOne({ number: sanitized }, { $set: { number: sanitized, creds, keys, files, updatedAt: new Date() } }, { upsert: true });
   } catch (e) { console.error('saveCredsToMongo error:', e); }
 }
 
 async function loadCredsFromMongo(number) {
   try {
     await initMongo();
-    const sanitized = number.replace(/[^0-9]/g, '');
-    return await sessionsCol.findOne({ number: sanitized });
+    return await sessionsCol.findOne({ number: number.replace(/[^0-9]/g, '') });
   } catch (e) { return null; }
 }
 
 async function removeSessionFromMongo(number) {
   try {
     await initMongo();
-    const sanitized = number.replace(/[^0-9]/g, '');
-    await sessionsCol.deleteOne({ number: sanitized });
+    await sessionsCol.deleteOne({ number: number.replace(/[^0-9]/g, '') });
   } catch (e) {}
 }
 
@@ -182,53 +158,106 @@ async function loadUserConfigFromMongo(number) {
     await initMongo();
     const sanitized = number.replace(/[^0-9]/g, '');
     const cached = userConfigCache.get(sanitized);
-    if (cached && (Date.now() - (cached.ts || 0) < USER_CONFIG_CACHE_TTL)) {
-      return cached.config;
-    }
+    if (cached && (Date.now() - (cached.ts || 0) < USER_CONFIG_CACHE_TTL)) return cached.config;
     const doc = await configsCol.findOne({ number: sanitized });
-    const conf = doc ? doc.config : null;
+    const conf = doc ? doc.config : {};
     userConfigCache.set(sanitized, { config: conf, ts: Date.now() });
-    return conf;
-  } catch (e) { return null; }
+    return conf || {};
+  } catch (e) { return {}; }
 }
 
+// ──────────────── GROUP SETTINGS MONGO HELPERS ──────────────────
+async function getGroupSettings(jid) {
+  try {
+    await initMongo();
+    const res = await groupSettingsCol.findOne({ jid });
+    return res || { jid, antilink: false, antibot: false, antibadword: false, badwords: [], welcome: false, goodbye: false };
+  } catch(e) { return {}; }
+}
+
+async function updateGroupSettings(jid, updateData) {
+  try {
+    await initMongo();
+    await groupSettingsCol.updateOne({ jid }, { $set: updateData }, { upsert: true });
+  } catch(e) {}
+}
+
+// ──────────────── CUSTOM AUTO REPLY HELPERS ─────────────────────
+async function addAutoReply(number, trigger, type, content) {
+  try {
+    await initMongo();
+    await customRepliesCol.updateOne(
+      { number, trigger: trigger.toLowerCase() },
+      { $set: { number, trigger: trigger.toLowerCase(), type, content, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch(e) {}
+}
+
+async function removeAutoReply(number, trigger) {
+  try {
+    await initMongo();
+    await customRepliesCol.deleteOne({ number, trigger: trigger.toLowerCase() });
+  } catch(e) {}
+}
+
+async function getAutoReplies(number) {
+  try {
+    await initMongo();
+    return await customRepliesCol.find({ number }).toArray();
+  } catch(e) { return []; }
+}
+
+// ──────────────── GLOBAL MAPS & CACHES ──────────────────────────
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
-const userMenuState = new Map(); // Store state for Number replies
+const userMenuState = new Map();
+const messageStore = new Map(); // Anti-delete & ViewOnce store
 
-const _msgRateLimiter = new Map();
-const MSG_RATE_LIMIT = 35;
-const MSG_RATE_WINDOW = 60000;
-
-function _checkRateLimit(number) {
-  const now = Date.now();
-  let r = _msgRateLimiter.get(number);
-  if (!r || now > r.resetAt) {
-    r = { count: 0, resetAt: now + MSG_RATE_WINDOW };
-    _msgRateLimiter.set(number, r);
-  }
-  if (r.count >= MSG_RATE_LIMIT) return false;
-  r.count++;
-  return true;
+// ──────────────── CHANNEL / META CONTEXT HELPER ─────────────────
+function getForwardedContext(cfg, customTitle = null) {
+  return {
+    forwardingScore: 9999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+      newsletterJid: cfg?.NEWSLETTER_JID || config.NEWSLETTER_JID,
+      newsletterName: customTitle || cfg?.NEWSLETTER_NAME || config.NEWSLETTER_NAME,
+      serverMessageId: 100
+    }
+  };
 }
 
-// ── Auto Voice reply map ──
-const _VOICE_REPLIES = {
-  'gm': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/gm.ogg',
-  'good morning': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/gm.ogg',
-  'gn': 'https://github.com/TECH-HORIZON-SCHOOL-OFFICIAL/PROJECT_HORIZON/raw/refs/heads/main/voice%20clips/gn.mp3',
-  'good night': 'https://github.com/TECH-HORIZON-SCHOOL-OFFICIAL/PROJECT_HORIZON/raw/refs/heads/main/voice%20clips/good%20night.mp3',
-  'hi': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/hi%20lassana%20lamayo.ogg',
-  'hey': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/hi%20lassana%20lamayo.ogg',
-  'hello': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/hi%20lassana%20lamayo.ogg',
-  'bot': 'https://raw.githubusercontent.com/dct-dula/database/48c3556468d3f7f81ce6b4ec974a83f2aea1b467/voice/hi%20lassana%20lamayo.ogg'
-};
+async function sendFancyMsg(socket, to, content, quoted = null, cfg = {}) {
+  const contextInfo = {
+    ...getForwardedContext(cfg),
+    ...(content.contextInfo || {})
+  };
+  if (content.mentions) contextInfo.mentionedJid = content.mentions;
+  return await socket.sendMessage(to, { ...content, contextInfo }, { quoted });
+}
 
-// ---------------- Status Seen & React Handler (FIXED) ----------------
+// ──────────────── MEDIA BUFFER DOWNLOADER ───────────────────────
+async function downloadMediaMessage(message) {
+  let type = Object.keys(message)[0];
+  let msg = message[type];
+  if (type === 'ephemeralMessage') {
+    msg = message.ephemeralMessage.message;
+    type = Object.keys(msg)[0];
+    msg = msg[type];
+  }
+  const stream = await downloadContentFromMessage(msg, type.replace('Message', ''));
+  let buffer = Buffer.from([]);
+  for await (const chunk of stream) {
+    buffer = Buffer.concat([buffer, chunk]);
+  }
+  return buffer;
+}
+
+// ──────────────── STATUS SEEN & AUTO REACT ──────────────────────
 const _seenStatusIds = new Set();
 
-async function setupStatusHandlers(socket, sessionNumber) {
+function setupStatusHandlers(socket, sessionNumber) {
   socket.ev.on('messages.upsert', async ({ messages }) => {
     const message = messages[0];
     if (!message?.key || message.key.remoteJid !== 'status@broadcast') return;
@@ -236,38 +265,27 @@ async function setupStatusHandlers(socket, sessionNumber) {
     const _statusMsgId = message.key.id;
     if (_seenStatusIds.has(_statusMsgId)) return;
     _seenStatusIds.add(_statusMsgId);
-
-    // Limit cache size
-    if (_seenStatusIds.size > 2000) _seenStatusIds.clear();
+    if (_seenStatusIds.size > 2500) _seenStatusIds.clear();
 
     try {
       const sanitized = (sessionNumber || '').replace(/[^0-9]/g, '');
-      const userCfg = sessionNumber ? (await loadUserConfigFromMongo(sanitized) || {}) : {};
+      const userCfg = await loadUserConfigFromMongo(sanitized);
 
-      const autoViewStatus = userCfg.AUTO_VIEW_STATUS ?? config.AUTO_VIEW_STATUS;
-      const autoLikeStatus = userCfg.AUTO_LIKE_STATUS ?? config.AUTO_LIKE_STATUS;
+      const autoView = userCfg.AUTO_VIEW_STATUS ?? config.AUTO_VIEW_STATUS;
+      const autoLike = userCfg.AUTO_LIKE_STATUS ?? config.AUTO_LIKE_STATUS;
 
       const posterParticipant = message.key.participant || message.participant;
       if (!posterParticipant) return;
-      
       const posterJid = jidNormalizedUser(posterParticipant);
 
-      // 1. Status එක Read (Seen) කිරීම
-      if (autoViewStatus === 'true') {
-        try {
-          await socket.readMessages([message.key]);
-        } catch (e) {}
+      if (autoView === 'true') {
+        await socket.readMessages([message.key]).catch(()=>{});
       }
 
-      // 2. Status එකට React කිරීම (Fixed for WhatsApp MD)
-      if (autoLikeStatus === 'true') {
-        await delay(1200);
-
-        const userEmojis = (Array.isArray(userCfg.AUTO_LIKE_EMOJI) && userCfg.AUTO_LIKE_EMOJI.length > 0)
-          ? userCfg.AUTO_LIKE_EMOJI
-          : config.AUTO_LIKE_EMOJI;
-
-        const randomEmoji = userEmojis[Math.floor(Math.random() * userEmojis.length)];
+      if (autoLike === 'true') {
+        await delay(1000);
+        const emojis = userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
+        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
 
         await socket.sendMessage(
           'status@broadcast',
@@ -282,592 +300,739 @@ async function setupStatusHandlers(socket, sessionNumber) {
               }
             }
           },
-          {
-            statusJidList: [posterJid, jidNormalizedUser(socket.user.id)]
-          }
-        );
+          { statusJidList: [posterJid, jidNormalizedUser(socket.user.id)] }
+        ).catch(()=>{});
       }
-    } catch (e) {
-      console.error('[STATUS REACT ERROR]:', e.message);
-    }
+    } catch (e) {}
   });
 }
 
-// ---------------- COMMAND & NUMBER REPLY HANDLER ----------------
+// ─────────────── GROUP PARTICIPANTS (WELCOME / GOODBYE) ────────
+function setupGroupParticipantHandlers(socket, sessionNumber) {
+  socket.ev.on('group-participants.update', async (update) => {
+    try {
+      const { id, participants, action } = update;
+      const gSettings = await getGroupSettings(id);
+      const groupMeta = await socket.groupMetadata(id).catch(() => null);
+      if (!groupMeta) return;
+
+      for (const participant of participants) {
+        if (action === 'add' && gSettings.welcome) {
+          const welcomeTxt = `🌸 *WELCOME TO ${groupMeta.subject}!* 🌸\n\n👋 Hey @${participant.split('@')[0]}! Enjoy your stay and follow the group rules. ✨\n\n> 🤖 *${config.BOT_NAME}*`;
+          await socket.sendMessage(id, { text: welcomeTxt, mentions: [participant] });
+        } else if (action === 'remove' && gSettings.goodbye) {
+          const byeTxt = `👋 *GOODBYE @${participant.split('@')[0]}!* We'll miss you. 🌸\n\n> 🤖 *${config.BOT_NAME}*`;
+          await socket.sendMessage(id, { text: byeTxt, mentions: [participant] });
+        }
+      }
+    } catch(e) {}
+  });
+}
+
+// ──────────────── COMMAND & EVENT HANDLERS ──────────────────────
 function setupCommandHandlers(socket, number) {
+  const sanitizedNum = number.replace(/[^0-9]/g, '');
+
   socket.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
-    if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast' || msg.key.remoteJid === config.NEWSLETTER_JID) return;
+    if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
+
+    // Cache message for Anti-Delete & View-Once
+    if (msg.key?.id) {
+      messageStore.set(msg.key.id, JSON.parse(JSON.stringify(msg)));
+      if (messageStore.size > 2000) {
+        const firstKey = messageStore.keys().next().value;
+        messageStore.delete(firstKey);
+      }
+    }
 
     let type = getContentType(msg.message);
+    let messageContent = msg.message;
     if (type === 'ephemeralMessage') {
-      msg.message = msg.message.ephemeralMessage.message;
-      type = getContentType(msg.message);
+      messageContent = msg.message.ephemeralMessage.message;
+      type = getContentType(messageContent);
     }
 
     const from = msg.key.remoteJid;
-    const nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net') : jidNormalizedUser(msg.key.participant || msg.key.remoteJid || '');
+    const isGroup = from.endsWith('@g.us');
+    const nowsender = msg.key.fromMe ? (socket.user.id.split(':')[0] + '@s.whatsapp.net') : jidNormalizedUser(msg.key.participant || from);
     const senderNumber = (nowsender || '').split('@')[0];
-    const developers = `${config.OWNER_NUMBER}`;
-    const botNumber = socket.user.id.split(':')[0];
-    const isbot = botNumber.includes(senderNumber);
-    const isBotOrOwner = isbot ? isbot : developers.includes(senderNumber);
+    const isBot = socket.user.id.split(':')[0].includes(senderNumber);
+    const isOwnerUser = config.OWNER_NUMBER.split(',').map(v => v.replace(/[^0-9]/g, '')).includes(senderNumber) || isBot;
 
     let body = '';
-    try {
-      if (type === 'conversation') body = msg.message.conversation || '';
-      else if (type === 'extendedTextMessage') body = msg.message.extendedTextMessage?.text || '';
-      else if (type === 'imageMessage') body = msg.message.imageMessage?.caption || '';
-      else if (type === 'videoMessage') body = msg.message.videoMessage?.caption || '';
-    } catch(e) { body = ''; }
+    if (type === 'conversation') body = messageContent.conversation || '';
+    else if (type === 'extendedTextMessage') body = messageContent.extendedTextMessage?.text || '';
+    else if (type === 'imageMessage') body = messageContent.imageMessage?.caption || '';
+    else if (type === 'videoMessage') body = messageContent.videoMessage?.caption || '';
     body = String(body || '').trim();
 
-    if (!body) return;
+    const userCfg = await loadUserConfigFromMongo(sanitizedNum);
+    const prefix = userCfg.PREFIX || config.PREFIX;
+    const botName = userCfg.botName || config.BOT_NAME;
+    const botLogo = userCfg.logo || config.DEFAULT_LOGO;
+    const botFooter = userCfg.footer || config.BOT_FOOTER;
 
-    const _preSan = (number || '').replace(/[^0-9]/g, '');
-    const userConfig = await loadUserConfigFromMongo(_preSan) || {};
-    const prefix = userConfig.PREFIX || config.PREFIX;
+    // ── Group Moderation Checks (Antilink, Antibot, Antibadword) ──
+    if (isGroup && !msg.key.fromMe) {
+      const gSettings = await getGroupSettings(from);
 
-    // ── Number Reply Handling for Menu ──
-    const quotedMsgId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+      // Anti-Link
+      if (gSettings.antilink && /(chat\.whatsapp\.com\/|wa\.me\/)/i.test(body)) {
+        if (!isOwnerUser) {
+          await socket.sendMessage(from, { delete: msg.key });
+          await socket.sendMessage(from, { text: `⚠️ Link detected and deleted! Links are not allowed here.` });
+          return;
+        }
+      }
+
+      // Anti-Badword
+      if (gSettings.antibadword && Array.isArray(gSettings.badwords)) {
+        const foundBad = gSettings.badwords.some(bw => body.toLowerCase().includes(bw.toLowerCase()));
+        if (foundBad && !isOwnerUser) {
+          await socket.sendMessage(from, { delete: msg.key });
+          await socket.sendMessage(from, { text: `⚠️ Bad word removed! Maintain group decency.` });
+          return;
+        }
+      }
+    }
+
+    // ── Custom Auto-Reply Trigger (Text, Voice/Audio, Sticker, Image, Video) ──
+    if (!msg.key.fromMe && body) {
+      const allReplies = await getAutoReplies(sanitizedNum);
+      const matchReply = allReplies.find(r => r.trigger.toLowerCase() === body.toLowerCase());
+      if (matchReply) {
+        try {
+          if (matchReply.type === 'text') {
+            await sendFancyMsg(socket, from, { text: matchReply.content }, msg, userCfg);
+          } else if (matchReply.type === 'voice' || matchReply.type === 'audio') {
+            await socket.sendMessage(from, { audio: { url: matchReply.content }, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
+          } else if (matchReply.type === 'image') {
+            await socket.sendMessage(from, { image: { url: matchReply.content }, caption: `✨ Auto Reply by ${botName}` }, { quoted: msg });
+          } else if (matchReply.type === 'video') {
+            await socket.sendMessage(from, { video: { url: matchReply.content }, caption: `✨ Auto Reply by ${botName}` }, { quoted: msg });
+          } else if (matchReply.type === 'sticker') {
+            await socket.sendMessage(from, { sticker: { url: matchReply.content } }, { quoted: msg });
+          }
+        } catch(e) {}
+      }
+    }
+
+    // ── Auto Typing / Recording Presence ──
+    if (userCfg.AUTO_TYPING === 'true') await socket.sendPresenceUpdate('composing', from);
+    if (userCfg.AUTO_RECORDING === 'true') await socket.sendPresenceUpdate('recording', from);
+
+    // ── Number Selection / Menu Logic ──
+    const quotedMsgId = messageContent?.extendedTextMessage?.contextInfo?.stanzaId;
     const lastMenuId = userMenuState.get(from);
-
     let isCmd = body.startsWith(prefix);
     let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
     let args = body.trim().split(/ +/).slice(1);
 
-    // Check if the reply is a numbered option
-    if (!isCmd && (/^[0-9]+$/.test(body)) && (quotedMsgId === lastMenuId || !quotedMsgId)) {
-      const numChoice = body.trim();
-      switch (numChoice) {
-        case '1': command = 'alive'; break;
-        case '2': command = 'ping'; break;
-        case '3': command = 'system'; break;
-        case '4': command = 'settings'; break;
-        case '5': command = 'owner'; break;
-        case '6': 
-          return await socket.sendMessage(from, { text: `ℹ️ *To download a song, send:*\n\`${prefix}song <song_name>\`` }, { quoted: msg });
-        case '7': 
-          return await socket.sendMessage(from, { text: `ℹ️ *To download a video, send:*\n\`${prefix}video <video_name>\`` }, { quoted: msg });
-        case '8': 
-          return await socket.sendMessage(from, { text: `ℹ️ *To download TikTok video, send:*\n\`${prefix}tiktok <video_url>\`` }, { quoted: msg });
-        case '9': 
-          return await socket.sendMessage(from, { text: `ℹ️ *To download FB video, send:*\n\`${prefix}fb <video_url>\`` }, { quoted: msg });
-        default:
-          break;
+    // If user replies with a number to the Main Category Menu
+    if (!isCmd && /^[0-9]+$/.test(body) && (quotedMsgId === lastMenuId || !quotedMsgId)) {
+      const choice = body.trim();
+      switch (choice) {
+        case '1': command = 'dlmenu'; break;
+        case '2': command = 'groupmenu'; break;
+        case '3': command = 'utilmenu'; break;
+        case '4': command = 'funmenu'; break;
+        case '5': command = 'settingsmenu'; break;
+        case '6': command = 'channelmenu'; break;
+        case '7': command = 'customizemenu'; break;
+        default: break;
       }
     }
 
-    // Auto-voice trigger
-    try {
-      if (!msg.key.fromMe && userConfig.AUTO_VOICE !== 'off') {
-        const _voiceUrl = _VOICE_REPLIES[body.toLowerCase()];
-        if (_voiceUrl) {
-          await socket.sendMessage(from, { audio: { url: _voiceUrl }, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { quoted: msg });
-        }
-      }
-    } catch (e) {}
-
-    // Auto-react trigger
-    try {
-      if (userConfig.AUTO_REACT === 'on' && !msg.key.fromMe) {
-        const _reactEmojis = ['❤️','🧡','💛','💚','💙','💜','✨','🌟','💯','🎉','🔥','👍','🌸','🌿'];
-        const _randomEmoji = _reactEmojis[Math.floor(Math.random() * _reactEmojis.length)];
-        await socket.sendMessage(from, { react: { text: _randomEmoji, key: msg.key } }).catch(()=>{});
-      }
-    } catch(e) {}
-
     if (!command) return;
-    if (!_checkRateLimit(_preSan)) return;
 
-    const botName = userConfig.botName || BOT_NAME_FANCY;
-    const logoUrl = userConfig.logo || config.KEZU_IMG;
-
+    // ─────────────────────── COMMAND IMPLEMENTATIONS ───────────────────────
     try {
       switch (command) {
-        // ──────────────────────── MENU (WITH NUMBER SELECTION) ────────────────────────
-          // ──────────────────────── SPOTIFY DOWNLOADER ────────────────────────
-        case 'spotify':
-        case 'sp': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { 
-              text: `❌ *Usage:* ${prefix}spotify <song name or spotify url>\n\n*Example:*\n• ${prefix}spotify shape of you\n• ${prefix}spotify https://open.spotify.com/track/...` 
-            }, { quoted: msg });
-          }
 
-          const query = args.join(' ').trim();
-          await socket.sendMessage(from, { react: { text: '🟢', key: msg.key } });
-
-          try {
-            let trackUrl = '';
-
-            // 1. පරිශීලකයා කෙලින්ම Spotify Link එකක් ලබාදී ඇත්දැයි බැලීම
-            if (query.includes('spotify.com/track/') || query.includes('spotify.link/')) {
-              trackUrl = query;
-            } else {
-              // 2. ගීතයේ නම (Search Query) නම් Search API එකෙන් Link එක ලබාගැනීම
-              const searchRes = await axios.get(`https://spotify-api-nine.vercel.app/api/search?q=${encodeURIComponent(query)}`, { timeout: 20000 });
-              
-              const searchData = searchRes.data?.data || searchRes.data?.result || searchRes.data?.results || searchRes.data;
-              const track = Array.isArray(searchData) ? searchData[0] : (searchData?.tracks?.[0] || searchData);
-
-              if (!track) {
-                return await socket.sendMessage(from, { text: '❌ No songs found on Spotify for your search query.' }, { quoted: msg });
-              }
-
-              trackUrl = track.url || track.link || track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`;
-            }
-
-            if (!trackUrl) throw new Error('Could not resolve Spotify track URL.');
-
-            // 3. Download API එක හරහා Audio එක ලබාගැනීම
-            const dlRes = await axios.get(`https://spotify-api-nine.vercel.app/api/download?url=${encodeURIComponent(trackUrl)}`, { timeout: 35000 });
-            const dlData = dlRes.data?.data || dlRes.data?.result || dlRes.data;
-
-            const downloadUrl = dlData?.download_url || dlData?.download || dlData?.url || dlData?.link || dlData?.audio;
-            const title = dlData?.title || dlData?.name || 'Spotify_Track';
-            const artist = dlData?.artist || dlData?.artists || 'Spotify Artist';
-            const thumbnail = dlData?.cover || dlData?.thumbnail || dlData?.image;
-
-            if (!downloadUrl) {
-              throw new Error('Failed to retrieve Spotify download link.');
-            }
-
-            // Track Details Card එක යැවීම
-            const caption = `
-╭───『 🟢 *SPOTIFY MUSIC* 』───◆
-│ 🎵 *Title:* ${title}
-│ 👤 *Artist:* ${artist}
-│ 🔗 *Source:* Spotify
-╰──────────────────────────◆
-> *© ${botName}*`.trim();
-
-            if (thumbnail) {
-              await socket.sendMessage(from, {
-                image: { url: thumbnail },
-                caption: caption
-              }, { quoted: msg });
-            } else {
-              await socket.sendMessage(from, { text: caption }, { quoted: msg });
-            }
-
-            // Audio එක (MP3) යැවීම
-            await socket.sendMessage(from, {
-              audio: { url: downloadUrl },
-              mimetype: 'audio/mpeg',
-              fileName: `${title.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`,
-              contextInfo: {
-                externalAdReply: {
-                  title: title,
-                  body: artist,
-                  mediaType: 2,
-                  thumbnailUrl: thumbnail || logoUrl,
-                  sourceUrl: trackUrl
-                }
-              }
-            }, { quoted: msg });
-
-          } catch (err) {
-            console.error('Spotify error:', err.message);
-            await socket.sendMessage(from, { text: `❌ Spotify Download Error: ${err.message || 'Server error'}` }, { quoted: msg });
-          }
-          break;
-        }
-        case 'menu': {
-          await socket.sendMessage(from, { react: { text: "🐾", key: msg.key } });
-          const slNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Colombo" }));
-          const timeStr = slNow.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
-          const dateStr = slNow.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" });
-          const ramUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        // 🌸 MAIN CATEGORIZED MENU 🌸
+        case 'menu':
+        case 'help':
+        case 'panel': {
+          await socket.sendMessage(from, { react: { text: "🌸", key: msg.key } });
           const uptime = process.uptime();
-          const runtime = `${Math.floor(uptime / 3600)}H ${Math.floor((uptime % 3600) / 60)}M`;
+          const runtime = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+          const ramUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
 
-          const menuText = `
-*╭───[ ${botName} ]─────*
+          const mainText = `
+*╭─────────────···▸*
+*│* 🌸 *${botName}* 🌸
 *│* 👤 *User:* @${senderNumber}
-*│* ⏱️ *Runtime:* ${runtime}
+*│* ⏱️ *Uptime:* ${runtime}
 *│* 💾 *RAM:* ${ramUsage} MB
-*│* 📅 *Date:* ${dateStr} | ⌚ *Time:* ${timeStr}
-*╰────────────────────*
+*│* 🔣 *Prefix:* \`${prefix}\`
+*╰──────────────···▸*
 
-🔢 *REPLY WITH A NUMBER BELOW:*
+🔢 *REPLY WITH A CATEGORY NUMBER:*
 
-*┌─❰ 🤖 BOT GENERAL ❱*
-*│ [1]* Alive Status
-*│ [2]* Check Speed / Ping
-*│ [3]* System Status
-*│ [4]* Bot Settings Panel
-*│ [5]* Bot Owner Contact
-*└───────────────────*
+*┌──『 📚 ALL CATEGORIES 』*
+*│ [1]* 📥 *Downloaders* (Songs, Videos, TT, FB..)
+*│ [2]* 👥 *Group Admin & Protection*
+*│ [3]* 🛠️ *Utilities & Tools* (VV, Stickers..)
+*│ [4]* 🎭 *Fun & Games*
+*│ [5]* ⚙️ *Settings & Bot Toggles*
+*│ [6]* 📢 *Channel & Newsletter Suite*
+*│ [7]* 🎨 *Bot Customization & Personalize*
+*└──────────────────────*
 
-*┌─❰ 📥 DOWNLOADERS ❱*
-*│ [6]* Download Song (.song)
-*│ [7]* Download Video (.video)
-*│ [8]* TikTok Downloader (.tiktok)
-*│ [9]* Facebook Downloader (.fb)
-*└───────────────────*
+> 💡 *Quick Action:* Reply directly with *1*, *2*, *3*, *4*, *5*, *6*, or *7* to view commands.
+${botFooter}`.trim();
 
-*┌─❰ ⚙️ TOGGLE COMMANDS ❱*
-*│* ${prefix}autotyping on/off
-*│* ${prefix}autorecording on/off
-*│* ${prefix}autoreact on/off
-*│* ${prefix}antidelete on/off
-*└───────────────────*
-
-> 💡 *Tip:* You can reply directly with the number (e.g., *1* or *2*) to trigger the command.`.trim();
-
-          const sentMenu = await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption: menuText,
+          const sentMenu = await sendFancyMsg(socket, from, {
+            image: { url: botLogo },
+            caption: mainText,
             mentions: [nowsender]
-          }, { quoted: msg });
+          }, msg, userCfg);
 
-          // Save last sent menu ID for number replies
-          if (sentMenu?.key?.id) {
-            userMenuState.set(from, sentMenu.key.id);
-          }
+          if (sentMenu?.key?.id) userMenuState.set(from, sentMenu.key.id);
           break;
         }
 
-        // ──────────────────────── PING ────────────────────────
-        case 'ping':
-        case 'speedping':
-        case 'p': {
-          const start = Date.now();
-          await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
-          const latency = Date.now() - start;
-
-          const pingCard = `
-╭───「 🏓 *P O N G* 」───◆
-│ ⚡ *Speed:* ${latency} ms
-│ 🤖 *Bot:* ${botName}
-│ 💻 *Status:* Active & Online 🟢
-╰──────────────────────◆`.trim();
-
-          await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption: pingCard
-          }, { quoted: msg });
+        // 📥 SUB-MENU 1: DOWNLOADERS
+        case 'dlmenu': {
+          const dlText = `
+*╭───❰ 📥 DOWNLOAD MENU ❱───*
+*│* 🎵 \`${prefix}song <name/url>\` - Download MP3
+*│* 🎬 \`${prefix}video <name/url>\` - Download MP4
+*│* 🎵 \`${prefix}tiktok <url>\` - TikTok No Watermark
+*│* 📘 \`${prefix}fb <url>\` - Facebook Video
+*│* 📷 \`${prefix}ig <url>\` - Instagram Downloader
+*│* 🌸 \`${prefix}anime <name>\` - Anime Info & Search
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: dlText }, msg, userCfg);
           break;
         }
 
-        // ──────────────────────── ALIVE ────────────────────────
-        case 'alive': {
-          await socket.sendMessage(from, { react: { text: "🧚‍♀️", key: msg.key } });
-          const uptime = Math.floor(process.uptime());
-          const hours = Math.floor(uptime / 3600);
-          const minutes = Math.floor((uptime % 3600) / 60);
-          const seconds = Math.floor(uptime % 60);
-
-          const aliveText = `
-╭───「 📍 *${botName}* 」───◆
-│ 👋 *Hey! I am Alive and Working.*
-│
-│ 👤 *User:* @${senderNumber}
-│ 👑 *Owner:* ${config.OWNER_NAME}
-│ ⏳ *Uptime:* ${hours}h ${minutes}m ${seconds}s
-│ 🚀 *Version:* ${config.BOT_VERSION}
-╰───────────────────────◆
-> *© Powered by Status Assistant 🍃*`.trim();
-
-          await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption: aliveText,
-            mentions: [nowsender]
-          }, { quoted: msg });
+        // 👥 SUB-MENU 2: GROUP COMMANDS
+        case 'groupmenu': {
+          const gText = `
+*╭───❰ 👥 GROUP COMMANDS ❱───*
+*│* 🛡️ \`${prefix}antilink on/off\` - Auto delete invite links
+*│* 🤖 \`${prefix}antibot on/off\` - Auto kick other bots
+*│* 🤬 \`${prefix}antibadword on/off\` - Filter bad words
+*│* ➕ \`${prefix}addbadword <word>\` - Add word to list
+*│* ➖ \`${prefix}delbadword <word>\` - Remove bad word
+*│* 👋 \`${prefix}welcome on/off\` - New member greetings
+*│* 🚪 \`${prefix}goodbye on/off\` - Leaving member message
+*│* 📢 \`${prefix}tagall <text>\` - Mention everyone
+*│* 👻 \`${prefix}hidetag <text>\` - Ghost mention
+*│* 👑 \`${prefix}promote @user\` - Give Admin
+*│* 👤 \`${prefix}demote @user\` - Remove Admin
+*│* 🚫 \`${prefix}kick @user\` - Remove participant
+*│* 🔒 \`${prefix}mute\` / \`${prefix}unmute\` - Group chat lock
+*│* 🔗 \`${prefix}glink\` - Get Group Invite Link
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: gText }, msg, userCfg);
           break;
         }
 
-        // ──────────────────────── SYSTEM ────────────────────────
-        case 'system': {
-          await socket.sendMessage(from, { react: { text: "🖥️", key: msg.key } });
-          const uptime = os.uptime();
-          const hours = Math.floor(uptime / 3600);
-          const minutes = Math.floor((uptime % 3600) / 60);
-
-          const text = `
-╭━━━━━━━━━━━━━━━━━━━●
-┃ 🖥️ *SYSTEM INFORMATION*
-┃
-┃ 🚀 *OS:* ${os.type()} ${os.release()}
-┃ 🧠 *CPU Cores:* ${os.cpus().length}
-┃ 💾 *RAM:* ${(os.totalmem()/1024/1024/1024).toFixed(2)} GB
-┃ ⏱️ *System Uptime:* ${hours}h ${minutes}m
-╰━━━━━━━━━━━━━━━━━━━●
-> 👨‍💻 *${botName}*`.trim();
-
-          await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption: text
-          }, { quoted: msg });
+        // 🛠️ SUB-MENU 3: UTILITIES
+        case 'utilmenu': {
+          const uText = `
+*╭───❰ 🛠️ UTILITY COMMANDS ❱───*
+*│* 👁️ \`${prefix}vv\` / \`${prefix}readviewonce\` - Retrieve View-Once Media
+*│* 📥 \`${prefix}savestatus\` / \`${prefix}ss\` - Save quoted Status
+*│* 🎨 \`${prefix}sticker\` / \`${prefix}s\` - Make Sticker from Photo/Video
+*│* 🏷️ \`${prefix}take <pack> | <author>\` - Rename Sticker
+*│* 🆔 \`${prefix}jid\` - Get Chat or User JID
+*│* ➕ \`${prefix}addreply <text|audio|image|video>|<word>|<content/url>\`
+*│* ➖ \`${prefix}delreply <trigger_word>\`
+*│* 📋 \`${prefix}listreply\` - View custom auto-replies
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: uText }, msg, userCfg);
           break;
         }
 
-        // ──────────────────────── PAIR ────────────────────────
-        case 'pair': {
-          let text = (args.join(' ') || '').trim();
-          let pairNum = text.replace(/[^0-9]/g, '');
-
-          if (!pairNum) {
-            return await socket.sendMessage(from, {
-              text: `❌ *No Phone Number Provided!*\n\n📝 *Usage:* \`${prefix}pair 94771234567\``
-            }, { quoted: msg });
-          }
-
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-
-          try {
-            const apiUrl = `https://statusassistant-11969787fc03.herokuapp.com/code?number=${encodeURIComponent(pairNum)}`;
-            const response = await axios.get(apiUrl, { timeout: 15000 });
-            const pairCode = response.data?.code;
-
-            if (!pairCode) throw new Error('Could not fetch pairing code from server.');
-
-            await socket.sendMessage(from, { react: { text: '🔑', key: msg.key } });
-
-            const pairMsg = `
-╭───『 ⚜️ *PAIRING CODE* ⚜️ 』───◆
-│ 👤 *User:* +${pairNum}
-│ 🔑 *YOUR CODE:*
-│
-│  *${pairCode}*
-│
-│ ⏳ *Expires in 60 seconds*
-╰──────────────────────────◆`.trim();
-
-            await socket.sendMessage(from, { text: pairMsg }, { quoted: msg });
-            await delay(500);
-            await socket.sendMessage(from, { text: pairCode }, { quoted: msg });
-
-          } catch (err) {
-            await socket.sendMessage(from, {
-              text: `❌ *Pairing Failed:*\n${err.message || 'API Connection Error'}`
-            }, { quoted: msg });
-          }
+        // 🎭 SUB-MENU 4: FUN & GAMES
+        case 'funmenu': {
+          const fText = `
+*╭───❰ 🎭 FUN & GAMES ❱───*
+*│* 💖 \`${prefix}ship @user1 @user2\` - Love Compatibility %
+*│* 😂 \`${prefix}joke\` - Random Funny Joke
+*│* 💡 \`${prefix}fact\` - Interesting Random Fact
+*│* 🔥 \`${prefix}dare\` - Random Dare challenge
+*│* 🤫 \`${prefix}truth\` - Random Truth question
+*│* ✊ \`${prefix}rps <rock|paper|scissors>\` - Mini Game
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: fText }, msg, userCfg);
           break;
         }
 
-        // ──────────────────────── SETTINGS ────────────────────────
-        case 'setting':
+        // ⚙️ SUB-MENU 5: SETTINGS & TOGGLES
+        case 'settingsmenu':
         case 'settings': {
-          await socket.sendMessage(from, { react: { text: '⚙️', key: msg.key } });
-          const fancyWork = (userConfig.WORK_TYPE || 'public').toUpperCase();
+          const sText = `
+*╭───❰ ⚙️ SETTINGS PANEL ❱───*
+*│* 👁️ *Auto Status View:* ${userCfg.AUTO_VIEW_STATUS || 'true'}
+*│* ❤️ *Auto Status React:* ${userCfg.AUTO_LIKE_STATUS || 'true'}
+*│* ✍️ *Auto Typing:* ${userCfg.AUTO_TYPING || 'false'}
+*│* 🎙️ *Auto Recording:* ${userCfg.AUTO_RECORDING || 'false'}
+*│* 🗑️ *Anti Delete:* ${userCfg.ANTI_DELETE || 'off'}
+*│* 🔣 *Current Prefix:* \`${prefix}\`
+*╰────────────────────────*
 
-          const msgCaption = `
-╭───〔 *${botName} SETTINGS* 〕───◆
-│ 📝 *Name:* ${botName}
-│ 🔧 *Work Type:* ${fancyWork}
-│ 👁️ *Auto Status View:* ${userConfig.AUTO_VIEW_STATUS || 'true'}
-│ ❤️ *Auto Status React:* ${userConfig.AUTO_LIKE_STATUS || 'true'}
-│ 🗑️ *Anti Delete:* ${userConfig.ANTI_DELETE || 'off'}
-│ ✍️ *Auto Typing:* ${userConfig.AUTO_TYPING || 'false'}
-│ 🎙️ *Auto Recording:* ${userConfig.AUTO_RECORDING || 'false'}
-│ 🔣 *Prefix:* ${prefix}
-╰────────────────────────────◆
-
-*⚡ SHORTCUT COMMANDS TO TOGGLE:*
+*🔧 TOGGLE SHORTCUTS:*
+• \`${prefix}autostatusview on/off\`
+• \`${prefix}autostatusreact on/off\`
 • \`${prefix}autotyping on/off\`
 • \`${prefix}autorecording on/off\`
-• \`${prefix}autoreact on/off\`
 • \`${prefix}antidelete on/off\`
-• \`${prefix}setbotname <name>\``;
-
-          await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption: msgCaption
-          }, { quoted: msg });
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: sText }, msg, userCfg);
           break;
         }
 
-        // ──────────────────────── SONG / PLAY ────────────────────────
-        case 'song':
-        case 'play':
-        case 'audio':
-        case 'ytmp3': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *Usage:* ${prefix}song <song name or youtube url>` }, { quoted: msg });
+        // 📢 SUB-MENU 6: CHANNEL & NEWSLETTER
+        case 'channelmenu': {
+          const chText = `
+*╭───❰ 📢 CHANNEL COMMANDS ❱───*
+*│* ℹ️ \`${prefix}channelinfo <jid/url>\` - Newsletter Info
+*│* 💖 \`${prefix}channelreact <jid> <server_msg_id> <emoji>\`
+*│* 🚀 \`${prefix}channelpost <jid> <message>\` - Post to Channel
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: chText }, msg, userCfg);
+          break;
+        }
+
+        // 🎨 SUB-MENU 7: BOT CUSTOMIZE
+        case 'customizemenu': {
+          const cText = `
+*╭───❰ 🎨 CUSTOMIZE BOT ❱───*
+*│* 🏷️ \`${prefix}setbotname <New Name>\`
+*│* 🖼️ \`${prefix}setlogo <Image Direct URL>\`
+*│* 🔣 \`${prefix}setprefix <symbol>\`
+*│* 📜 \`${prefix}setfooter <Footer Text>\`
+*│* ⚡ \`${prefix}ping\` - Check Latency
+*│* 🖥️ \`${prefix}system\` - Host Stats
+*│* 👑 \`${prefix}owner\` - Owner Contact Info
+*│* 📍 \`${prefix}alive\` - Bot Status
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: cText }, msg, userCfg);
+          break;
+        }
+
+        // ────────────────── VIEW ONCE RECOVERY (VV) ──────────────────
+        case 'vv':
+        case 'readviewonce': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!quoted) return await socket.sendMessage(from, { text: '❌ Please reply to a View-Once image/video!' }, { quoted: msg });
+          
+          let vo = quoted.viewOnceMessageV2?.message || quoted.viewOnceMessage?.message || quoted;
+          let mtype = Object.keys(vo)[0];
+
+          if (!mtype || (!mtype.includes('image') && !mtype.includes('video') && !mtype.includes('audio'))) {
+            return await socket.sendMessage(from, { text: '❌ That message is not a View-Once media!' }, { quoted: msg });
           }
+
+          const stream = await downloadContentFromMessage(vo[mtype], mtype.replace('Message', ''));
+          let buffer = Buffer.from([]);
+          for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+          if (mtype.includes('image')) {
+            await socket.sendMessage(from, { image: buffer, caption: `🔓 *View-Once Image Recovered!*` }, { quoted: msg });
+          } else if (mtype.includes('video')) {
+            await socket.sendMessage(from, { video: buffer, caption: `🔓 *View-Once Video Recovered!*` }, { quoted: msg });
+          } else if (mtype.includes('audio')) {
+            await socket.sendMessage(from, { audio: buffer, mimetype: 'audio/mp4' }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ────────────────── STICKER MAKER (.s / .sticker) ────────────
+        case 's':
+        case 'sticker': {
+          let targetMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage || msg.message;
+          let mType = getContentType(targetMsg);
+
+          if (mType === 'imageMessage' || (targetMsg.imageMessage)) {
+            const buf = await downloadMediaMessage(targetMsg);
+            const jimpImg = await Jimp.read(buf);
+            await jimpImg.resize(512, 512);
+            const outBuf = await jimpImg.getBufferAsync(Jimp.MIME_PNG);
+            await socket.sendMessage(from, { sticker: outBuf }, { quoted: msg });
+          } else {
+            await socket.sendMessage(from, { text: `❌ Reply to an image with \`${prefix}sticker\`` }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ────────────────── STICKER RENAME (.take / .wm) ─────────────
+        case 'take':
+        case 'wm': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!quoted || !quoted.stickerMessage) {
+            return await socket.sendMessage(from, { text: '❌ Reply to a sticker to rename watermark!' }, { quoted: msg });
+          }
+          const buf = await downloadMediaMessage(quoted);
+          await socket.sendMessage(from, { sticker: buf }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── STATUS SAVER (.ss / .savestatus) ─────────
+        case 'ss':
+        case 'savestatus': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          if (!quoted) return await socket.sendMessage(from, { text: '❌ Reply to a status to save it!' }, { quoted: msg });
+          const buf = await downloadMediaMessage(quoted);
+          const qType = Object.keys(quoted)[0];
+          if (qType.includes('image')) {
+            await socket.sendMessage(from, { image: buf, caption: `🌸 Saved Status by ${botName}` }, { quoted: msg });
+          } else if (qType.includes('video')) {
+            await socket.sendMessage(from, { video: buf, caption: `🌸 Saved Status by ${botName}` }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ────────────────── JID ──────────────────
+        case 'jid': {
+          const target = msg.message?.extendedTextMessage?.contextInfo?.participant || from;
+          await socket.sendMessage(from, { text: `🆔 *JID:* \`${target}\`` }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── AUTO REPLY MANAGEMENT ────────────────────
+        // .addreply text|hello|Hello there!
+        // .addreply voice|gm|https://example.com/gm.ogg
+        case 'addreply':
+        case 'addautoreply': {
+          if (!isOwnerUser) return;
+          const content = args.join(' ');
+          const parts = content.split('|').map(s => s.trim());
+          if (parts.length < 3) {
+            return await socket.sendMessage(from, {
+              text: `❌ *Format Error!*\n*Usage:* \`${prefix}addreply <type>|<trigger_word>|<text_or_url>\`\n*Types:* \`text\`, \`voice\`, \`image\`, \`video\`, \`sticker\`\n\n*Example:* \`${prefix}addreply voice|gm|https://my-audio-link.ogg\``
+            }, { quoted: msg });
+          }
+          const [rtype, rtrig, rcnt] = parts;
+          await addAutoReply(sanitizedNum, rtrig, rtype.toLowerCase(), rcnt);
+          await socket.sendMessage(from, { text: `✅ Auto Reply added for trigger: *"${rtrig}"* [${rtype.toUpperCase()}]` }, { quoted: msg });
+          break;
+        }
+
+        case 'delreply':
+        case 'delautoreply': {
+          if (!isOwnerUser) return;
+          const trig = args.join(' ').trim();
+          if (!trig) return await socket.sendMessage(from, { text: `❌ Provide the trigger word to delete.` }, { quoted: msg });
+          await removeAutoReply(sanitizedNum, trig);
+          await socket.sendMessage(from, { text: `🗑️ Auto Reply deleted for: *"${trig}"*` }, { quoted: msg });
+          break;
+        }
+
+        case 'listreply': {
+          const list = await getAutoReplies(sanitizedNum);
+          if (!list.length) return await socket.sendMessage(from, { text: 'ℹ️ No custom auto replies set yet.' }, { quoted: msg });
+          let listTxt = `📋 *ACTIVE CUSTOM AUTO REPLIES (${list.length})*\n\n`;
+          list.forEach((r, idx) => {
+            listTxt += `*${idx + 1}.* 🎯 *Trigger:* \`${r.trigger}\` | 🏷️ *Type:* \`${r.type}\`\n`;
+          });
+          await socket.sendMessage(from, { text: listTxt }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── GROUP ADMIN COMMANDS ─────────────────────
+        case 'tagall': {
+          if (!isGroup) return;
+          const groupMeta = await socket.groupMetadata(from);
+          const members = groupMeta.participants.map(p => p.id);
+          const txt = args.join(' ') || 'Attention Everyone!';
+          let mentionText = `📢 *TAG ALL EVENT*\n📝 *Message:* ${txt}\n\n`;
+          members.forEach((m, i) => { mentionText += `${i + 1}. @${m.split('@')[0]}\n`; });
+          await socket.sendMessage(from, { text: mentionText, mentions: members }, { quoted: msg });
+          break;
+        }
+
+        case 'hidetag': {
+          if (!isGroup) return;
+          const groupMeta = await socket.groupMetadata(from);
+          const members = groupMeta.participants.map(p => p.id);
+          const txt = args.join(' ') || 'Attention!';
+          await socket.sendMessage(from, { text: txt, mentions: members });
+          break;
+        }
+
+        case 'antilink': {
+          if (!isGroup || !isOwnerUser) return;
+          const opt = (args[0] || '').toLowerCase();
+          if (opt === 'on' || opt === 'off') {
+            await updateGroupSettings(from, { antilink: opt === 'on' });
+            await socket.sendMessage(from, { text: `🛡️ Anti-Link has been turned *${opt.toUpperCase()}* for this group.` }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'antibot': {
+          if (!isGroup || !isOwnerUser) return;
+          const opt = (args[0] || '').toLowerCase();
+          if (opt === 'on' || opt === 'off') {
+            await updateGroupSettings(from, { antibot: opt === 'on' });
+            await socket.sendMessage(from, { text: `🤖 Anti-Bot has been turned *${opt.toUpperCase()}*.` }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'antibadword': {
+          if (!isGroup || !isOwnerUser) return;
+          const opt = (args[0] || '').toLowerCase();
+          if (opt === 'on' || opt === 'off') {
+            await updateGroupSettings(from, { antibadword: opt === 'on' });
+            await socket.sendMessage(from, { text: `🤬 Anti-Badword has been turned *${opt.toUpperCase()}*.` }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'addbadword': {
+          if (!isGroup || !isOwnerUser) return;
+          const word = args.join(' ').trim().toLowerCase();
+          if (!word) return;
+          const gSettings = await getGroupSettings(from);
+          const cur = Array.isArray(gSettings.badwords) ? gSettings.badwords : [];
+          if (!cur.includes(word)) cur.push(word);
+          await updateGroupSettings(from, { badwords: cur });
+          await socket.sendMessage(from, { text: `✅ Added *"${word}"* to badword filter list.` }, { quoted: msg });
+          break;
+        }
+
+        case 'welcome':
+        case 'goodbye': {
+          if (!isGroup || !isOwnerUser) return;
+          const opt = (args[0] || '').toLowerCase();
+          if (opt === 'on' || opt === 'off') {
+            await updateGroupSettings(from, { [command]: opt === 'on' });
+            await socket.sendMessage(from, { text: `🌸 Group ${command} messages turned *${opt.toUpperCase()}*.` }, { quoted: msg });
+          }
+          break;
+        }
+
+        case 'kick': {
+          if (!isGroup || !isOwnerUser) return;
+          const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] || '').replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+          if (target) await socket.groupParticipantsUpdate(from, [target], 'remove');
+          break;
+        }
+
+        case 'promote': {
+          if (!isGroup || !isOwnerUser) return;
+          const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] || '').replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+          if (target) await socket.groupParticipantsUpdate(from, [target], 'promote');
+          break;
+        }
+
+        case 'demote': {
+          if (!isGroup || !isOwnerUser) return;
+          const target = msg.message?.extendedTextMessage?.contextInfo?.participant || (args[0] || '').replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+          if (target) await socket.groupParticipantsUpdate(from, [target], 'demote');
+          break;
+        }
+
+        case 'mute': {
+          if (!isGroup || !isOwnerUser) return;
+          await socket.groupSettingUpdate(from, 'announcement');
+          await socket.sendMessage(from, { text: '🔒 Group chat muted (Admins only).' }, { quoted: msg });
+          break;
+        }
+
+        case 'unmute': {
+          if (!isGroup || !isOwnerUser) return;
+          await socket.groupSettingUpdate(from, 'not_announcement');
+          await socket.sendMessage(from, { text: '🔓 Group chat unmuted (All members can send messages).' }, { quoted: msg });
+          break;
+        }
+
+        case 'glink': {
+          if (!isGroup) return;
+          const code = await socket.groupInviteCode(from);
+          await socket.sendMessage(from, { text: `🔗 *Group Link:* https://chat.whatsapp.com/${code}` }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── FUN & GAMES ───────────────────────────────
+        case 'ship': {
+          const rand = Math.floor(Math.random() * 100) + 1;
+          await sendFancyMsg(socket, from, { text: `💖 *LOVE COMPATIBILITY:* *${rand}%* 💞\n\n> 🌸 Match rating by ${botName}` }, msg, userCfg);
+          break;
+        }
+
+        case 'joke': {
+          const res = await axios.get('https://official-joke-api.appspot.com/random_joke').catch(() => null);
+          const jTxt = res?.data ? `😂 *${res.data.setup}*\n\n👉 *${res.data.punchline}*` : 'Why do programmers prefer dark mode? Because light attracts bugs!';
+          await sendFancyMsg(socket, from, { text: jTxt }, msg, userCfg);
+          break;
+        }
+
+        case 'fact': {
+          const res = await axios.get('https://uselessfacts.jsph.pl/random.json?language=en').catch(() => null);
+          const fTxt = res?.data?.text ? `💡 *Random Fact:* ${res.data.text}` : 'Honey never spoils; archaeologists found 3000-year-old edible honey in Egyptian tombs!';
+          await sendFancyMsg(socket, from, { text: fTxt }, msg, userCfg);
+          break;
+        }
+
+        // ────────────────── BOT CUSTOMIZATION ────────────────────────
+        case 'setbotname': {
+          if (!isOwnerUser) return;
+          const newName = args.join(' ').trim();
+          if (!newName) return await socket.sendMessage(from, { text: '❌ Provide the new bot name.' }, { quoted: msg });
+          userCfg.botName = newName;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+          await socket.sendMessage(from, { text: `✅ Bot Name updated to: *${newName}*` }, { quoted: msg });
+          break;
+        }
+
+        case 'setlogo': {
+          if (!isOwnerUser) return;
+          const newLogo = args[0]?.trim();
+          if (!newLogo || !newLogo.startsWith('http')) return await socket.sendMessage(from, { text: '❌ Provide a direct image URL.' }, { quoted: msg });
+          userCfg.logo = newLogo;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+          await socket.sendMessage(from, { text: `✅ Bot Logo updated successfully!` }, { quoted: msg });
+          break;
+        }
+
+        case 'setprefix': {
+          if (!isOwnerUser) return;
+          const newP = args[0]?.trim();
+          if (!newP) return;
+          userCfg.PREFIX = newP;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+          await socket.sendMessage(from, { text: `✅ Prefix set to: *${newP}*` }, { quoted: msg });
+          break;
+        }
+
+        case 'setfooter': {
+          if (!isOwnerUser) return;
+          const newFooter = args.join(' ').trim();
+          if (!newFooter) return;
+          userCfg.footer = `> *${newFooter}*`;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+          await socket.sendMessage(from, { text: `✅ Bot footer updated!` }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── DOWNLOADERS ──────────────────────────────
+        case 'song':
+        case 'play': {
+          if (!args.length) return await socket.sendMessage(from, { text: `❌ *Usage:* \`${prefix}song <song_name>\`` }, { quoted: msg });
           const query = args.join(' ');
           await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
           try {
-            let searchData;
-            if (query.match(/(youtube\.com|youtu\.be)/)) {
-              const match = query.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/);
-              if (!match) throw new Error('Invalid YouTube URL');
-              searchData = await yts({ videoId: match[1] });
-            } else {
-              const result = await yts(query);
-              if (!result.videos || result.videos.length === 0) {
-                return await socket.sendMessage(from, { text: '❌ No results found.' }, { quoted: msg });
-              }
-              searchData = result.videos[0];
-            }
-
-            const videoId = searchData.videoId;
-            const apiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoId}&api_key=${config.NEXORA_API_KEY}`;
-            const apiRes = await axios.get(apiUrl, { timeout: 30000 });
-
-            if (!apiRes.data?.success) throw new Error('API failed to download song.');
-
-            const downloadLink = apiRes.data.all_qualities?.audio?.download_url;
-            const songTitle = apiRes.data.title || searchData.title;
+            const result = await yts(query);
+            if (!result.videos?.length) return await socket.sendMessage(from, { text: '❌ No songs found.' }, { quoted: msg });
+            const vid = result.videos[0];
+            const apiRes = await axios.get(`${config.API_YT_ALL_URL}?url=https://youtu.be/${vid.videoId}&api_key=${config.NEXORA_API_KEY}`, { timeout: 30000 });
+            const dlLink = apiRes.data?.all_qualities?.audio?.download_url;
+            if (!dlLink) throw new Error('Download URL error');
 
             await socket.sendMessage(from, {
-              audio: { url: downloadLink },
+              audio: { url: dlLink },
               mimetype: 'audio/mpeg',
-              fileName: `${songTitle.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`
+              fileName: `${vid.title}.mp3`
             }, { quoted: msg });
-
-          } catch (err) {
-            await socket.sendMessage(from, { text: `❌ Download error: ${err.message}` }, { quoted: msg });
+          } catch(e) {
+            await socket.sendMessage(from, { text: `❌ Song download failed: ${e.message}` }, { quoted: msg });
           }
           break;
         }
 
-        // ──────────────────────── VIDEO / MP4 ────────────────────────
-        case 'video':
-        case 'yt':
-        case 'mp4': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *Usage:* ${prefix}video <video name or url>` }, { quoted: msg });
-          }
+        case 'video': {
+          if (!args.length) return await socket.sendMessage(from, { text: `❌ *Usage:* \`${prefix}video <video_name>\`` }, { quoted: msg });
           const query = args.join(' ');
           await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
 
           try {
             const result = await yts(query);
-            if (!result.videos || result.videos.length === 0) {
-              return await socket.sendMessage(from, { text: '❌ Video not found.' }, { quoted: msg });
-            }
-            const videoData = result.videos[0];
-            const apiUrl = `${config.API_YT_ALL_URL}?url=https://youtu.be/${videoData.videoId}&api_key=${config.NEXORA_API_KEY}`;
-            const apiRes = await axios.get(apiUrl, { timeout: 30000 });
-
-            const dlUrl = apiRes.data?.all_qualities?.['360p']?.download_url || apiRes.data?.all_qualities?.audio?.download_url;
-            if (!dlUrl) throw new Error('Could not get download URL');
+            if (!result.videos?.length) return await socket.sendMessage(from, { text: '❌ No videos found.' }, { quoted: msg });
+            const vid = result.videos[0];
+            const apiRes = await axios.get(`${config.API_YT_ALL_URL}?url=https://youtu.be/${vid.videoId}&api_key=${config.NEXORA_API_KEY}`, { timeout: 30000 });
+            const dlLink = apiRes.data?.all_qualities?.['360p']?.download_url || apiRes.data?.all_qualities?.audio?.download_url;
+            if (!dlLink) throw new Error('Download URL error');
 
             await socket.sendMessage(from, {
-              video: { url: dlUrl },
+              video: { url: dlLink },
               mimetype: 'video/mp4',
-              caption: `🎬 *${videoData.title}*\n\n> © ${botName}`
+              caption: `🎬 *${vid.title}*\n\n${botFooter}`
             }, { quoted: msg });
           } catch(e) {
-            await socket.sendMessage(from, { text: `❌ Video Error: ${e.message}` }, { quoted: msg });
+            await socket.sendMessage(from, { text: `❌ Video download failed: ${e.message}` }, { quoted: msg });
           }
           break;
         }
 
-        // ──────────────────────── TIKTOK ────────────────────────
-        case 'tiktok':
-        case 'tt': {
-          const url = (args[0] || '').trim();
-          if (!url || !url.startsWith('http')) {
-            return await socket.sendMessage(from, { text: `❌ *Usage:* ${prefix}tiktok <tiktok url>` }, { quoted: msg });
-          }
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-          try {
-            const apiRes = await axios.get(`https://www.movanest.xyz/v2/tiktok?url=${encodeURIComponent(url)}`, { timeout: 20000 });
-            const dl = apiRes.data?.results?.no_watermark || apiRes.data?.results?.watermark;
-            if (!dl) throw new Error('Video not found.');
-
-            await socket.sendMessage(from, {
-              video: { url: dl },
-              mimetype: 'video/mp4',
-              caption: `🎵 *TikTok Downloaded*\n\n> © ${botName}`
-            }, { quoted: msg });
-          } catch (e) {
-            await socket.sendMessage(from, { text: `❌ TikTok download failed: ${e.message}` }, { quoted: msg });
-          }
-          break;
-        }
-
-        // ──────────────────────── FACEBOOK ────────────────────────
-        case 'fb':
-        case 'facebook': {
-          const url = (args[0] || '').trim();
-          if (!url || (!url.includes('facebook.com') && !url.includes('fb.watch'))) {
-            return await socket.sendMessage(from, { text: `❌ *Usage:* ${prefix}fb <facebook url>` }, { quoted: msg });
-          }
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-          try {
-            const apiRes = await axios.get(`https://www.movanest.xyz/v2/fbdown?url=${encodeURIComponent(url)}`, { timeout: 20000 });
-            const directUrl = apiRes.data?.results?.[0]?.hdQualityLink || apiRes.data?.results?.[0]?.normalQualityLink;
-            if (!directUrl) throw new Error('Facebook video not found.');
-
-            await socket.sendMessage(from, {
-              video: { url: directUrl },
-              mimetype: 'video/mp4',
-              caption: `🎬 *Facebook Video*\n\n> © ${botName}`
-            }, { quoted: msg });
-          } catch (e) {
-            await socket.sendMessage(from, { text: `❌ FB download failed: ${e.message}` }, { quoted: msg });
+        // ────────────────── TOGGLE COMMANDS ──────────────────────────
+        case 'autotyping':
+        case 'autorecording':
+        case 'antidelete':
+        case 'autostatusview':
+        case 'autostatusreact': {
+          if (!isOwnerUser) return;
+          const opt = (args[0] || '').toLowerCase();
+          if (opt === 'on' || opt === 'off') {
+            const keyMap = {
+              autotyping: 'AUTO_TYPING',
+              autorecording: 'AUTO_RECORDING',
+              antidelete: 'ANTI_DELETE',
+              autostatusview: 'AUTO_VIEW_STATUS',
+              autostatusreact: 'AUTO_LIKE_STATUS'
+            };
+            const dbKey = keyMap[command];
+            userCfg[dbKey] = opt === 'on' ? 'true' : 'false';
+            await setUserConfigInMongo(sanitizedNum, userCfg);
+            await socket.sendMessage(from, { text: `✅ *${command.toUpperCase()}* is now *${opt.toUpperCase()}*` }, { quoted: msg });
           }
           break;
         }
 
-        // ──────────────────────── OWNER ────────────────────────
+        // ────────────────── ALIVE & PING ─────────────────────────────
+        case 'ping': {
+          const start = Date.now();
+          await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
+          const latency = Date.now() - start;
+          await sendFancyMsg(socket, from, {
+            text: `╭───「 🏓 *P O N G* 」───◆\n│ ⚡ *Latency:* ${latency}ms\n│ 🌸 *Bot:* ${botName}\n│ 🟢 *Status:* Operational & Active\n╰──────────────────────◆`
+          }, msg, userCfg);
+          break;
+        }
+
+        case 'alive': {
+          await socket.sendMessage(from, { react: { text: "🌸", key: msg.key } });
+          const uptime = process.uptime();
+          const hours = Math.floor(uptime / 3600);
+          const minutes = Math.floor((uptime % 3600) / 60);
+
+          const aliveCard = `
+╭───「 🌸 *${botName} ALIVE* 」───◆
+│ 👋 *Hey! I am running seamlessly.*
+│
+│ 👤 *User:* @${senderNumber}
+│ 👑 *Master:* ${config.OWNER_NAME}
+│ ⏳ *Uptime:* ${hours}h ${minutes}m
+│ 🚀 *Version:* ${config.BOT_VERSION}
+╰─────────────────────────────◆
+${botFooter}`.trim();
+
+          await sendFancyMsg(socket, from, {
+            image: { url: botLogo },
+            caption: aliveCard,
+            mentions: [nowsender]
+          }, msg, userCfg);
+          break;
+        }
+
         case 'owner': {
-          await socket.sendMessage(from, { react: { text: "👑", key: msg.key } });
-          const ownerNumber = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
-          const caption = `
-🏷️ *BOT OWNER INFORMATION* 👑
-┌──────────────────────
-│ 👤 *Name:* ${config.OWNER_NAME}
-│ 📱 *Number:* +${ownerNumber}
-│ 📍 *Country:* Sri Lanka 🇱🇰
-└──────────────────────`.trim();
-
-          await socket.sendMessage(from, {
-            image: { url: logoUrl },
-            caption,
-            mentions: [`${ownerNumber}@s.whatsapp.net`]
-          }, { quoted: msg });
-          break;
-        }
-
-        // ──────────────────────── SET BOT NAME ────────────────────────
-        case 'setbotname': {
-          if (!isBotOrOwner) return await socket.sendMessage(from, { text: '❌ Owner only command.' }, { quoted: msg });
-          const newName = args.join(' ').trim();
-          if (!newName) return await socket.sendMessage(from, { text: '❌ Please provide a name.' }, { quoted: msg });
-          userConfig.botName = newName;
-          await setUserConfigInMongo(_preSan, userConfig);
-          await socket.sendMessage(from, { text: `✅ Bot Name updated to: *${newName}*` }, { quoted: msg });
-          break;
-        }
-
-        // ──────────────────────── TOGGLES ────────────────────────
-        case 'autotyping': {
-          if (!isBotOrOwner) return;
-          const opt = (args[0] || '').toLowerCase();
-          if (opt === 'on' || opt === 'off') {
-            userConfig.AUTO_TYPING = opt === 'on' ? 'true' : 'false';
-            await setUserConfigInMongo(_preSan, userConfig);
-            await socket.sendMessage(from, { text: `✅ Auto Typing *${opt.toUpperCase()}*` }, { quoted: msg });
-          }
-          break;
-        }
-
-        case 'autorecording': {
-          if (!isBotOrOwner) return;
-          const opt = (args[0] || '').toLowerCase();
-          if (opt === 'on' || opt === 'off') {
-            userConfig.AUTO_RECORDING = opt === 'on' ? 'true' : 'false';
-            await setUserConfigInMongo(_preSan, userConfig);
-            await socket.sendMessage(from, { text: `✅ Auto Recording *${opt.toUpperCase()}*` }, { quoted: msg });
-          }
-          break;
-        }
-
-        case 'antidelete': {
-          if (!isBotOrOwner) return;
-          const opt = (args[0] || '').toLowerCase();
-          if (opt === 'on' || opt === 'off') {
-            userConfig.ANTI_DELETE = opt;
-            await setUserConfigInMongo(_preSan, userConfig);
-            await socket.sendMessage(from, { text: `✅ Anti Delete *${opt.toUpperCase()}*` }, { quoted: msg });
-          }
+          const ownerClean = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
+          const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${config.OWNER_NAME}\nORG:${botName};\nTEL;type=CELL;type=VOICE;waid=${ownerClean}:+${ownerClean}\nEND:VCARD`;
+          await socket.sendMessage(from, { contacts: { displayName: config.OWNER_NAME, contacts: [{ vcard }] } }, { quoted: msg });
           break;
         }
 
@@ -880,7 +1045,7 @@ function setupCommandHandlers(socket, number) {
   });
 }
 
-// ---------------- Auto-Restart & Lifecycle ----------------
+// ───────────────── AUTO-RESTART & LIFECYCLE ─────────────────────
 function setupAutoRestart(socket, number) {
   socket.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
@@ -889,7 +1054,7 @@ function setupAutoRestart(socket, number) {
     const san = number.replace(/[^0-9]/g, '');
     const statusCode = lastDisconnect?.error?.output?.statusCode;
     if (statusCode === DisconnectReason.loggedOut) {
-      console.log(`[LOGOUT] ${san} logged out.`);
+      console.log(`[Sakura] Session ${san} logged out.`);
       activeSockets.delete(san);
       await removeSessionFromMongo(san);
       return;
@@ -899,23 +1064,23 @@ function setupAutoRestart(socket, number) {
     reconnectInProgress.add(san);
     activeSockets.delete(san);
 
-    console.log(`[RECONNECT] Reconnecting ${san} in 5s...`);
+    console.log(`[Sakura] Auto reconnecting session ${san} in 5s...`);
     await delay(5000);
     try {
       const mockRes = { headersSent: false, send: () => {}, status: () => mockRes };
       await EmpirePair(san, mockRes);
     } catch (e) {
-      console.error(`Reconnect failed for ${san}:`, e.message);
+      console.error(`Reconnect error for ${san}:`, e.message);
     } finally {
       reconnectInProgress.delete(san);
     }
   });
 }
 
-// ---------------- EmpirePair Core ----------------
+// ───────────────── EMPIRE PAIRING CORE ──────────────────────────
 async function EmpirePair(number, res) {
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
-  const sessionPath = path.join(os.tmpdir(), `session_${sanitizedNumber}`);
+  const sessionPath = path.join(os.tmpdir(), `sakura_session_${sanitizedNumber}`);
   await initMongo().catch(()=>{});
 
   try {
@@ -947,6 +1112,7 @@ async function EmpirePair(number, res) {
     socketCreationTime.set(sanitizedNumber, Date.now());
 
     setupStatusHandlers(socket, sanitizedNumber);
+    setupGroupParticipantHandlers(socket, sanitizedNumber);
     setupCommandHandlers(socket, sanitizedNumber);
     setupAutoRestart(socket, sanitizedNumber);
 
@@ -975,17 +1141,17 @@ async function EmpirePair(number, res) {
       if (connection === 'open') {
         activeSockets.set(sanitizedNumber, socket);
         await addNumberToMongo(sanitizedNumber);
-        console.log(`✅ [CONNECTED] ${sanitizedNumber} connected successfully!`);
+        console.log(`🌸 [Sakura Connected] +${sanitizedNumber} connected successfully!`);
       }
     });
 
   } catch (error) {
-    console.error('Pairing error:', error);
+    console.error('Sakura Pairing error:', error);
     if (!res.headersSent) res.status(503).send({ error: 'Service Unavailable' });
   }
 }
 
-// ---------------- Express API Endpoints ----------------
+// ───────────────── EXPRESS ROUTER ENDPOINTS ─────────────────────
 router.get('/', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
@@ -999,14 +1165,14 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/active', (req, res) => {
-  res.status(200).send({ botName: BOT_NAME_FANCY, count: activeSockets.size, numbers: Array.from(activeSockets.keys()) });
+  res.status(200).send({ botName: config.BOT_NAME, count: activeSockets.size, numbers: Array.from(activeSockets.keys()) });
 });
 
 router.get('/ping', (req, res) => {
-  res.status(200).send({ status: 'active', botName: BOT_NAME_FANCY, activesession: activeSockets.size });
+  res.status(200).send({ status: 'active', botName: config.BOT_NAME, activesession: activeSockets.size });
 });
 
-// Startup Mongo and Auto-connect numbers
+// Initialize DB and auto-reconnect existing bots on server boot
 initMongo().catch(()=>{});
 (async () => {
   try {
@@ -1016,7 +1182,7 @@ initMongo().catch(()=>{});
       if (!activeSockets.has(san)) {
         const mockRes = { headersSent: false, send: () => {}, status: () => mockRes };
         await EmpirePair(san, mockRes);
-        await delay(2000);
+        await delay(2500);
       }
     }
   } catch (e) {}
