@@ -386,6 +386,93 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
         // ──────────────────────── MENU (WITH NUMBER SELECTION) ────────────────────────
+          // ──────────────────────── SPOTIFY DOWNLOADER ────────────────────────
+        case 'spotify':
+        case 'sp': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `❌ *Usage:* ${prefix}spotify <song name or spotify url>\n\n*Example:*\n• ${prefix}spotify shape of you\n• ${prefix}spotify https://open.spotify.com/track/...` 
+            }, { quoted: msg });
+          }
+
+          const query = args.join(' ').trim();
+          await socket.sendMessage(from, { react: { text: '🟢', key: msg.key } });
+
+          try {
+            let trackUrl = '';
+
+            // 1. පරිශීලකයා කෙලින්ම Spotify Link එකක් ලබාදී ඇත්දැයි බැලීම
+            if (query.includes('spotify.com/track/') || query.includes('spotify.link/')) {
+              trackUrl = query;
+            } else {
+              // 2. ගීතයේ නම (Search Query) නම් Search API එකෙන් Link එක ලබාගැනීම
+              const searchRes = await axios.get(`https://spotify-api-nine.vercel.app/api/search?q=${encodeURIComponent(query)}`, { timeout: 20000 });
+              
+              const searchData = searchRes.data?.data || searchRes.data?.result || searchRes.data?.results || searchRes.data;
+              const track = Array.isArray(searchData) ? searchData[0] : (searchData?.tracks?.[0] || searchData);
+
+              if (!track) {
+                return await socket.sendMessage(from, { text: '❌ No songs found on Spotify for your search query.' }, { quoted: msg });
+              }
+
+              trackUrl = track.url || track.link || track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`;
+            }
+
+            if (!trackUrl) throw new Error('Could not resolve Spotify track URL.');
+
+            // 3. Download API එක හරහා Audio එක ලබාගැනීම
+            const dlRes = await axios.get(`https://spotify-api-nine.vercel.app/api/download?url=${encodeURIComponent(trackUrl)}`, { timeout: 35000 });
+            const dlData = dlRes.data?.data || dlRes.data?.result || dlRes.data;
+
+            const downloadUrl = dlData?.download_url || dlData?.download || dlData?.url || dlData?.link || dlData?.audio;
+            const title = dlData?.title || dlData?.name || 'Spotify_Track';
+            const artist = dlData?.artist || dlData?.artists || 'Spotify Artist';
+            const thumbnail = dlData?.cover || dlData?.thumbnail || dlData?.image;
+
+            if (!downloadUrl) {
+              throw new Error('Failed to retrieve Spotify download link.');
+            }
+
+            // Track Details Card එක යැවීම
+            const caption = `
+╭───『 🟢 *SPOTIFY MUSIC* 』───◆
+│ 🎵 *Title:* ${title}
+│ 👤 *Artist:* ${artist}
+│ 🔗 *Source:* Spotify
+╰──────────────────────────◆
+> *© ${botName}*`.trim();
+
+            if (thumbnail) {
+              await socket.sendMessage(from, {
+                image: { url: thumbnail },
+                caption: caption
+              }, { quoted: msg });
+            } else {
+              await socket.sendMessage(from, { text: caption }, { quoted: msg });
+            }
+
+            // Audio එක (MP3) යැවීම
+            await socket.sendMessage(from, {
+              audio: { url: downloadUrl },
+              mimetype: 'audio/mpeg',
+              fileName: `${title.replace(/[^a-zA-Z0-9 ]/g, '_')}.mp3`,
+              contextInfo: {
+                externalAdReply: {
+                  title: title,
+                  body: artist,
+                  mediaType: 2,
+                  thumbnailUrl: thumbnail || logoUrl,
+                  sourceUrl: trackUrl
+                }
+              }
+            }, { quoted: msg });
+
+          } catch (err) {
+            console.error('Spotify error:', err.message);
+            await socket.sendMessage(from, { text: `❌ Spotify Download Error: ${err.message || 'Server error'}` }, { quoted: msg });
+          }
+          break;
+        }
         case 'menu': {
           await socket.sendMessage(from, { react: { text: "🐾", key: msg.key } });
           const slNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Colombo" }));
