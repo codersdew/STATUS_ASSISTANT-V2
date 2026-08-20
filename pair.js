@@ -462,146 +462,133 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+
 case 'userinfo':
-case 'whois':
-case 'getdp': {
-    try {
-        let target;
-        const quoted = m.quoted;
+        case 'whois':
+        case 'getdp': {
+          try {
+            let target;
+            const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
+            const mentioned = ctxInfo?.mentionedJid;
+            const quotedSender = ctxInfo?.participant;
+            const inputNum = args.join(' ').trim();
 
-        // 1. GET TARGET
-        if (m.mentionedJid?.[0]) {
-            target = m.mentionedJid[0];
-        } else if (quoted?.sender) {
-            target = quoted.sender;
-        } else if (text?.trim()) {
-            let number = text.replace(/[^0-9]/g, '');
-            if (!number) {
-                return m.reply('❌ Please provide a valid WhatsApp number.');
+            // 1. GET TARGET
+            if (mentioned && mentioned.length > 0) {
+              target = mentioned[0];
+            } else if (quotedSender) {
+              target = quotedSender;
+            } else if (inputNum) {
+              const cleanNum = inputNum.replace(/[^0-9]/g, '');
+              if (!cleanNum) {
+                return await socket.sendMessage(from, { text: '❌ Please provide a valid WhatsApp number.' }, { quoted: msg });
+              }
+              target = cleanNum + '@s.whatsapp.net';
+            } else {
+              return await socket.sendMessage(from, {
+                text: `❌ *USER INFO USAGE*\n\n• \`${prefix}userinfo @user\`\n• Reply to a message with \`${prefix}userinfo\`\n• \`${prefix}userinfo 947xxxxxxxx\``
+              }, { quoted: msg });
             }
-            target = number + '@s.whatsapp.net';
-        } else {
-            return m.reply(
-                '❌ *USERINFO USAGE*\n\n' +
-                '• `.userinfo @user`\n' +
-                '• Reply to a message + `.userinfo`\n' +
-                '• `.userinfo 947xxxxxxxx`'
-            );
-        }
 
-        // 2. NORMALIZE JID
-        target = String(target).trim();
-        if (!target.includes('@')) {
-            target = target + '@s.whatsapp.net';
-        }
+            // 2. NORMALIZE JID
+            target = jidNormalizedUser(target);
 
-        // 3. CHECK WHATSAPP
-        let userJid = target;
-        try {
-            if (typeof sock.onWhatsApp === 'function') {
-                const result = await sock.onWhatsApp(target);
+            // 3. CHECK WHATSAPP
+            let userJid = target;
+            try {
+              if (typeof socket.onWhatsApp === 'function') {
+                const result = await socket.onWhatsApp(target);
                 if (!result || result.length === 0 || result[0]?.exists === false) {
-                    return m.reply('❌ This number is not registered on WhatsApp.');
+                  return await socket.sendMessage(from, { text: '❌ This number is not registered on WhatsApp.' }, { quoted: msg });
                 }
                 if (result[0]?.jid) {
-                    userJid = result[0].jid;
+                  userJid = jidNormalizedUser(result[0].jid);
                 }
+              }
+            } catch (e) {
+              userJid = target;
             }
-        } catch (e) {
-            console.log('onWhatsApp check failed:', e?.message || e);
-            userJid = target;
-        }
 
-        // 4. NUMBER
-        const number = userJid.split('@')[0].split(':')[0];
+            // 4. NUMBER
+            const number = userJid.split('@')[0].split(':')[0];
 
-        // 5. GET PROFILE NAME
-        let contactName = 'Unknown';
-        try {
-            if (typeof sock.getName === 'function') {
-                const name = await sock.getName(userJid);
+            // 5. GET PROFILE NAME
+            let contactName = 'Unknown';
+            try {
+              if (typeof socket.getName === 'function') {
+                const name = await socket.getName(userJid);
                 if (name) contactName = name;
+              }
+            } catch (e) {}
+
+            if (contactName === 'Unknown' && ctxInfo?.pushName) {
+              contactName = ctxInfo.pushName;
             }
-        } catch (e) {
-            console.log('getName failed:', e?.message || e);
-        }
 
-        if (contactName === 'Unknown' && quoted?.pushName) {
-            contactName = quoted.pushName;
-        }
-
-        // 6. GET ABOUT
-        let userBio = 'Hidden / Not set';
-        let bioDate = 'Unknown';
-        try {
-            if (typeof sock.fetchStatus === 'function') {
-                const status = await sock.fetchStatus(userJid);
+            // 6. GET ABOUT / STATUS
+            let userBio = 'Hidden / Not set';
+            let bioDate = 'Unknown';
+            try {
+              if (typeof socket.fetchStatus === 'function') {
+                const status = await socket.fetchStatus(userJid);
                 if (status) {
-                    if (typeof status.status === 'string') userBio = status.status;
-                    if (status.setAt) bioDate = new Date(status.setAt).toLocaleDateString('en-GB');
+                  if (typeof status.status === 'string') userBio = status.status;
+                  if (status.setAt) bioDate = moment(status.setAt).tz('Asia/Colombo').format('YYYY-MM-DD');
                 }
-            }
-        } catch (e) {
-            console.log('fetchStatus failed:', e?.message || e);
-        }
+              }
+            } catch (e) {}
 
-        // 7. PROFILE PICTURE
-        let ppUrl = null;
-        try {
-            if (typeof sock.profilePictureUrl === 'function') {
-                ppUrl = await sock.profilePictureUrl(userJid, 'image');
-            }
-        } catch (e) {
-            console.log('profilePictureUrl failed:', e?.message || e);
-        }
+            // 7. PROFILE PICTURE
+            let ppUrl = null;
+            try {
+              if (typeof socket.profilePictureUrl === 'function') {
+                ppUrl = await socket.profilePictureUrl(userJid, 'image');
+              }
+            } catch (e) {}
 
-        // 8. ACCOUNT TYPE
-        let accountType = 'Standard Account';
-        try {
-            if (typeof sock.getBusinessProfile === 'function') {
-                const business = await sock.getBusinessProfile(userJid);
+            // 8. ACCOUNT TYPE
+            let accountType = 'Standard Account';
+            try {
+              if (typeof socket.getBusinessProfile === 'function') {
+                const business = await socket.getBusinessProfile(userJid);
                 if (business) accountType = 'Business Account';
+              }
+            } catch (e) {}
+
+            // 9. MESSAGE
+            const infoText = `╭━━━〔 👤 *USER INFO* 〕━━━╮
+┃
+┃ 👤 *Name:* ${contactName}
+┃ 📞 *Number:* +${number}
+┃ 🆔 *JID:* \`${userJid}\`
+┃
+┃ 📝 *About:* ${userBio}
+┃ 📅 *About Date:* ${bioDate}
+┃ 🏢 *Account:* ${accountType}
+┃
+╰━━━━━━━━━━━━━━━━━━╯
+${botFooter}`;
+
+            // 10. SEND DP & INFO
+            if (ppUrl) {
+              await sendFancyMsg(socket, from, {
+                image: { url: ppUrl },
+                caption: infoText,
+                mentions: [userJid]
+              }, msg, userCfg);
+            } else {
+              await sendFancyMsg(socket, from, {
+                text: infoText,
+                mentions: [userJid]
+              }, msg, userCfg);
             }
-        } catch (e) {
-            console.log('Business profile unavailable:', e?.message || e);
-        }
 
-        // 9. MESSAGE
-        const infoText =
-            `╭━━━〔 👤 USER INFO 〕━━━╮\n` +
-            `┃\n` +
-            `┃ 👤 *Name:* ${contactName}\n` +
-            `┃ 📞 *Number:* +${number}\n` +
-            `┃ 🆔 *JID:* \`${userJid}\`\n` +
-            `┃\n` +
-            `┃ 📝 *About:* ${userBio}\n` +
-            `┃ 📅 *About Date:* ${bioDate}\n` +
-            `┃ 🏢 *Account:* ${accountType}\n` +
-            `┃\n` +
-            `╰━━━━━━━━━━━━━━━━━━╯`;
-
-        // 10. SEND DP & INFO
-        if (ppUrl) {
-            await sock.sendMessage(
-                m.chat,
-                { image: { url: ppUrl }, caption: infoText, mentions: [userJid] },
-                { quoted: m }
-            );
-        } else {
-            await sock.sendMessage(
-                m.chat,
-                { text: infoText, mentions: [userJid] },
-                { quoted: m }
-            );
-        }
-
-    } catch (err) {
-        console.error('❌ USERINFO ERROR:', err);
-        return m.reply(`❌ *USERINFO ERROR*\n\n${err?.message || err}`);
-    }
-    break;
+          } catch (err) {
+            console.error('❌ USERINFO ERROR:', err);
+            await socket.sendMessage(from, { text: `❌ *USERINFO ERROR*\n\n${err?.message || err}` }, { quoted: msg });
           }
-
+          break;
+        }
           
         case 'menu':
         case 'help':
