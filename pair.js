@@ -13,6 +13,8 @@ const FileType = require('file-type');
 const fetch = require('node-fetch');
 const yts = require('yt-search');
 const yt = require('@vreden/youtube_scraper');
+const { getFbVideoInfo } = require('fb-downloader-scrapper');
+const getFBInfo = require('@xaviabot/fb-downloader');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -464,6 +466,81 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── FACEBOOK VIDEO DOWNLOADER ──────────────────
+        case 'fb':
+        case 'facebook': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}fb <Facebook Video Link>\`` }, { quoted: msg });
+          }
+
+          const fbUrl = args[0];
+          if (!fbUrl.includes('facebook.com') && !fbUrl.includes('fb.watch')) {
+            return await socket.sendMessage(from, { text: '❌ invalid.' }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const sources = [
+              // 1) fb-downloader-scrapper (primary)
+              async () => {
+                const { getFbVideoInfo } = require('fb-downloader-scrapper');
+                const data = await getFbVideoInfo(fbUrl);
+                return data?.hd || data?.sd;
+              },
+              // 2) @xaviabot/fb-downloader (fallback)
+              async () => {
+                const getFBInfo = require('@xaviabot/fb-downloader');
+                const data = await getFBInfo(fbUrl);
+                return data?.hd || data?.sd;
+              },
+              // 3) External API fallback
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(fbUrl)}`, { timeout: 20000 });
+                return res.data?.data?.[0]?.url || res.data?.data?.hd || res.data?.data?.sd;
+              }
+            ];
+
+            let downloadUrl = null;
+            for (const getVideo of sources) {
+              try {
+                const url = await getVideo();
+                if (url && typeof url === 'string' && url.startsWith('http')) {
+                  downloadUrl = url;
+                  break;
+                }
+              } catch (e) {
+                console.log('FB source failed, trying next:', e.message);
+              }
+            }
+
+            if (!downloadUrl) {
+              throw new Error('Video download කරන්න බැරි විය. Link එක private හෝ invalid විය හැක.');
+            }
+
+            const videoBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 60000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            await socket.sendMessage(from, {
+              video: Buffer.from(videoBuffer.data),
+              mimetype: 'video/mp4',
+              caption: `✅ *Facebook Video* | 🌸 ${botName}`
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('FB Download Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Facebook download failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+              }
 // ────────────────── SONG DOWNLOADER (Universal UI & Multi-Device Support) ──────────────────
         case 'song':
         case 'play': {
