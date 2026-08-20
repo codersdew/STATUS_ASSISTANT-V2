@@ -12,6 +12,7 @@ const axios = require('axios');
 const FileType = require('file-type');
 const fetch = require('node-fetch');
 const yts = require('yt-search');
+const ytdl = require('@distube/ytdl-core');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -462,6 +463,87 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+          // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+        case 'song':
+        case 'play': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <song_name හෝ youtube_link>\`` }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            let videoUrl = query;
+            let title = 'Song';
+            let duration = '0:00';
+            let thumbnail = botLogo;
+
+            // Search if not a direct URL
+            if (!query.startsWith('http://') && !query.startsWith('https://')) {
+              const searchRes = await yts(query);
+              if (!searchRes.videos?.length) {
+                return await socket.sendMessage(from, { text: '❌ Non results found.' }, { quoted: msg });
+              }
+              const vid = searchRes.videos[0];
+              videoUrl = vid.url;
+              title = vid.title;
+              duration = vid.timestamp;
+              thumbnail = vid.thumbnail;
+            }
+
+            await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
+
+            // High-Speed Audio Stream with large buffer chunk
+            const audioStream = ytdl(videoUrl, {
+              filter: 'audioonly',
+              quality: 'highestaudio',
+              highWaterMark: 1 << 25 // Speed boost (32MB buffer chunk)
+            });
+
+            // Temporary file path for fast conversion
+            const tempFilePath = path.join(os.tmpdir(), `sakura_${Date.now()}.mp3`);
+
+            // Convert and save locally with fluent-ffmpeg
+            await new Promise((resolve, reject) => {
+              ffmpeg(audioStream)
+                .audioBitrate(128)
+                .toFormat('mp3')
+                .save(tempFilePath)
+                .on('end', resolve)
+                .on('error', reject);
+            });
+
+            const audioBuffer = fs.readFileSync(tempFilePath);
+            fs.unlink(tempFilePath, () => {}); // Delete temp file after reading
+
+            // Send Audio with WhatsApp Music Card (Thumbnail & Title)
+            await socket.sendMessage(from, {
+              audio: audioBuffer,
+              mimetype: 'audio/mpeg',
+              fileName: `${title}.mp3`,
+              contextInfo: {
+                ...getForwardedContext(userCfg),
+                externalAdReply: {
+                  title: title,
+                  body: `⏱️ Duration: ${duration} | 🌸 ${botName}`,
+                  thumbnailUrl: thumbnail,
+                  sourceUrl: videoUrl,
+                  mediaType: 1,
+                  renderLargerThumbnail: true
+                }
+              }
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Song Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
 case 'userinfo':
 case 'whois':
 case 'getdp': {
