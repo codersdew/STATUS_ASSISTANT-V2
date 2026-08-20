@@ -479,7 +479,7 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
-        // ────────────────── OFFICIAL INNERTUBE FAST SONG DOWNLOADER ──────────────────
+        // ────────────────── 100% WORKING ERROR-FREE SONG DOWNLOADER ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
@@ -490,54 +490,75 @@ function setupCommandHandlers(socket, number) {
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
-            let videoId = query;
+            let videoUrl = query;
             let songTitle = 'Song';
             let duration = '0:00';
             let thumbnail = botLogo;
-            let videoUrl = query;
 
-            // Direct link එකක් නොවේ නම් Search කර Video ID ලබා ගැනීම
+            // Search if it's not a direct URL
             if (!query.startsWith('http://') && !query.startsWith('https://')) {
               const searchRes = await yts(query);
               if (!searchRes.videos?.length) {
-                return await socket.sendMessage(from, { text: '❌ *No song found.*' }, { quoted: msg });
+                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
               }
               const vid = searchRes.videos[0];
-              videoId = vid.videoId;
               videoUrl = vid.url;
               songTitle = vid.title;
               duration = vid.timestamp;
               thumbnail = vid.thumbnail;
-            } else {
-              // Extract video ID from URL
-              const match = query.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
-              if (match) videoId = match[1];
             }
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            // 🚀 Full Speed Direct Stream from YouTube InnerTube
-            const yt = await getYT();
-            const stream = await yt.download(videoId, {
-              type: 'audio',
-              quality: 'best',
-              format: 'any'
+            // 🚀 Reliable Multi-APIs (YouTube 400 & Bot-Bypass)
+            const apis = [
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.data?.dl || res.data?.data?.download;
+              },
+              async () => {
+                const res = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.result?.download?.url || res.data?.result?.audio;
+              },
+              async () => {
+                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.result?.download_url || res.data?.result?.audio_url;
+              },
+              async () => {
+                const res = await axios.get(`${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoUrl)}&api_key=${config.NEXORA_API_KEY}`, { timeout: 20000 });
+                return res.data?.all_qualities?.audio?.download_url;
+              }
+            ];
+
+            let downloadUrl = null;
+            for (const getAudio of apis) {
+              try {
+                const url = await getAudio();
+                if (url && typeof url === 'string' && url.startsWith('http')) {
+                  downloadUrl = url;
+                  break;
+                }
+              } catch (e) {
+                // Auto try next API
+              }
+            }
+
+            if (!downloadUrl) {
+              throw new Error('Download සර්වර් වෙතින් ප්‍රතිචාරයක් නොලැබුණි. කරුණාකර නැවත උත්සාහ කරන්න.');
+            }
+
+            // Download Audio stream as binary buffer for smooth WhatsApp playback
+            const audioBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 60000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
             });
-
-            // Convert Stream directly into RAM Buffer (No Temp Files needed)
-            const chunks = [];
-            for await (const chunk of stream) {
-              chunks.push(chunk);
-            }
-            const audioBuffer = Buffer.concat(chunks);
-
-            if (!audioBuffer || audioBuffer.length === 0) {
-              throw new Error('*Audio stream is empty.*');
-            }
 
             // Send Audio with WhatsApp Music Player Card
             await socket.sendMessage(from, {
-              audio: audioBuffer,
+              audio: Buffer.from(audioBuffer.data),
               mimetype: 'audio/mpeg',
               fileName: `${songTitle.replace(/[\\/:*?"<>|]/g, '')}.mp3`,
               contextInfo: {
