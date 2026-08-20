@@ -462,101 +462,116 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
-
 case 'userinfo':
-        case 'whois':
-        case 'getdp': {
-          try {
-            let target;
-            const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
-            const mentioned = ctxInfo?.mentionedJid;
-            const quotedSender = ctxInfo?.participant;
-            const inputNum = args.join(' ').trim();
+case 'whois':
+case 'getdp': {
+  try {
+    let target;
+    const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
+    const mentioned = ctxInfo?.mentionedJid;
+    const quotedSender = ctxInfo?.participant;
+    const inputNum = args.join(' ').trim();
 
-            // 1. GET TARGET
-            if (mentioned && mentioned.length > 0) {
-              target = mentioned[0];
-            } else if (quotedSender) {
-              target = quotedSender;
-            } else if (inputNum) {
-              const cleanNum = inputNum.replace(/[^0-9]/g, '');
-              if (!cleanNum) {
-                return await socket.sendMessage(from, { text: '❌ Please provide a valid WhatsApp number.' }, { quoted: msg });
-              }
-              target = cleanNum + '@s.whatsapp.net';
-            } else {
-              return await socket.sendMessage(from, {
-                text: `❌ *USER INFO USAGE*\n\n• \`${prefix}userinfo @user\`\n• Reply to a message with \`${prefix}userinfo\`\n• \`${prefix}userinfo 947xxxxxxxx\``
-              }, { quoted: msg });
-            }
+    // 1. GET TARGET
+    if (mentioned && mentioned.length > 0) {
+      target = mentioned[0];
+    } else if (quotedSender) {
+      target = quotedSender;
+    } else if (inputNum) {
+      const cleanNum = inputNum.replace(/[^0-9]/g, '');
+      if (!cleanNum) {
+        return await socket.sendMessage(from, { text: '❌ Please provide a valid WhatsApp number.' }, { quoted: msg });
+      }
+      target = cleanNum + '@s.whatsapp.net';
+    } else {
+      return await socket.sendMessage(from, {
+        text: `❌ *USER INFO USAGE*\n\n• \`${prefix}userinfo @user\`\n• Reply to a message with \`${prefix}userinfo\`\n• \`${prefix}userinfo 947xxxxxxxx\``
+      }, { quoted: msg });
+    }
 
-            // 2. NORMALIZE JID
-            target = jidNormalizedUser(target);
+    // 2. NORMALIZE JID
+    target = jidNormalizedUser(target);
 
-            // 3. CHECK WHATSAPP
-            let userJid = target;
-            try {
-              if (typeof socket.onWhatsApp === 'function') {
-                const result = await socket.onWhatsApp(target);
-                if (!result || result.length === 0 || result[0]?.exists === false) {
-                  return await socket.sendMessage(from, { text: '❌ This number is not registered on WhatsApp.' }, { quoted: msg });
-                }
-                if (result[0]?.jid) {
-                  userJid = jidNormalizedUser(result[0].jid);
-                }
-              }
-            } catch (e) {
-              userJid = target;
-            }
+    // 3. CHECK WHATSAPP
+    let userJid = target;
+    try {
+      if (typeof socket.onWhatsApp === 'function') {
+        const result = await socket.onWhatsApp(target);
+        if (!result || result.length === 0 || result[0]?.exists === false) {
+          return await socket.sendMessage(from, { text: '❌ This number is not registered on WhatsApp.' }, { quoted: msg });
+        }
+        if (result[0]?.jid) {
+          userJid = jidNormalizedUser(result[0].jid);
+        }
+      }
+    } catch (e) {
+      userJid = target;
+    }
 
-            // 4. NUMBER
-            const number = userJid.split('@')[0].split(':')[0];
+    // 4. NUMBER
+    const number = userJid.split('@')[0].split(':')[0];
 
-            // 5. GET PROFILE NAME
-            let contactName = 'Unknown';
-            try {
-              if (typeof socket.getName === 'function') {
-                const name = await socket.getName(userJid);
-                if (name) contactName = name;
-              }
-            } catch (e) {}
+    // 5. GET PROFILE NAME
+    let contactName = 'Unknown';
+    try {
+      if (typeof socket.getName === 'function') {
+        const name = await socket.getName(userJid);
+        if (name) contactName = name;
+      }
+    } catch (e) {}
 
-            if (contactName === 'Unknown' && ctxInfo?.pushName) {
-              contactName = ctxInfo.pushName;
-            }
+    if (contactName === 'Unknown' && ctxInfo?.pushName) {
+      contactName = ctxInfo.pushName;
+    }
 
-            // 6. GET ABOUT / STATUS
-            let userBio = 'Hidden / Not set';
-            let bioDate = 'Unknown';
-            try {
-              if (typeof socket.fetchStatus === 'function') {
-                const status = await socket.fetchStatus(userJid);
-                if (status) {
-                  if (typeof status.status === 'string') userBio = status.status;
-                  if (status.setAt) bioDate = moment(status.setAt).tz('Asia/Colombo').format('YYYY-MM-DD');
-                }
-              }
-            } catch (e) {}
+    // 6. GET ABOUT / STATUS (Fixed Array & Object handling)
+    let userBio = 'Hidden / Not set';
+    let bioDate = 'Unknown';
+    try {
+      if (typeof socket.fetchStatus === 'function') {
+        let statusRes = await socket.fetchStatus(userJid);
+        // Baileys සමහර විට Array එකක් return කරන නිසා
+        if (Array.isArray(statusRes)) statusRes = statusRes[0];
+        
+        if (statusRes) {
+          if (typeof statusRes.status === 'string' && statusRes.status.trim() !== '') {
+            userBio = statusRes.status;
+          }
+          if (statusRes.setAt) {
+            bioDate = moment(statusRes.setAt).tz('Asia/Colombo').format('YYYY-MM-DD');
+          }
+        }
+      }
+    } catch (e) {
+      // Privacy නිසා Error එකක් ආවොත් default අගය පවතී
+    }
 
-            // 7. PROFILE PICTURE
-            let ppUrl = null;
-            try {
-              if (typeof socket.profilePictureUrl === 'function') {
-                ppUrl = await socket.profilePictureUrl(userJid, 'image');
-              }
-            } catch (e) {}
+    // 7. PROFILE PICTURE (Fixed High-Res & Preview fallback)
+    let ppUrl = null;
+    try {
+      if (typeof socket.profilePictureUrl === 'function') {
+        try {
+          ppUrl = await socket.profilePictureUrl(userJid, 'image');
+        } catch {
+          // Full image බැරි වුණොත් preview එක try කරයි
+          ppUrl = await socket.profilePictureUrl(userJid, 'preview');
+        }
+      }
+    } catch (e) {
+      ppUrl = null;
+    }
 
-            // 8. ACCOUNT TYPE
-            let accountType = 'Standard Account';
-            try {
-              if (typeof socket.getBusinessProfile === 'function') {
-                const business = await socket.getBusinessProfile(userJid);
-                if (business) accountType = 'Business Account';
-              }
-            } catch (e) {}
+    // 8. ACCOUNT TYPE
+    let accountType = 'Standard Account';
+    try {
+      if (typeof socket.getBusinessProfile === 'function') {
+        const business = await socket.getBusinessProfile(userJid);
+        if (business) accountType = 'Business Account';
+      }
+    } catch (e) {}
 
-            // 9. MESSAGE
-            const infoText = `╭━━━〔 👤 *USER INFO* 〕━━━╮
+    // 9. MESSAGE
+    const infoText = `╭━━━〔 👤 *USER INFO* 〕━━━╮
 ┃
 ┃ 👤 *Name:* ${contactName}
 ┃ 📞 *Number:* +${number}
@@ -569,26 +584,27 @@ case 'userinfo':
 ╰━━━━━━━━━━━━━━━━━━╯
 ${botFooter}`;
 
-            // 10. SEND DP & INFO
-            if (ppUrl) {
-              await sendFancyMsg(socket, from, {
-                image: { url: ppUrl },
-                caption: infoText,
-                mentions: [userJid]
-              }, msg, userCfg);
-            } else {
-              await sendFancyMsg(socket, from, {
-                text: infoText,
-                mentions: [userJid]
-              }, msg, userCfg);
-            }
+    // 10. SEND DP & INFO
+    if (ppUrl) {
+      await sendFancyMsg(socket, from, {
+        image: { url: ppUrl },
+        caption: infoText,
+        mentions: [userJid]
+      }, msg, userCfg);
+    } else {
+      await sendFancyMsg(socket, from, {
+        text: infoText,
+        mentions: [userJid]
+      }, msg, userCfg);
+    }
 
-          } catch (err) {
-            console.error('❌ USERINFO ERROR:', err);
-            await socket.sendMessage(from, { text: `❌ *USERINFO ERROR*\n\n${err?.message || err}` }, { quoted: msg });
-          }
-          break;
-        }
+  } catch (err) {
+    console.error('❌ USERINFO ERROR:', err);
+    await socket.sendMessage(from, { text: `❌ *USERINFO ERROR*\n\n${err?.message || err}` }, { quoted: msg });
+  }
+  break;
+                                                                    }
+
           
         case 'menu':
         case 'help':
