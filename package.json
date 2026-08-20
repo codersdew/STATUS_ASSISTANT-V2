@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
+    "youtubei.js": "^16.0.1",
     "ruhend-scraper": "^9.0.8",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@google/genai": "^1.52.0",
