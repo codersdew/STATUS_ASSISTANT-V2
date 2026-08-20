@@ -596,6 +596,138 @@ function setupCommandHandlers(socket, number) {
           }
           break;
         }
+          // ────────────────── VIDEO DOWNLOADER (Universal UI & Multi-Device Support) ──────────────────
+        case 'video':
+        case 'ytv': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}video <වීඩියෝවේ නම / Link>\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            let videoUrl = query;
+            let videoTitle = 'Unknown Video';
+            let duration = '0:00';
+            let channelName = 'YouTube';
+            let views = 'N/A';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg'; // fallback image
+
+            // YouTube Search එක සිදු කිරීම
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
+            const searchRes = await yts(query);
+
+            if (searchRes.videos?.length) {
+              const vid = searchRes.videos[0];
+              videoUrl = vid.url;
+              videoTitle = vid.title;
+              duration = vid.timestamp || vid.duration?.timestamp || '0:00';
+              channelName = vid.author?.name || 'YouTube Creator';
+              views = vid.views ? vid.views.toLocaleString() : 'N/A';
+              thumbnailUrl = vid.thumbnail || vid.image || thumbnailUrl;
+            } else if (!isUrl) {
+              return await socket.sendMessage(from, { text: '❌ කිසිදු වීඩියෝවක් හමු නොවීය.' }, { quoted: msg });
+            }
+
+            // 🎨 1. ලස්සන UI Info Card එකක් යැවීම (Thumbnail එක සමග)
+            const infoText = 
+`╭──❲ 🎥 *VIDEO DOWNLOADER* ❳─⊷
+│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${videoTitle}
+│ ⏱️ *𝑻𝒊𝒎𝒆:* ${duration}
+│ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
+│ 👁️ *𝑽𝒊𝒆𝒘𝒔:* ${views}
+╰──────────────────────────⊷
+> 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
+
+            const infoMsg = await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoText
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
+
+            // 🚀 Reliable Multi-Source Download Chain (MP4 Videos)
+            const sources = [
+              // 1) @vreden/youtube_scraper (primary)
+              async () => {
+                const yt = require('@vreden/youtube_scraper');
+                const res = await yt.ytmp4(videoUrl, 360); // 360p or 480p for fast download
+                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
+                const data = res?.data || res;
+                if (data?.title) videoTitle = data.title;
+                return data?.download?.url || data?.url || data?.downloadUrl;
+              },
+              // 2) ruhend-scraper fallback
+              async () => {
+                const { ytmp4 } = require('ruhend-scraper');
+                const data = await ytmp4(videoUrl);
+                if (data?.title) videoTitle = data.title;
+                return data?.video;
+              },
+              // 3-5) External API fallbacks
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp4?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
+                return res.data?.data?.dl || res.data?.data?.download;
+              },
+              async () => {
+                const res = await axios.get(`https://api.vreden.my.id/api/ytmp4?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
+                return res.data?.result?.download?.url || res.data?.result?.video;
+              },
+              async () => {
+                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp4?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
+                return res.data?.result?.download_url || res.data?.result?.video_url;
+              }
+            ];
+
+            let downloadUrl = null;
+            for (const getVideo of sources) {
+              try {
+                const url = await getVideo();
+                if (url && typeof url === 'string' && url.startsWith('http')) {
+                  downloadUrl = url;
+                  break;
+                }
+              } catch (e) {
+                console.log('Source failed, trying next:', e.message);
+              }
+            }
+
+            if (!downloadUrl) {
+              throw new Error('සියලුම video download sources අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
+            }
+
+            // Video Buffer එක download කිරීම (Video ප්‍රමාණය විශාල විය හැකි බැවින් timeout එක වැඩි කර ඇත)
+            const videoBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 120000, // 2 minutes timeout
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            // File Name එකේ ඇති අනවශ්‍ය අකුරු ඉවත් කිරීම
+            const cleanTitle = videoTitle.replace(/[\\/:*?"<>|]/g, '');
+
+            // 🎥 2. Video එක Send කිරීම
+            await socket.sendMessage(from, {
+              video: Buffer.from(videoBuffer.data),
+              mimetype: 'video/mp4',
+              fileName: `${cleanTitle}.mp4`,
+              caption: `🎬 *${cleanTitle}*`
+            }, { quoted: infoMsg }); // කලින් යැවූ Info message එකට quote වේ
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Video Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+                                     }
 
         // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
         case 'song1':
