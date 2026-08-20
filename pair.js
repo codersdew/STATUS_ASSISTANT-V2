@@ -468,6 +468,121 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+           // ────────────────── FILE TO URL UPLOADER (Catbox / 0x0.st / Uguu) ──────────────────
+        case 'url':
+        case 'upload':
+        case 'tourl': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          const targetMsg = quoted
+            ? { message: quoted, key: { ...msg.key, id: msg.message.extendedTextMessage.contextInfo.stanzaId } }
+            : msg;
+
+          const mediaType = quoted
+            ? Object.keys(quoted)[0]
+            : Object.keys(msg.message || {})[0];
+
+          const isMedia = ['imageMessage', 'videoMessage', 'audioMessage', 'documentMessage', 'stickerMessage']
+            .includes(mediaType);
+
+          if (!isMedia) {
+            return await socket.sendMessage(from, {
+              text: `❌ *භාවිතය:* image/video/voice message එකකට reply කරලා \`${prefix}url\` කියලා ලියන්න.`
+            }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+            const buffer = await downloadMediaMessage(targetMsg, 'buffer', {});
+
+            if (!buffer || buffer.length === 0) {
+              throw new Error('Media download කරගන්න බැරි වුණා.');
+            }
+
+            // File extension guess
+            const extMap = {
+              imageMessage: 'jpg',
+              videoMessage: 'mp4',
+              audioMessage: 'mp3',
+              documentMessage: 'pdf',
+              stickerMessage: 'webp'
+            };
+            const ext = extMap[mediaType] || 'bin';
+            const fileName = `upload_${Date.now()}.${ext}`;
+
+            const FormData = require('form-data');
+
+            const sources = [
+              // 1) Catbox.moe (best: no key needed, supports all file types, permanent)
+              async () => {
+                const form = new FormData();
+                form.append('reqtype', 'fileupload');
+                form.append('fileToUpload', buffer, fileName);
+                const res = await axios.post('https://catbox.moe/user/api.php', form, {
+                  headers: form.getHeaders(),
+                  timeout: 60000
+                });
+                const url = typeof res.data === 'string' ? res.data.trim() : null;
+                return url && url.startsWith('http') ? url : null;
+              },
+              // 2) 0x0.st (fallback, any file type)
+              async () => {
+                const form = new FormData();
+                form.append('file', buffer, fileName);
+                const res = await axios.post('https://0x0.st', form, {
+                  headers: form.getHeaders(),
+                  timeout: 60000
+                });
+                const url = typeof res.data === 'string' ? res.data.trim() : null;
+                return url && url.startsWith('http') ? url : null;
+              },
+              // 3) Uguu.se (fallback, any file type, files auto-expire in ~48h)
+              async () => {
+                const form = new FormData();
+                form.append('files[]', buffer, fileName);
+                const res = await axios.post('https://uguu.se/upload', form, {
+                  headers: form.getHeaders(),
+                  timeout: 60000
+                });
+                const url = res.data?.files?.[0]?.url;
+                return url || null;
+              }
+            ];
+
+            let finalUrl = null;
+            let usedService = '';
+            const names = ['Catbox', '0x0.st', 'Uguu'];
+
+            for (let i = 0; i < sources.length; i++) {
+              try {
+                const url = await sources[i]();
+                if (url) {
+                  finalUrl = url;
+                  usedService = names[i];
+                  break;
+                }
+              } catch (e) {
+                console.log(`Upload source ${names[i]} failed:`, e.message);
+              }
+            }
+
+            if (!finalUrl) {
+              throw new Error('හැම upload service එකක්ම fail වුණා. පස්සේ try කරන්න.');
+            }
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+            await socket.sendMessage(from, {
+              text: `✅ *Upload Success!*\n\n🔗 *URL:* ${finalUrl}\n🌐 *Service:* ${usedService}\n🌸 ${botName}`
+            }, { quoted: msg });
+
+          } catch (err) {
+            console.error('Upload Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Upload failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+              }
           // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
         case 'ig':
         case 'instagram': {
