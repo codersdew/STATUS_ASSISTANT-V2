@@ -464,9 +464,136 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
-        // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
+          // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
         case 'song':
         case 'play': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <ගීතයේ නම හෝ YouTube Link>\`` }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            let videoUrl = query;
+            let songTitle = 'Song';
+            let duration = '0:00';
+
+            // Search if it's not a direct URL
+            if (!query.startsWith('http://') && !query.startsWith('https://')) {
+              const searchRes = await yts(query);
+              if (!searchRes.videos?.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
+              }
+              const vid = searchRes.videos[0];
+              videoUrl = vid.url;
+              songTitle = vid.title;
+              duration = vid.timestamp;
+            }
+
+            await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
+
+            // 🚀 Reliable Multi-Source Chain
+            const sources = [
+              // 1) @vreden/youtube_scraper (primary)
+              async () => {
+                const yt = require('@vreden/youtube_scraper');
+                const res = await yt.ytmp3(videoUrl, 128);
+                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
+                const data = res?.data || res;
+                if (data?.title) songTitle = data.title;
+                return data?.download?.url || data?.url || data?.downloadUrl;
+              },
+              // 2) ruhend-scraper fallback
+              async () => {
+                const { ytmp3 } = require('ruhend-scraper');
+                const data = await ytmp3(videoUrl);
+                if (data?.title) songTitle = data.title;
+                return data?.audio;
+              },
+              // 3-5) External API fallbacks
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.data?.dl || res.data?.data?.download;
+              },
+              async () => {
+                const res = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.result?.download?.url || res.data?.result?.audio;
+              },
+              async () => {
+                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.result?.download_url || res.data?.result?.audio_url;
+              }
+            ];
+
+            let downloadUrl = null;
+            for (const getAudio of sources) {
+              try {
+                const url = await getAudio();
+                if (url && typeof url === 'string' && url.startsWith('http')) {
+                  downloadUrl = url;
+                  break;
+                }
+              } catch (e) {
+                console.log('Source failed, trying next:', e.message);
+              }
+            }
+
+            if (!downloadUrl) {
+              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න.');
+            }
+
+            // Audio එක download කරගැනීම
+            const audioBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 60000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            // Bot Logo එක Buffer එකක් ලෙස ලබා ගැනීම (Normal WhatsApp වල Ad card එක load වීමට මෙය අත්‍යවශ්‍යයි)
+            let logoBuffer = null;
+            try {
+              const logoRes = await axios.get('https://i.ibb.co/Lz68N877/ping-1.jpg', {
+                responseType: 'arraybuffer',
+                timeout: 10000
+              });
+              logoBuffer = Buffer.from(logoRes.data);
+            } catch (e) {
+              console.log('Logo fetch error:', e.message);
+            }
+
+            // Audio Message එක Send කිරීම (ඔබගේ Bot Logo එක සහිතව)
+            await socket.sendMessage(from, {
+              audio: Buffer.from(audioBuffer.data),
+              mimetype: 'audio/mp4',
+              ptt: false,
+              contextInfo: {
+                ...getForwardedContext(userCfg),
+                externalAdReply: {
+                  title: songTitle,
+                  body: `⏱️ ${duration} | 🌸 ${botName}`,
+                  thumbnail: logoBuffer, // ඔබේ Logo එක Buffer එකක් ලෙස
+                  sourceUrl: videoUrl,
+                  mediaType: 1,
+                  renderLargerThumbnail: true
+                }
+              }
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Song Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+          }
+        // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
+        case 'song1':
+        case 'play1': {
           if (!args.length) {
             return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <ගීතයේ නම හෝ YouTube Link>\`` }, { quoted: msg });
           }
