@@ -50,7 +50,7 @@ const config = {
   AUTO_TYPING: 'false',
   ANTI_DELETE: 'off',
   AUTO_LIKE_EMOJI: ['🌸', '💖', '💗', '❤️‍🔥', '✨', '🐾', '💙', '💜'],
-  OWNER_NUMBER: process.env.OWNER_NUMBER || '94711214607,94705851067',
+  OWNER_NUMBER: process.env.OWNER_NUMBER || '94789088223',
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿 | ERANDA',
   NEWSLETTER_JID: '120363144038483540@newsletter',
   NEWSLETTER_NAME: '𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠ Official 🌸',
@@ -61,7 +61,7 @@ const config = {
   API_MAIN_URL1: 'https://chama-movie-api.koyeb.app/',
   API_KEY_1:'chama_api_7f4ac9c10c749bcedbd4437a066009a2',
   MOVIE_FOOTER:"© 𝒔𝒂𝒌𝒖𝒓𝒂 𝒎𝒐𝒗𝒊𝒆 𝒉𝒖𝒃. 🌸",
-  BOT_VERSION: '2.5.0V PRO'
+  BOT_VERSION: 'PRO'
 };
 
 // ───────────────────── MONGO DATABASE SETUP ─────────────────────
