@@ -13,6 +13,7 @@ const FileType = require('file-type');
 const fetch = require('node-fetch');
 const yts = require('yt-search');
 const ytdl = require('@distube/ytdl-core');
+const { ytmp3 } = require('ruhend-scraper');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -464,6 +465,7 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+        // ────────────────── 100% WORKING FAST SONG DOWNLOADER ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
@@ -475,57 +477,55 @@ function setupCommandHandlers(socket, number) {
 
           try {
             let videoUrl = query;
-            let title = 'Song';
+            let songTitle = 'Song';
             let duration = '0:00';
             let thumbnail = botLogo;
 
-            // Search if not a direct URL
+            // Search with yt-search if query is not a direct URL
             if (!query.startsWith('http://') && !query.startsWith('https://')) {
               const searchRes = await yts(query);
               if (!searchRes.videos?.length) {
-                return await socket.sendMessage(from, { text: '❌ Non results found.' }, { quoted: msg });
+                return await socket.sendMessage(from, { text: '❌ *Non song found*.' }, { quoted: msg });
               }
               const vid = searchRes.videos[0];
               videoUrl = vid.url;
-              title = vid.title;
+              songTitle = vid.title;
               duration = vid.timestamp;
               thumbnail = vid.thumbnail;
             }
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            // High-Speed Audio Stream with large buffer chunk
-            const audioStream = ytdl(videoUrl, {
-              filter: 'audioonly',
-              quality: 'highestaudio',
-              highWaterMark: 1 << 25 // Speed boost (32MB buffer chunk)
-            });
+            let downloadUrl = null;
 
-            // Temporary file path for fast conversion
-            const tempFilePath = path.join(os.tmpdir(), `sakura_${Date.now()}.mp3`);
+            // 1️⃣ Method 1: Using ruhend-scraper (Bypasses YouTube Bot Check)
+            try {
+              const res = await ytmp3(videoUrl);
+              downloadUrl = res?.audio || res?.download?.url || res?.link;
+              if (res?.title) songTitle = res.title;
+            } catch (e) {
+              console.log('ruhend-scraper failed, trying fallback API...');
+            }
 
-            // Convert and save locally with fluent-ffmpeg
-            await new Promise((resolve, reject) => {
-              ffmpeg(audioStream)
-                .audioBitrate(128)
-                .toFormat('mp3')
-                .save(tempFilePath)
-                .on('end', resolve)
-                .on('error', reject);
-            });
+            // 2️⃣ Method 2: High-Speed Fallback API (Backup)
+            if (!downloadUrl) {
+              const apiRes = await axios.get(`https://api.dhammiko.online/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 }).catch(() => null);
+              downloadUrl = apiRes?.data?.result?.download?.url || apiRes?.data?.download?.url;
+            }
 
-            const audioBuffer = fs.readFileSync(tempFilePath);
-            fs.unlink(tempFilePath, () => {}); // Delete temp file after reading
+            if (!downloadUrl) {
+              throw new Error('*Download link found fail 🥲*');
+            }
 
-            // Send Audio with WhatsApp Music Card (Thumbnail & Title)
+            // Send Audio with WhatsApp Music Player Card
             await socket.sendMessage(from, {
-              audio: audioBuffer,
+              audio: { url: downloadUrl },
               mimetype: 'audio/mpeg',
-              fileName: `${title}.mp3`,
+              fileName: `${songTitle}.mp3`,
               contextInfo: {
                 ...getForwardedContext(userCfg),
                 externalAdReply: {
-                  title: title,
+                  title: songTitle,
                   body: `⏱️ Duration: ${duration} | 🌸 ${botName}`,
                   thumbnailUrl: thumbnail,
                   sourceUrl: videoUrl,
@@ -543,7 +543,7 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-        }
+                }
 case 'userinfo':
 case 'whois':
 case 'getdp': {
