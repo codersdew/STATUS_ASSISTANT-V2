@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
+    "fb-downloader-scrapper": "^3.0.1",
+    "@xaviabot/fb-downloader": "^1.0.14",
     "youtubei.js": "^16.0.1",
     "@vreden/youtube_scraper": "^1.2.9",
     "ruhend-scraper": "^9.0.8",
