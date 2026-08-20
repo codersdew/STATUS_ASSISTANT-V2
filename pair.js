@@ -59,7 +59,7 @@ const config = {
   OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 🪻||𝑺𝒂𝒌𝒖𝒓𝒂̷🌸⃘̬ٜٜٜ͠',
   NEWSLETTER_JID: '120363144038483540@newsletter',
   NEWSLETTER_NAME: '𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠ Official 🌸',
-  DEFAULT_LOGO: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
+  DEFAULT_LOGO: 'https://i.ibb.co/S4K5YgGW/file-00000000c4e8821185b5e53887493382.png',
   BOT_FOOTER: '> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠🌸⃘̬ٜٜٜ͠*',
   API_YT_ALL_URL: 'https://nexoraapi.laksidunimsara.com/api/youtube/all',
   NEXORA_API_KEY: 'lakiya_46d6ceb9bed1f0de0181c9d6c91cbe05bdba0bb16d3498b46a61f118f4b40f37',
