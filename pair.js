@@ -14,6 +14,20 @@ const fetch = require('node-fetch');
 const yts = require('yt-search');
 const ytdl = require('@distube/ytdl-core');
 const { ytmp3 } = require('ruhend-scraper');
+const { Innertube, UniversalCache } = require('youtubei.js');
+
+// Fast YouTube Innertube Instance (Shared memory for max speed)
+let ytClient = null;
+async function getYT() {
+  if (!ytClient) {
+    ytClient = await Innertube.create({
+      cache: new UniversalCache(false),
+      generate_session_locally: true
+    });
+  }
+  return ytClient;
+}
+// ################# SONG DL PKG #################
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -465,63 +479,67 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
-        // ────────────────── 100% WORKING FAST SONG DOWNLOADER ──────────────────
+        // ────────────────── OFFICIAL INNERTUBE FAST SONG DOWNLOADER ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <song_name හෝ youtube_link>\`` }, { quoted: msg });
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <ගීතයේ නම හෝ YouTube Link>\`` }, { quoted: msg });
           }
 
           const query = args.join(' ');
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
-            let videoUrl = query;
+            let videoId = query;
             let songTitle = 'Song';
             let duration = '0:00';
             let thumbnail = botLogo;
+            let videoUrl = query;
 
-            // Search with yt-search if query is not a direct URL
+            // Direct link එකක් නොවේ නම් Search කර Video ID ලබා ගැනීම
             if (!query.startsWith('http://') && !query.startsWith('https://')) {
               const searchRes = await yts(query);
               if (!searchRes.videos?.length) {
-                return await socket.sendMessage(from, { text: '❌ *Non song found*.' }, { quoted: msg });
+                return await socket.sendMessage(from, { text: '❌ *No song found.*' }, { quoted: msg });
               }
               const vid = searchRes.videos[0];
+              videoId = vid.videoId;
               videoUrl = vid.url;
               songTitle = vid.title;
               duration = vid.timestamp;
               thumbnail = vid.thumbnail;
+            } else {
+              // Extract video ID from URL
+              const match = query.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+              if (match) videoId = match[1];
             }
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            let downloadUrl = null;
+            // 🚀 Full Speed Direct Stream from YouTube InnerTube
+            const yt = await getYT();
+            const stream = await yt.download(videoId, {
+              type: 'audio',
+              quality: 'best',
+              format: 'any'
+            });
 
-            // 1️⃣ Method 1: Using ruhend-scraper (Bypasses YouTube Bot Check)
-            try {
-              const res = await ytmp3(videoUrl);
-              downloadUrl = res?.audio || res?.download?.url || res?.link;
-              if (res?.title) songTitle = res.title;
-            } catch (e) {
-              console.log('ruhend-scraper failed, trying fallback API...');
+            // Convert Stream directly into RAM Buffer (No Temp Files needed)
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
             }
+            const audioBuffer = Buffer.concat(chunks);
 
-            // 2️⃣ Method 2: High-Speed Fallback API (Backup)
-            if (!downloadUrl) {
-              const apiRes = await axios.get(`https://api.dhammiko.online/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 }).catch(() => null);
-              downloadUrl = apiRes?.data?.result?.download?.url || apiRes?.data?.download?.url;
-            }
-
-            if (!downloadUrl) {
-              throw new Error('*Download link found fail 🥲*');
+            if (!audioBuffer || audioBuffer.length === 0) {
+              throw new Error('*Audio stream is empty.*');
             }
 
             // Send Audio with WhatsApp Music Player Card
             await socket.sendMessage(from, {
-              audio: { url: downloadUrl },
+              audio: audioBuffer,
               mimetype: 'audio/mpeg',
-              fileName: `${songTitle}.mp3`,
+              fileName: `${songTitle.replace(/[\\/:*?"<>|]/g, '')}.mp3`,
               contextInfo: {
                 ...getForwardedContext(userCfg),
                 externalAdReply: {
@@ -543,7 +561,7 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-                }
+        }
 case 'userinfo':
 case 'whois':
 case 'getdp': {
