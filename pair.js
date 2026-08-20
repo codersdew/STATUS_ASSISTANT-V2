@@ -465,10 +465,13 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
           // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
+        // ────────────────── SONG DOWNLOADER (Universal UI & Multi-Device Support) ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <ගීතයේ නම හෝ YouTube Link>\`` }, { quoted: msg });
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}song <ගීතයේ නම / Link>\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
           }
 
           const query = args.join(' ');
@@ -476,24 +479,46 @@ function setupCommandHandlers(socket, number) {
 
           try {
             let videoUrl = query;
-            let songTitle = 'Song';
+            let songTitle = 'Unknown Song';
             let duration = '0:00';
+            let channelName = 'YouTube Music';
+            let views = 'N/A';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg'; // fallback image
 
-            // Search if it's not a direct URL
-            if (!query.startsWith('http://') && !query.startsWith('https://')) {
-              const searchRes = await yts(query);
-              if (!searchRes.videos?.length) {
-                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
-              }
+            // YouTube Search එක සිදු කිරීම
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
+            const searchRes = await yts(query);
+
+            if (searchRes.videos?.length) {
               const vid = searchRes.videos[0];
               videoUrl = vid.url;
               songTitle = vid.title;
-              duration = vid.timestamp;
+              duration = vid.timestamp || vid.duration?.timestamp || '0:00';
+              channelName = vid.author?.name || 'Artist';
+              views = vid.views ? vid.views.toLocaleString() : 'N/A';
+              thumbnailUrl = vid.thumbnail || vid.image || thumbnailUrl;
+            } else if (!isUrl) {
+              return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
             }
+
+            // 🎨 1. ලස්සන UI Info Card එකක් යැවීම (Thumbnail එක සමග)
+            const infoText = 
+`╭─〔 🎵 *SONG DOWNLOADER* 〕─⊷
+│ 📌 *𝓣𝓲𝓽𝓵𝓮:* ${songTitle}
+│ ⏱️ *𝓣𝓲𝓶𝓮:* ${duration}
+│ 👤 *𝓐𝓾𝓽𝓱𝓸𝓻:* ${channelName}
+│ 👁️ *𝓥𝓲𝓮𝔀𝓼:* ${views}
+╰──────────────────────────⊷
+> 🪻 _𝓓𝓸𝔀𝓷𝓵𝓸𝓪𝓭 𝔂𝓸𝓾𝓻 𝓼𝓸𝓷𝓰..._`;
+
+            const infoMsg = await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoText
+            }, { quoted: msg });
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            // 🚀 Reliable Multi-Source Chain
+            // 🚀 Reliable Multi-Source Download Chain
             const sources = [
               // 1) @vreden/youtube_scraper (primary)
               async () => {
@@ -540,10 +565,10 @@ function setupCommandHandlers(socket, number) {
             }
 
             if (!downloadUrl) {
-              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න.');
+              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
             }
 
-            // Audio එක download කරගැනීම
+            // Audio Buffer එක download කිරීම
             const audioBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 60000,
@@ -552,45 +577,52 @@ function setupCommandHandlers(socket, number) {
               }
             });
 
-            // Bot Logo එක Buffer එකක් ලෙස ලබා ගැනීම (Normal WhatsApp වල Ad card එක load වීමට මෙය අත්‍යවශ්‍යයි)
-            let logoBuffer = null;
+            // Song Thumbnail එක Buffer එකක් ලෙස ගැනීම (Normal WA render වීමට)
+            let thumbBuffer = null;
             try {
-              const logoRes = await axios.get('https://i.ibb.co/Lz68N877/ping-1.jpg', {
+              const thumbRes = await axios.get(thumbnailUrl, {
                 responseType: 'arraybuffer',
                 timeout: 10000
               });
-              logoBuffer = Buffer.from(logoRes.data);
+              thumbBuffer = Buffer.from(thumbRes.data);
             } catch (e) {
-              console.log('Logo fetch error:', e.message);
+              console.log('Thumb buffer fetch error:', e.message);
             }
 
-            // Audio Message එක Send කිරීම (ඔබගේ Bot Logo එක සහිතව)
+            // File Name එකේ ඇති අනවශ්‍ය අකුරු ඉවත් කිරීම
+            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
+
+            // 🎶 2. Audio එක Normal & Business WhatsApp දෙකටම වැඩ කරන ලෙස Send කිරීම
             await socket.sendMessage(from, {
               audio: Buffer.from(audioBuffer.data),
-              mimetype: 'audio/mp4',
+              mimetype: 'audio/mpeg', // audio/mp4 වෙනුවට audio/mpeg දැමීමෙන් Normal WA වල 100% වැඩ කරයි
+              fileName: `${cleanTitle}.mp3`,
               ptt: false,
               contextInfo: {
-                ...getForwardedContext(userCfg),
+                ...(typeof getForwardedContext === 'function' ? getForwardedContext(userCfg) : {}),
                 externalAdReply: {
-                  title: songTitle,
-                  body: `⏱️ ${duration} | 🌸 ${botName}`,
-                  thumbnail: logoBuffer, // ඔබේ Logo එක Buffer එකක් ලෙස
-                  sourceUrl: videoUrl,
+                  title: songTitle.substring(0, 40),
+                  body: `⏱️ ${duration} | 🌸 ${botName || 'Music Bot'}`,
                   mediaType: 1,
-                  renderLargerThumbnail: true
+                  thumbnail: thumbBuffer,
+                  thumbnailUrl: thumbnailUrl,
+                  sourceUrl: videoUrl,
+                  renderLargerThumbnail: true,
+                  showAdAttribution: true
                 }
               }
-            }, { quoted: msg });
+            }, { quoted: infoMsg }); // කලින් යැවූ Info message එකට quote වේ
 
             await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
 
           } catch (err) {
             console.error('Song Error:', err);
             await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
-            await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
           }
           break;
-          }
+              }
+
         // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
         case 'song1':
         case 'play1': {
