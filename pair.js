@@ -470,9 +470,8 @@ function setupCommandHandlers(socket, number) {
           const runtime = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
           const ramUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
 
-          const mainText = `
+          const mainText = `*│* 🌸 *${botName}* 
 *╭─────────────···▸*
-*│* 🌸 *${botName}* 🌸
 *│* 👤 *User:* @${senderNumber}
 *│* ⏱️ *Uptime:* ${runtime}
 *│* 💾 *RAM:* ${ramUsage} MB
@@ -481,15 +480,15 @@ function setupCommandHandlers(socket, number) {
 
 🔢 *REPLY WITH A CATEGORY NUMBER:*
 
-*┌──『 📚 ALL CATEGORIES 』*
-*│ [1]* 📥 *Downloaders* (Songs, Videos, TT, FB..)
+*╭─『 📚 ALL CATEGORIES 』*
+*│ [1]* 📥 *Downloaders* 
 *│ [2]* 👥 *Group Admin & Protection*
-*│ [3]* 🛠️ *Utilities & Tools* (VV, Stickers..)
+*│ [3]* 🛠️ *Utilities & Tools* 
 *│ [4]* 🎭 *Fun & Games*
 *│ [5]* ⚙️ *Settings & Bot Toggles*
 *│ [6]* 📢 *Channel & Newsletter Suite*
-*│ [7]* 🎨 *Bot Customization & Personalize*
-*└──────────────────────*
+*│ [7]* 🎨 *Bot Customization*
+*╰──────────────────────*
 
 > 💡 *Quick Action:* Reply directly with *1*, *2*, *3*, *4*, *5*, *6*, or *7* to view commands.
 ${botFooter}`.trim();
