@@ -15,6 +15,7 @@ const yts = require('yt-search');
 const yt = require('@vreden/youtube_scraper');
 const { getFbVideoInfo } = require('fb-downloader-scrapper');
 const getFBInfo = require('@xaviabot/fb-downloader');
+const TiktokDL = require('@tobyg74/tiktok-api-dl');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -466,6 +467,142 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
+        case 'tiktok':
+        case 'tt': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:*\n\`${prefix}tiktok <TikTok Link>\`\nහෝ\n\`${prefix}tiktok <සෙවීමට වචනයක්>\`` }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          const isLink = query.includes('tiktok.com');
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            let videoUrl = query;
+            let videoTitle = 'TikTok Video';
+            let author = '';
+
+            // ── STEP 1: If it's NOT a link, search TikTok by keyword first ──
+            if (!isLink) {
+              await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
+
+              let searchResult = null;
+
+              // Try tikwm search first (no cookie needed, most reliable)
+              try {
+                const res = await axios.get(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(query)}&count=1`, { timeout: 20000 });
+                const item = res.data?.data?.videos?.[0];
+                if (item) {
+                  searchResult = {
+                    url: `https://www.tiktok.com/@${item.author?.unique_id}/video/${item.video_id}`,
+                    title: item.title,
+                    author: item.author?.nickname
+                  };
+                }
+              } catch (e) {
+                console.log('tikwm search failed:', e.message);
+              }
+
+              // Fallback: package's built-in Search (needs cookie set in config, may fail without it)
+              if (!searchResult) {
+                try {
+                  const TiktokDL = require('@tobyg74/tiktok-api-dl');
+                  const res = await TiktokDL.Search(query, { type: 'video', page: 1 });
+                  const item = res?.result?.videos?.[0] || res?.result?.[0];
+                  if (item) {
+                    searchResult = {
+                      url: item?.video?.playAddr?.[0] ? null : `https://www.tiktok.com/@${item?.author?.username}/video/${item?.id}`,
+                      title: item?.title || item?.desc,
+                      author: item?.author?.nickname
+                    };
+                  }
+                } catch (e) {
+                  console.log('package search failed:', e.message);
+                }
+              }
+
+              if (!searchResult || !searchResult.url) {
+                return await socket.sendMessage(from, { text: '❌ not defind.' }, { quoted: msg });
+              }
+
+              videoUrl = searchResult.url;
+              videoTitle = searchResult.title || videoTitle;
+              author = searchResult.author || '';
+            }
+
+            await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
+
+            // ── STEP 2: Download the resolved TikTok URL (same chain as before) ──
+            const sources = [
+              async () => {
+                const TiktokDL = require('@tobyg74/tiktok-api-dl');
+                const result = await TiktokDL.Downloader(videoUrl, { version: 'v1' });
+                if (result?.status !== 'success') throw new Error('v1 failed');
+                if (result?.result?.desc) videoTitle = result.result.desc;
+                if (result?.result?.author?.nickname) author = result.result.author.nickname;
+                const videos = result?.result?.videoHD || result?.result?.video || result?.result?.videoSD;
+                return Array.isArray(videos) ? videos[0] : videos;
+              },
+              async () => {
+                const TiktokDL = require('@tobyg74/tiktok-api-dl');
+                const result = await TiktokDL.Downloader(videoUrl, { version: 'v3' });
+                if (result?.status !== 'success') throw new Error('v3 failed');
+                const videos = result?.result?.video?.playAddr;
+                return Array.isArray(videos) ? videos[0] : videos;
+              },
+              async () => {
+                const res = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                if (res.data?.data?.title) videoTitle = res.data.data.title;
+                if (res.data?.data?.author?.nickname) author = res.data.data.author.nickname;
+                return res.data?.data?.hdplay || res.data?.data?.play;
+              },
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/tiktok?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
+                return res.data?.data?.hd || res.data?.data?.play || res.data?.data?.nowm;
+              }
+            ];
+
+            let downloadUrl = null;
+            for (const getVideo of sources) {
+              try {
+                const url = await getVideo();
+                if (url && typeof url === 'string' && url.startsWith('http')) {
+                  downloadUrl = url;
+                  break;
+                }
+              } catch (e) {
+                console.log('TikTok source failed, trying next:', e.message);
+              }
+            }
+
+            if (!downloadUrl) {
+              throw new Error('Video download err try again');
+            }
+
+            const videoBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 60000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            await socket.sendMessage(from, {
+              video: Buffer.from(videoBuffer.data),
+              mimetype: 'video/mp4',
+              caption: `✅ *${videoTitle}*${author ? `\n👤 ${author}` : ''}\n🌸 ${botName}`
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('TikTok Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ TikTok download failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+                    }
           // ────────────────── FACEBOOK VIDEO DOWNLOADER ──────────────────
         case 'fb':
         case 'facebook': {
