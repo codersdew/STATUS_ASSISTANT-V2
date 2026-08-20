@@ -12,22 +12,7 @@ const axios = require('axios');
 const FileType = require('file-type');
 const fetch = require('node-fetch');
 const yts = require('yt-search');
-const ytdl = require('@distube/ytdl-core');
-const { ytmp3 } = require('ruhend-scraper');
-const { Innertube, UniversalCache } = require('youtubei.js');
-
-// Fast YouTube Innertube Instance (Shared memory for max speed)
-let ytClient = null;
-async function getYT() {
-  if (!ytClient) {
-    ytClient = await Innertube.create({
-      cache: new UniversalCache(false),
-      generate_session_locally: true
-    });
-  }
-  return ytClient;
-}
-// ################# SONG DL PKG #################
+const yt = require('@vreden/youtube_scraper');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -479,7 +464,7 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
-        // ────────────────── 100% WORKING ERROR-FREE SONG DOWNLOADER ──────────────────
+        // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
@@ -510,8 +495,26 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            // 🚀 Reliable Multi-APIs (YouTube 400 & Bot-Bypass)
-            const apis = [
+            // 🚀 Reliable Multi-Source Chain
+            const sources = [
+              // 1) @vreden/youtube_scraper (primary)
+              async () => {
+                const yt = require('@vreden/youtube_scraper');
+                const res = await yt.ytmp3(videoUrl, 128);
+                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
+                const data = res?.data || res;
+                if (data?.title) songTitle = data.title;
+                if (data?.thumbnail) thumbnail = data.thumbnail;
+                return data?.download?.url || data?.url || data?.downloadUrl;
+              },
+              // 2) ruhend-scraper fallback
+              async () => {
+                const { ytmp3 } = require('ruhend-scraper');
+                const data = await ytmp3(videoUrl);
+                if (data?.title) songTitle = data.title;
+                return data?.audio;
+              },
+              // 3-5) External API fallbacks
               async () => {
                 const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
                 return res.data?.data?.dl || res.data?.data?.download;
@@ -523,15 +526,11 @@ function setupCommandHandlers(socket, number) {
               async () => {
                 const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
                 return res.data?.result?.download_url || res.data?.result?.audio_url;
-              },
-              async () => {
-                const res = await axios.get(`${config.API_YT_ALL_URL}?url=${encodeURIComponent(videoUrl)}&api_key=${config.NEXORA_API_KEY}`, { timeout: 20000 });
-                return res.data?.all_qualities?.audio?.download_url;
               }
             ];
 
             let downloadUrl = null;
-            for (const getAudio of apis) {
+            for (const getAudio of sources) {
               try {
                 const url = await getAudio();
                 if (url && typeof url === 'string' && url.startsWith('http')) {
@@ -539,15 +538,14 @@ function setupCommandHandlers(socket, number) {
                   break;
                 }
               } catch (e) {
-                // Auto try next API
+                console.log('Source failed, trying next:', e.message);
               }
             }
 
             if (!downloadUrl) {
-              throw new Error('Download සර්වර් වෙතින් ප්‍රතිචාරයක් නොලැබුණි. කරුණාකර නැවත උත්සාහ කරන්න.');
+              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න.');
             }
 
-            // Download Audio stream as binary buffer for smooth WhatsApp playback
             const audioBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 60000,
@@ -556,7 +554,6 @@ function setupCommandHandlers(socket, number) {
               }
             });
 
-            // Send Audio with WhatsApp Music Player Card
             await socket.sendMessage(from, {
               audio: Buffer.from(audioBuffer.data),
               mimetype: 'audio/mpeg',
@@ -582,7 +579,7 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-        }
+              }
 case 'userinfo':
 case 'whois':
 case 'getdp': {
