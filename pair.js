@@ -462,97 +462,147 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
-          case 'userinfo':
+case 'userinfo':
 case 'whois':
 case 'getdp': {
     try {
-        // 1. Identify the target number (From Mention, Reply, or Text input)
         let target;
-        const quoted = m.quoted ? m.quoted : null;
+        const quoted = m.quoted;
 
-        if (m.mentionedJid && m.mentionedJid[0]) {
+        // 1. GET TARGET
+        if (m.mentionedJid?.[0]) {
             target = m.mentionedJid[0];
-        } else if (quoted && quoted.sender) {
+        } else if (quoted?.sender) {
             target = quoted.sender;
-        } else if (text) {
-            // Remove non-numeric characters (+, -, spaces)
-            const cleanNumber = text.replace(/[^0-9]/g, '');
-            if (!cleanNumber) return m.reply("❌ Please provide a valid phone number, tag a user, or reply to a message.");
-            target = cleanNumber + '@s.whatsapp.net';
+        } else if (text?.trim()) {
+            let number = text.replace(/[^0-9]/g, '');
+            if (!number) {
+                return m.reply('❌ Please provide a valid WhatsApp number.');
+            }
+            target = number + '@s.whatsapp.net';
         } else {
-            return m.reply("❌ Usage:\n• Tag someone: `.userinfo @user`\n• Reply to a message: `.userinfo`\n• By Number: `.userinfo 1234567890`");
+            return m.reply(
+                '❌ *USERINFO USAGE*\n\n' +
+                '• `.userinfo @user`\n' +
+                '• Reply to a message + `.userinfo`\n' +
+                '• `.userinfo 947xxxxxxxx`'
+            );
         }
 
-        // 2. Check if the number is registered on WhatsApp
-        const [onWa] = await sock.onWhatsApp(target);
-        if (!onWa || !onWa.exists) {
-            return m.reply("❌ This number is not registered on WhatsApp.");
+        // 2. NORMALIZE JID
+        target = String(target).trim();
+        if (!target.includes('@')) {
+            target = target + '@s.whatsapp.net';
         }
-        const userJid = onWa.jid;
 
-        // 3. Fetch About / Status (Bio)
-        let userBio = "Hidden / Not set";
-        let bioSetAt = "Unknown";
+        // 3. CHECK WHATSAPP
+        let userJid = target;
         try {
-            const statusData = await sock.fetchStatus(userJid);
-            if (statusData && statusData.status) {
-                userBio = statusData.status;
-                bioSetAt = statusData.setAt ? new Date(statusData.setAt).toLocaleDateString('en-GB') : "Unknown";
+            if (typeof sock.onWhatsApp === 'function') {
+                const result = await sock.onWhatsApp(target);
+                if (!result || result.length === 0 || result[0]?.exists === false) {
+                    return m.reply('❌ This number is not registered on WhatsApp.');
+                }
+                if (result[0]?.jid) {
+                    userJid = result[0].jid;
+                }
             }
         } catch (e) {
-            userBio = "Hidden (Privacy settings)";
+            console.log('onWhatsApp check failed:', e?.message || e);
+            userJid = target;
         }
 
-        // 4. Fetch Profile Picture URL
-        let ppUrl;
+        // 4. NUMBER
+        const number = userJid.split('@')[0].split(':')[0];
+
+        // 5. GET PROFILE NAME
+        let contactName = 'Unknown';
         try {
-            ppUrl = await sock.profilePictureUrl(userJid, 'image');
+            if (typeof sock.getName === 'function') {
+                const name = await sock.getName(userJid);
+                if (name) contactName = name;
+            }
         } catch (e) {
-            // Fallback default avatar if private or not set
-            ppUrl = 'https://i.ibb.co/3s8sCXq/default-avatar.png';
+            console.log('getName failed:', e?.message || e);
         }
 
-        // 5. Fetch Business Profile Details (if account is WhatsApp Business)
-        let businessData = null;
+        if (contactName === 'Unknown' && quoted?.pushName) {
+            contactName = quoted.pushName;
+        }
+
+        // 6. GET ABOUT
+        let userBio = 'Hidden / Not set';
+        let bioDate = 'Unknown';
         try {
-            businessData = await sock.getBusinessProfile(userJid);
+            if (typeof sock.fetchStatus === 'function') {
+                const status = await sock.fetchStatus(userJid);
+                if (status) {
+                    if (typeof status.status === 'string') userBio = status.status;
+                    if (status.setAt) bioDate = new Date(status.setAt).toLocaleDateString('en-GB');
+                }
+            }
         } catch (e) {
-            businessData = null;
+            console.log('fetchStatus failed:', e?.message || e);
         }
 
-        // 6. Extract Contact Name & Links
-        const contactName = sock.getName ? sock.getName(userJid) : (m.pushName || "N/A");
-        const fbLinks = businessData?.websites ? businessData.websites.join(', ') : "None";
-        const email = businessData?.email || "None";
-        const category = businessData?.category || "Regular User";
-        const description = businessData?.description || "None";
+        // 7. PROFILE PICTURE
+        let ppUrl = null;
+        try {
+            if (typeof sock.profilePictureUrl === 'function') {
+                ppUrl = await sock.profilePictureUrl(userJid, 'image');
+            }
+        } catch (e) {
+            console.log('profilePictureUrl failed:', e?.message || e);
+        }
 
-        // 7. Format the details message
-        const infoText = `📋 *WHATSAPP NUMBER DETAILS* 📋\n\n` +
-            `👤 *Name:* ${contactName}\n` +
-            `🆔 *JID:* \`${userJid}\`\n` +
-            `📞 *Number:* +${userJid.split('@')[0]}\n` +
-            `📝 *About:* ${userBio}\n` +
-            `📅 *About Date:* ${bioSetAt}\n\n` +
-            `🏢 *Account Type:* ${businessData ? 'Business Account' : 'Standard Account'}\n` +
-            `🏷️ *Category:* ${category}\n` +
-            `📧 *Email:* ${email}\n` +
-            `🔗 *Web / FB Links:* ${fbLinks}\n` +
-            `📄 *Description:* ${description}\n`;
+        // 8. ACCOUNT TYPE
+        let accountType = 'Standard Account';
+        try {
+            if (typeof sock.getBusinessProfile === 'function') {
+                const business = await sock.getBusinessProfile(userJid);
+                if (business) accountType = 'Business Account';
+            }
+        } catch (e) {
+            console.log('Business profile unavailable:', e?.message || e);
+        }
 
-        // 8. Send Profile Picture with Caption
-        await sock.sendMessage(m.chat, {
-            image: { url: ppUrl },
-            caption: infoText,
-            mentions: [userJid]
-        }, { quoted: m });
+        // 9. MESSAGE
+        const infoText =
+            `╭━━━〔 👤 USER INFO 〕━━━╮\n` +
+            `┃\n` +
+            `┃ 👤 *Name:* ${contactName}\n` +
+            `┃ 📞 *Number:* +${number}\n` +
+            `┃ 🆔 *JID:* \`${userJid}\`\n` +
+            `┃\n` +
+            `┃ 📝 *About:* ${userBio}\n` +
+            `┃ 📅 *About Date:* ${bioDate}\n` +
+            `┃ 🏢 *Account:* ${accountType}\n` +
+            `┃\n` +
+            `╰━━━━━━━━━━━━━━━━━━╯`;
+
+        // 10. SEND DP & INFO
+        if (ppUrl) {
+            await sock.sendMessage(
+                m.chat,
+                { image: { url: ppUrl }, caption: infoText, mentions: [userJid] },
+                { quoted: m }
+            );
+        } else {
+            await sock.sendMessage(
+                m.chat,
+                { text: infoText, mentions: [userJid] },
+                { quoted: m }
+            );
+        }
 
     } catch (err) {
-        console.error("Error in userinfo command:", err);
-        m.reply("❌ An error occurred while fetching details.");
+        console.error('❌ USERINFO ERROR:', err);
+        return m.reply(`❌ *USERINFO ERROR*\n\n${err?.message || err}`);
     }
     break;
-}
+          }
+
+          
         case 'menu':
         case 'help':
         case 'panel': {
