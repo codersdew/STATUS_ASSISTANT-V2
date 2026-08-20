@@ -51,7 +51,7 @@ const config = {
   ANTI_DELETE: 'off',
   AUTO_LIKE_EMOJI: ['🌸', '💖', '💗', '❤️‍🔥', '✨', '🐾', '💙', '💜'],
   OWNER_NUMBER: process.env.OWNER_NUMBER || '94789088223',
-  OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🌿 | ERANDA',
+  OWNER_NAME: '𝐊ᴇᴢᴜ𝚄 ||🪻',
   NEWSLETTER_JID: '120363144038483540@newsletter',
   NEWSLETTER_NAME: '𝑺͟𝒂͠𝒌͠𝒖͠𝒓̷𝒂͠ Official 🌸',
   DEFAULT_LOGO: 'https://i.ibb.co/Zz3Bs44j/file-000000002d0c71faa239b73a2a44241a.png',
