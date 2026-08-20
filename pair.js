@@ -16,6 +16,7 @@ const yt = require('@vreden/youtube_scraper');
 const { getFbVideoInfo } = require('fb-downloader-scrapper');
 const getFBInfo = require('@xaviabot/fb-downloader');
 const TiktokDL = require('@tobyg74/tiktok-api-dl');
+const { instagramGetUrl } = require('instagram-url-direct');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -467,6 +468,100 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
+        case 'ig':
+        case 'instagram': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}ig <Instagram Post/Reel Link>\`` }, { quoted: msg });
+          }
+
+          const igUrl = args[0];
+          if (!igUrl.includes('instagram.com')) {
+            return await socket.sendMessage(from, { text: '❌ වලංගු Instagram link එකක් යොදන්න.' }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const sources = [
+              // 1) instagram-url-direct (primary)
+              async () => {
+                const { instagramGetUrl } = require('instagram-url-direct');
+                const data = await instagramGetUrl(igUrl);
+                const media = data?.url_list;
+                return Array.isArray(media) ? media : null;
+              },
+              // 2) External API fallback
+              async () => {
+                const res = await axios.get(`https://api.siputzx.my.id/api/d/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
+                const media = res.data?.data;
+                if (Array.isArray(media)) return media.map(m => m.url || m);
+                return null;
+              },
+              // 3) Second external API fallback
+              async () => {
+                const res = await axios.get(`https://api.vreden.my.id/api/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
+                const media = res.data?.result;
+                if (Array.isArray(media)) return media.map(m => m.url || m);
+                return null;
+              }
+            ];
+
+            let mediaUrls = null;
+            for (const getMedia of sources) {
+              try {
+                const urls = await getMedia();
+                if (urls && urls.length > 0) {
+                  mediaUrls = urls;
+                  break;
+                }
+              } catch (e) {
+                console.log('IG source failed, trying next:', e.message);
+              }
+            }
+
+            if (!mediaUrls) {
+              throw new Error('Media download කරන්න බැරි විය. Link එක private හෝ invalid විය හැක.');
+            }
+
+            await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
+
+            // Send each media item (post can have multiple images/videos - carousel)
+            for (const mediaUrl of mediaUrls) {
+              const isVideo = mediaUrl.includes('.mp4') || mediaUrl.match(/video/i);
+
+              const buffer = await axios.get(mediaUrl, {
+                responseType: 'arraybuffer',
+                timeout: 60000,
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                }
+              });
+
+              if (isVideo) {
+                await socket.sendMessage(from, {
+                  video: Buffer.from(buffer.data),
+                  mimetype: 'video/mp4',
+                  caption: `✅ *Instagram Video* | 🌸 ${botName}`
+                }, { quoted: msg });
+              } else {
+                await socket.sendMessage(from, {
+                  image: Buffer.from(buffer.data),
+                  mimetype: 'image/jpeg',
+                  caption: `✅ *Instagram Photo* | 🌸 ${botName}`
+                }, { quoted: msg });
+              }
+            }
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Instagram Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Instagram download failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+              }
           // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
         case 'tiktok':
         case 'tt': {
