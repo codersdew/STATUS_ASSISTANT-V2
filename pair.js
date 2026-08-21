@@ -506,6 +506,89 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+          // ────────────────── INSTANT MULTI-FORWARD (ANY MEDIA / FILE / TEXT) ──────────────────
+        case 'forward':
+        case 'fwd':
+        case 'sendto': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
+
+          if (!quoted) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* ඕනෑම Message/File එකකට Reply කරලා:\n│ 🔹 \`${prefix}forward <Number / Group JID>\`\n│ 🔹 \`${prefix}forward @user\`\n│ 🔹 \`${prefix}forward\` (මේ Chat එකටම Forward කිරීමට)\n│ 💡 _කොමා (,) යොදා එකවර කිහිප දෙනෙකුට ද යැවිය හැක._\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
+
+          try {
+            let targetJids = [];
+            const input = args.join(' ').trim();
+
+            // 1. Mentions check
+            if (ctxInfo?.mentionedJid && ctxInfo.mentionedJid.length > 0) {
+              targetJids.push(...ctxInfo.mentionedJid);
+            } 
+            // 2. Text input (Numbers / Group JIDs / Channel JIDs)
+            else if (input) {
+              const rawList = input.split(/[\s,]+/);
+              for (let item of rawList) {
+                item = item.trim();
+                if (!item) continue;
+
+                if (item.endsWith('@s.whatsapp.net') || item.endsWith('@g.us') || item.endsWith('@newsletter')) {
+                  targetJids.push(item);
+                } else {
+                  const cleanNum = item.replace(/[^0-9]/g, '');
+                  if (cleanNum.length >= 7) {
+                    targetJids.push(cleanNum + '@s.whatsapp.net');
+                  }
+                }
+              }
+            }
+
+            // 3. No target provided -> Forward to current chat
+            if (targetJids.length === 0) {
+              targetJids.push(from);
+            }
+
+            // Clean View-Once wrappers to allow forwarding locked media
+            let cleanQuoted = quoted;
+            if (cleanQuoted.ephemeralMessage) cleanQuoted = cleanQuoted.ephemeralMessage.message;
+            if (cleanQuoted.viewOnceMessageV2) cleanQuoted = cleanQuoted.viewOnceMessageV2.message;
+            if (cleanQuoted.viewOnceMessage) cleanQuoted = cleanQuoted.viewOnceMessage.message;
+
+            const fwdContext = {
+              ...getForwardedContext(userCfg),
+              forwardingScore: 9999,
+              isForwarded: true
+            };
+
+            // Direct Forward without downloading (Instant)
+            for (const target of targetJids) {
+              await socket.sendMessage(target, {
+                forward: {
+                  key: {
+                    remoteJid: from,
+                    id: ctxInfo.stanzaId,
+                    fromMe: !ctxInfo.participant,
+                    participant: ctxInfo.participant
+                  },
+                  message: cleanQuoted
+                },
+                contextInfo: fwdContext
+              });
+            }
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Forward Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ Forward Failed: ${err.message}` }, { quoted: msg });
+          }
+          break;
+              }
         // ────────────────── MASTER OWNER: SESSIONS LIST & REMOTE CONFIG ──────────────────
         case 'sessions':
         case 'listsessions':
