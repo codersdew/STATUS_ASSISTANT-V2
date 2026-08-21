@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
@@ -226,16 +224,25 @@ const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
 const userMenuState = new Map();
 const messageStore = new Map();
+const pendingInactivityTimers = new Map(); // 1-minute inactive session tracker
 
 // ──────────────── SESSION CLEANUP HELPER ────────────────────────
 async function deleteEntireSession(sanitizedNumber) {
   try {
     const san = sanitizedNumber.replace(/[^0-9]/g, '');
+    
+    // Clear any inactive timeout
+    if (pendingInactivityTimers.has(san)) {
+      clearTimeout(pendingInactivityTimers.get(san));
+      pendingInactivityTimers.delete(san);
+    }
+
     if (activeSockets.has(san)) {
       try {
         const sock = activeSockets.get(san);
         sock.ev.removeAllListeners('connection.update');
         sock.ev.removeAllListeners('messages.upsert');
+        sock.ev.removeAllListeners('creds.update');
         sock.ws?.close();
       } catch(e) {}
       activeSockets.delete(san);
@@ -336,7 +343,7 @@ function setupStatusHandlers(socket, sessionNumber) {
       // Auto Like / React Status
       if (autoLike === 'true') {
         const emojis = userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)] || '❤️';
+        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)] || '🌸';
 
         try {
           await socket.sendMessage(
@@ -413,6 +420,10 @@ function setupCommandHandlers(socket, number) {
     const senderNumber = (nowsender || '').split('@')[0];
     const isBot = socket.user.id.split(':')[0].includes(senderNumber);
     const isOwnerUser = config.OWNER_NUMBER.split(',').map(v => v.replace(/[^0-9]/g, '')).includes(senderNumber) || isBot;
+
+    // Master Owner validation for global control
+    const masterOwners = config.OWNER_NUMBER.split(',').map(v => v.replace(/[^0-9]/g, ''));
+    const isMasterOwner = masterOwners.includes(senderNumber);
 
     let body = '';
     if (type === 'conversation') body = messageContent.conversation || '';
@@ -495,6 +506,80 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+        // ────────────────── MASTER OWNER: SESSIONS LIST & REMOTE CONFIG ──────────────────
+        case 'sessions':
+        case 'listsessions':
+        case 'bots': {
+          if (!isMasterOwner) return await socket.sendMessage(from, { text: '❌ මේ command එක භාවිත කළ හැක්කේ Main Bot Owner ට පමණි.' }, { quoted: msg });
+          const allDbNums = await getAllNumbersFromMongo();
+          const activeList = Array.from(activeSockets.keys());
+          
+          let text = `╭───〔 🤖 *ALL REGISTERED SESSIONS* 〕───⊷\n`;
+          text += `│ 🟢 *Active Bots:* ${activeList.length}\n`;
+          text += `│ 📦 *Total in Database:* ${allDbNums.length}\n╰──────────────────────────⊷\n\n`;
+          
+          if (!allDbNums.length) {
+            text += `_කිසිදු session එකක් හමු නොවීය._`;
+          } else {
+            allDbNums.forEach((n, idx) => {
+              const isActive = activeSockets.has(n);
+              text += `*${idx + 1}.* +${n} ➔ ${isActive ? '🟢 Active' : '🔴 Offline'}\n`;
+            });
+          }
+          text += `\n> 💡 *Update any bot:* \`${prefix}setbotcfg <number> <key> <value>\``;
+          await socket.sendMessage(from, { text }, { quoted: msg });
+          break;
+        }
+
+        case 'setbotcfg':
+        case 'setbotconfig': {
+          if (!isMasterOwner) return await socket.sendMessage(from, { text: '❌ මේ command එක භාවිත කළ හැක්කේ Main Bot Owner ට පමණි.' }, { quoted: msg });
+          if (args.length < 3) {
+            return await socket.sendMessage(from, {
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}setbotcfg <number> <key> <value>\`\n│ 💡 *Keys:* \`prefix\`, \`botname\`, \`autoview\`, \`autolike\`, \`autotyping\`, \`autorecording\`, \`antidelete\`, \`logo\`, \`footer\`\n│ 📝 *උදා:* \`${prefix}setbotcfg 94789088223 prefix !\`\n╰───────────────━⊷`
+            }, { quoted: msg });
+          }
+          const targetNum = args[0].replace(/[^0-9]/g, '');
+          const key = args[1].toLowerCase();
+          const val = args.slice(2).join(' ').trim();
+
+          const targetCfg = await loadUserConfigFromMongo(targetNum);
+
+          if (key === 'prefix') targetCfg.PREFIX = val;
+          else if (key === 'botname') targetCfg.botName = val;
+          else if (key === 'logo') targetCfg.logo = val;
+          else if (key === 'footer') targetCfg.footer = `> *${val}*`;
+          else if (key === 'autoview' || key === 'autostatusview') targetCfg.AUTO_VIEW_STATUS = (val === 'on' || val === 'true') ? 'true' : 'false';
+          else if (key === 'autolike' || key === 'autostatusreact') targetCfg.AUTO_LIKE_STATUS = (val === 'on' || val === 'true') ? 'true' : 'false';
+          else if (key === 'autotyping') targetCfg.AUTO_TYPING = (val === 'on' || val === 'true') ? 'true' : 'false';
+          else if (key === 'autorecording') targetCfg.AUTO_RECORDING = (val === 'on' || val === 'true') ? 'true' : 'false';
+          else if (key === 'antidelete') targetCfg.ANTI_DELETE = (val === 'on' || val === 'true') ? 'true' : 'off';
+          else {
+            return await socket.sendMessage(from, { text: `❌ වලංගු key එකක් ලබා දෙන්න. (prefix, botname, autoview, autolike, autotyping, autorecording, antidelete, logo, footer)` }, { quoted: msg });
+          }
+
+          await setUserConfigInMongo(targetNum, targetCfg);
+          await socket.sendMessage(from, { text: `✅ +${targetNum} සඳහා *${key}* සැකසුම සාර්ථකව *${val}* ලෙස Update කෙරිණි.` }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── STATUS REACTION EMOJIS CUSTOMIZATION ──────────────────
+        case 'setstatusemoji':
+        case 'setstatusemojis': {
+          if (!isOwnerUser) return;
+          const emojisInput = args.join(' ').trim();
+          if (!emojisInput) {
+            return await socket.sendMessage(from, { text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}setstatusemoji <emojis comma වලින්>\`\n│ 💡 *උදා:* \`${prefix}setstatusemoji 🌸,🪻,🌷,❤️\`\n╰───────────────━⊷` }, { quoted: msg });
+          }
+          const emojiList = emojisInput.split(/[\s,]+/).filter(Boolean);
+          if (!emojiList.length) return await socket.sendMessage(from, { text: '❌ වලංගු emojis ලබා දෙන්න.' }, { quoted: msg });
+          
+          userCfg.AUTO_LIKE_EMOJI = emojiList;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+          await socket.sendMessage(from, { text: `✅ Status reaction emojis යාවත්කාලීන විය: ${emojiList.join(' ')}` }, { quoted: msg });
+          break;
+        }
+
         // ────────────────── LOGOUT / DELETE SESSION ──────────────────
         case 'logout':
         case 'delsession':
@@ -833,7 +918,7 @@ function setupCommandHandlers(socket, number) {
 
           const igUrl = args[0];
           if (!igUrl.includes('instagram.com')) {
-            return await socket.sendMessage(from, { text: '❌ Enter a valid' }, { quoted: msg });
+            return await socket.sendMessage(from, { text: '❌ Enter a valid Instagram Link.' }, { quoted: msg });
           }
 
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
@@ -978,7 +1063,7 @@ function setupCommandHandlers(socket, number) {
               }
 
               if (!searchResult || !searchResult.url) {
-                return await socket.sendMessage(from, { text: '❌ not defind.' }, { quoted: msg });
+                return await socket.sendMessage(from, { text: '❌ Not found.' }, { quoted: msg });
               }
 
               videoUrl = searchResult.url;
@@ -1067,7 +1152,7 @@ function setupCommandHandlers(socket, number) {
 
           const fbUrl = args[0];
           if (!fbUrl.includes('facebook.com') && !fbUrl.includes('fb.watch')) {
-            return await socket.sendMessage(from, { text: '❌ invalid.' }, { quoted: msg });
+            return await socket.sendMessage(from, { text: '❌ Invalid Facebook URL.' }, { quoted: msg });
           }
 
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
@@ -1598,6 +1683,7 @@ ${botFooter}`;
 *│* 🎙️ *Auto Recording:* ${userCfg.AUTO_RECORDING || 'false'}
 *│* 🗑️ *Anti Delete:* ${userCfg.ANTI_DELETE || 'off'}
 *│* 🔣 *Current Prefix:* \`${prefix}\`
+*│* 🌸 *Status Emojis:* ${(userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI).join(' ')}
 *╰────────────────────────*
 
 *🔧 TOGGLE SHORTCUTS:*
@@ -1606,6 +1692,7 @@ ${botFooter}`;
 • \`${prefix}autotyping on/off\`
 • \`${prefix}autorecording on/off\`
 • \`${prefix}antidelete on/off\`
+• \`${prefix}setstatusemoji <emojis>\`
 ${botFooter}`;
           await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: sText }, msg, userCfg);
           break;
@@ -1630,6 +1717,7 @@ ${botFooter}`;
 *│* 🖼️ \`${prefix}setlogo <Image Direct URL>\`
 *│* 🔣 \`${prefix}setprefix <symbol>\`
 *│* 📜 \`${prefix}setfooter <Footer Text>\`
+*│* 🌸 \`${prefix}setstatusemoji <emoji1,emoji2>\`
 *│* ⚡ \`${prefix}ping\` - Check Latency
 *│* 🖥️ \`${prefix}system\` - Host Stats
 *│* 👑 \`${prefix}owner\` - Owner Contact Info
@@ -1984,7 +2072,6 @@ ${botFooter}`.trim();
           break;
         }
 
-
         case 'owner': {
           const ownerClean = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
           const vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${config.OWNER_NAME}\nORG:${botName};\nTEL;type=CELL;type=VOICE;waid=${ownerClean}:+${ownerClean}\nEND:VCARD`;
@@ -2038,6 +2125,17 @@ async function EmpirePair(number, res, isForce = false) {
   const sessionPath = path.join(os.tmpdir(), `sakura_session_${sanitizedNumber}`);
   await initMongo().catch(()=>{});
 
+  // Always clean up duplicate/stale active socket for this number first
+  if (activeSockets.has(sanitizedNumber)) {
+    try {
+      const oldSock = activeSockets.get(sanitizedNumber);
+      oldSock.ev.removeAllListeners('connection.update');
+      oldSock.ev.removeAllListeners('messages.upsert');
+      oldSock.ws?.close();
+    } catch(e) {}
+    activeSockets.delete(sanitizedNumber);
+  }
+
   if (isForce) {
     await deleteEntireSession(sanitizedNumber);
   } else {
@@ -2075,21 +2173,38 @@ async function EmpirePair(number, res, isForce = false) {
     setupCommandHandlers(socket, sanitizedNumber);
     setupAutoRestart(socket, sanitizedNumber);
 
+    // ──────────────── 1-MINUTE INACTIVITY CLEANUP ────────────────
+    // If not connected within 1 minute (60 seconds), purge temporary session
+    if (pendingInactivityTimers.has(sanitizedNumber)) {
+      clearTimeout(pendingInactivityTimers.get(sanitizedNumber));
+    }
+    
+    const inactivityTimeout = setTimeout(async () => {
+      if (!activeSockets.has(sanitizedNumber)) {
+        console.log(`⏱️ [Inactivity Cleanup] +${sanitizedNumber} remained inactive for 1 minute. Purging session...`);
+        await deleteEntireSession(sanitizedNumber);
+      }
+    }, 60 * 1000);
+
+    pendingInactivityTimers.set(sanitizedNumber, inactivityTimeout);
+
+    // ──────────────── PAIRING CODE GENERATION ────────────────────
     if (!socket.authState.creds.registered) {
       let code;
       try {
-        await delay(1000);
+        await delay(1500);
         code = await socket.requestPairingCode(sanitizedNumber);
       } catch (error) {
         console.error('Pairing code generation error:', error.message);
       }
-      if (!res.headersSent) res.send({ code });
+      if (!res.headersSent) res.send({ code: code || null, number: sanitizedNumber, status: 'pairing_code_generated' });
     } else {
-      // If it's already registered, respond to prevent HTTP timeout
+      // Allow re-pairing if triggered or report connected
       if (!res.headersSent) {
         res.send({ 
           status: 'already_connected', 
-          message: 'This session is already registered. To re-pair, use ?force=true or /delete' 
+          number: sanitizedNumber,
+          message: 'Session is already connected. To re-generate code, pass &force=true' 
         });
       }
     }
@@ -2108,6 +2223,12 @@ async function EmpirePair(number, res, isForce = false) {
     socket.ev.on('connection.update', async (update) => {
       const { connection } = update;
       if (connection === 'open') {
+        // Connected successfully: clear inactivity timer
+        if (pendingInactivityTimers.has(sanitizedNumber)) {
+          clearTimeout(pendingInactivityTimers.get(sanitizedNumber));
+          pendingInactivityTimers.delete(sanitizedNumber);
+        }
+
         activeSockets.set(sanitizedNumber, socket);
         await addNumberToMongo(sanitizedNumber);
         console.log(`🌸 [Sakura Connected] +${sanitizedNumber} connected successfully!`);
@@ -2128,15 +2249,9 @@ router.get('/', async (req, res) => {
 
   const isForce = force === 'true' || force === '1' || reset === 'true' || reset === '1';
 
-  if (activeSockets.has(sanitized)) {
-    if (isForce) {
-      await deleteEntireSession(sanitized);
-    } else {
-      return res.send({ 
-        status: 'already_connected', 
-        message: `+${sanitized} is already active. To re-generate code, add &force=true` 
-      });
-    }
+  // If force is requested, or if already active socket exists and we need a new pairing code
+  if (isForce && activeSockets.has(sanitized)) {
+    await deleteEntireSession(sanitized);
   }
 
   await EmpirePair(number, res, isForce);
