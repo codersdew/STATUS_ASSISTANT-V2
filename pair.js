@@ -16,6 +16,7 @@ const yt = require('@vreden/youtube_scraper');
 const { getFbVideoInfo } = require('fb-downloader-scrapper');
 const getFBInfo = require('@xaviabot/fb-downloader');
 const TiktokDL = require('@tobyg74/tiktok-api-dl');
+const Pinterest = require('@myno_21/pinterest-scraper');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -467,6 +468,139 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── PINTEREST DOWNLOADER (Search + Select, 5min Expiry) ──────────────────
+        case 'pin':
+        case 'pinterest': {
+          const input = args.join(' ').trim();
+          const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes (milliseconds)
+
+          if (!input) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}pin <සර්ච් වචනය>\`\n│ 💡 _සර්ච් කළාට පස්සේ number එකෙන් reply කරන්න:_\n│    \`${prefix}pin 3\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          const selectedNum = parseInt(input);
+          const isSelection = !isNaN(selectedNum) && String(selectedNum) === input;
+
+          if (isSelection) {
+            // ═══════════ STEP 2: DOWNLOAD SELECTED ITEM ═══════════
+            const session = global.pinSessions?.[from];
+
+            if (!session || !session.results?.length) {
+              return await socket.sendMessage(from, { text: `❌ කලින් \`${prefix}pin <වචනය>\` කියලා search කරන්න.` }, { quoted: msg });
+            }
+
+            // ⏰ Expiry check කිරීම
+            const elapsed = Date.now() - session.timestamp;
+            if (elapsed > SESSION_TIMEOUT) {
+              delete global.pinSessions[from];
+              return await socket.sendMessage(from, { text: `⌛ Session එක expire වෙලා (5 min ඉක්මවලා). කරුණාකර නැවත \`${prefix}pin <වචනය>\` කියලා search කරන්න.` }, { quoted: msg });
+            }
+
+            if (selectedNum < 1 || selectedNum > session.results.length) {
+              return await socket.sendMessage(from, { text: `❌ 1 සිට ${session.results.length} අතර number එකක් දාන්න.` }, { quoted: msg });
+            }
+
+            await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
+
+            try {
+              const selected = session.results[selectedNum - 1];
+              const mediaUrl = selected.image || selected.url || selected.post;
+
+              if (!mediaUrl) {
+                throw new Error('මේ item එකේ download link එකක් නැත.');
+              }
+
+              const isVideo = mediaUrl.includes('.mp4') || mediaUrl.match(/video/i);
+
+              const buffer = await axios.get(mediaUrl, {
+                responseType: 'arraybuffer',
+                timeout: 60000,
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+              });
+
+              if (isVideo) {
+                await socket.sendMessage(from, {
+                  video: Buffer.from(buffer.data),
+                  mimetype: 'video/mp4',
+                  caption: `✅ *Pinterest Video* | 🌸 ${botName}`
+                }, { quoted: msg });
+              } else {
+                await socket.sendMessage(from, {
+                  image: Buffer.from(buffer.data),
+                  mimetype: 'image/jpeg',
+                  caption: `✅ *Pinterest Image* | 🌸 ${botName}`
+                }, { quoted: msg });
+              }
+
+              await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+              // Download සාර්ථක වුනාම session එක clear කිරීම
+              if (global.pinSessions?.[from]?.timer) {
+                clearTimeout(global.pinSessions[from].timer);
+              }
+              delete global.pinSessions[from];
+
+            } catch (err) {
+              console.error('Pinterest Download Error:', err);
+              await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+              await socket.sendMessage(from, { text: `❌ Download failed: ${err.message}` }, { quoted: msg });
+            }
+
+          } else {
+            // ═══════════ STEP 1: SEARCH ═══════════
+            await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
+
+            try {
+              const Pinterest = require('@myno_21/pinterest-scraper');
+              const results = await Pinterest.search(input); // function name confirm කරගන්න
+
+              if (!results || !results.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිවක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              const limited = results.slice(0, 25);
+
+              if (!global.pinSessions) global.pinSessions = {};
+
+              // කලින් session එකකට timer එකක් තිබ්බොත් clear කිරීම (duplicate timers එන්නෙ නැති වෙන්න)
+              if (global.pinSessions[from]?.timer) {
+                clearTimeout(global.pinSessions[from].timer);
+              }
+
+              // ⏰ 5 min පසුව auto-delete වෙන Timer එකක් සැකසීම
+              const timer = setTimeout(() => {
+                if (global.pinSessions?.[from]) {
+                  delete global.pinSessions[from];
+                  console.log(`Pinterest session for ${from} expired and cleared.`);
+                }
+              }, SESSION_TIMEOUT);
+
+              global.pinSessions[from] = { 
+                results: limited, 
+                timestamp: Date.now(),
+                timer: timer
+              };
+
+              let listText = `╭───〔 📌 *PINTEREST RESULTS* 〕───⊷\n│ 🔎 *found:* ${input}\n╰──────────────────────────⊷\n\n`;
+              limited.forEach((item, i) => {
+                const title = item.title || item.image || `Result ${i + 1}`;
+                listText += `*${i + 1}.* ${title.substring(0, 50)}\n`;
+              });
+              listText += `\n> 💬 _\`${prefix}pin <number>\` use this patten (1-${limited.length})_\n> ⏰ _only 5min valid_`;
+
+              await socket.sendMessage(from, { text: listText }, { quoted: msg });
+              await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+            } catch (err) {
+              console.error('Pinterest Search Error:', err);
+              await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+              await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+            }
+          }
+          break;
+        }
           // ────────────────── YOUTUBE TO MP3 (Direct Link, Chama API) ──────────────────
         case 'mp3':
         case 'ytmp3': {
