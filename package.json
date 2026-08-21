@@ -50,6 +50,7 @@
     "pino": "^8.17.0",
     "ruhend-scraper": "^9.0.8",
     "vajiraofc-baileys": "^1.0.1",
+    "cheerio": "1.0.0-rc.12",
     "yt-search": "2.12.1",
     "ytdl-core": "^4.11.5"
   }
