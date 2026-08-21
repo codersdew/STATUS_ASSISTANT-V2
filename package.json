@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
-    "@bochilteam/scraper": "^4.0.0",
-    "nayan-media-downloader": "^2.6.3",
     "instagram-url-direct": "^1.0.24",
     "@tobyg74/tiktok-api-dl": "^1.3.7",
     "fb-downloader-scrapper": "^3.0.1",
