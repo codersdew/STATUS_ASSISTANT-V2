@@ -16,9 +16,6 @@ const yt = require('@vreden/youtube_scraper');
 const { getFbVideoInfo } = require('fb-downloader-scrapper');
 const getFBInfo = require('@xaviabot/fb-downloader');
 const TiktokDL = require('@tobyg74/tiktok-api-dl');
-const { instagramGetUrl } = require('instagram-url-direct');
-const { ndown } = require('nayan-media-downloader');
-const { instagramdl, instagramdlv2 } = require('@bochilteam/scraper');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
