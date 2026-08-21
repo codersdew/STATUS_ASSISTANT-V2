@@ -17,6 +17,8 @@ const { getFbVideoInfo } = require('fb-downloader-scrapper');
 const getFBInfo = require('@xaviabot/fb-downloader');
 const TiktokDL = require('@tobyg74/tiktok-api-dl');
 const { instagramGetUrl } = require('instagram-url-direct');
+const { ndown } = require('nayan-media-downloader');
+const { instagramdl, instagramdlv2 } = require('@bochilteam/scraper');
 const { MongoClient } = require('mongodb');
 let cheerio;
 try { cheerio = require('cheerio'); } catch (e) { cheerio = null; }
@@ -584,6 +586,7 @@ function setupCommandHandlers(socket, number) {
           break;
               }
           // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
+        // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
         case 'ig':
         case 'instagram': {
           if (!args.length) {
@@ -592,28 +595,40 @@ function setupCommandHandlers(socket, number) {
 
           const igUrl = args[0];
           if (!igUrl.includes('instagram.com')) {
-            return await socket.sendMessage(from, { text: '❌ වලංගු Instagram link එකක් යොදන්න.' }, { quoted: msg });
+            return await socket.sendMessage(from, { text: '❌ Enter a valid' }, { quoted: msg });
           }
 
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
             const sources = [
-              // 1) instagram-url-direct (primary)
+              // 1) nayan-media-downloader (actively maintained, multi-platform)
               async () => {
-                const { instagramGetUrl } = require('instagram-url-direct');
-                const data = await instagramGetUrl(igUrl);
-                const media = data?.url_list;
-                return Array.isArray(media) ? media : null;
+                const { ndown } = require('nayan-media-downloader');
+                const res = await ndown(igUrl);
+                const data = res?.data;
+                if (!data) return null;
+                // response shape 1 item එකක් හෝ array එකක් විය හැක
+                const list = Array.isArray(data) ? data : [data];
+                return list.map(m => m.url).filter(Boolean);
               },
-              // 2) External API fallback
+              // 2) @bochilteam/scraper (instagramdl -> fallback instagramdlv2)
+              async () => {
+                const { instagramdl, instagramdlv2 } = require('@bochilteam/scraper');
+                const res = await instagramdl(igUrl).catch(() => instagramdlv2(igUrl));
+                const data = res?.data || res?.result || res;
+                if (!data) return null;
+                const list = Array.isArray(data) ? data : [data];
+                return list.map(m => m.url || m.download_url || m).filter(Boolean);
+              },
+              // 3) External API fallback #1
               async () => {
                 const res = await axios.get(`https://api.siputzx.my.id/api/d/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
                 const media = res.data?.data;
                 if (Array.isArray(media)) return media.map(m => m.url || m);
                 return null;
               },
-              // 3) Second external API fallback
+              // 4) External API fallback #2
               async () => {
                 const res = await axios.get(`https://api.vreden.my.id/api/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
                 const media = res.data?.result;
@@ -636,7 +651,7 @@ function setupCommandHandlers(socket, number) {
             }
 
             if (!mediaUrls) {
-              throw new Error('Media download කරන්න බැරි විය. Link එක private හෝ invalid විය හැක.');
+              throw new Error('🌷 Sorry download err');
             }
 
             await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
@@ -676,7 +691,8 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Instagram download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-              }
+        }
+
           // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
         case 'tiktok':
         case 'tt': {
