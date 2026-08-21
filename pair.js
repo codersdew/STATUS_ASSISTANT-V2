@@ -467,6 +467,220 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── SONG DOWNLOADER (Chama API) ──────────────────
+        case 'song':
+        case 'play': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}song <ගීතයේ නම / Link>\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
+            let videoUrl = query;
+            let songTitle = 'Unknown Song';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
+            let duration = '0:00';
+            let channelName = 'YouTube';
+
+            // 🔍 URL නැත්නම් සර්ච් කරන්න
+            if (!isUrl) {
+              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
+                params: { q: query, api_key: CHAMA_API },
+                timeout: 20000
+              });
+
+              const results = searchRes.data?.data;
+              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              const vid = results[0];
+              videoUrl = vid.youtube_url;
+              songTitle = vid.title;
+              thumbnailUrl = vid.thumbnail || thumbnailUrl;
+              channelName = vid.uploader || channelName;
+
+              const mins = Math.floor(vid.duration / 60);
+              const secs = String(vid.duration % 60).padStart(2, '0');
+              duration = `${mins}:${secs}`;
+            }
+
+            // 🎨 Info Card එක යැවීම
+            const infoText = 
+`╭───〔 🎵 *SONG DOWNLOADER* 〕───⊷
+│ 📌 *නම:* ${songTitle}
+│ ⏱️ *කාලය:* ${duration}
+│ 👤 *Channel:* ${channelName}
+╰──────────────────────────⊷
+> ⚡ _ගීතය Download වෙමින් පවතී, කරුණාකර රැඳී සිටින්න..._`;
+
+            const infoMsg = await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoText
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
+
+            // 🎧 MP3 Download (Chama API)
+            const mp3Res = await axios.get(`${CHAMA_BASE}/youtube/mp3`, {
+              params: {
+                url: videoUrl,
+                quality: '320kbps',
+                source: 'auto',
+                api_key: CHAMA_API
+              },
+              timeout: 60000
+            });
+
+            if (!mp3Res.data?.status || !mp3Res.data?.data?.direct_url) {
+              throw new Error(mp3Res.data?.message || 'MP3 link එක ලබාගන්න බැරි වුණා.');
+            }
+
+            const mp3Data = mp3Res.data.data;
+            if (mp3Data.title) songTitle = mp3Data.title;
+            const downloadUrl = mp3Data.direct_url;
+
+            // Audio Buffer එක download කිරීම
+            const audioBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 90000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
+
+            await socket.sendMessage(from, {
+              audio: Buffer.from(audioBuffer.data),
+              mimetype: 'audio/mpeg',
+              fileName: `${cleanTitle}.mp3`,
+              ptt: false
+            }, { quoted: infoMsg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Song Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
+
+        // ────────────────── VIDEO DOWNLOADER (Chama API) ──────────────────
+        case 'ytmp4':
+        case 'mp4': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}video <වීඩියෝවේ නම / Link>\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
+            let videoUrl = query;
+            let songTitle = 'Unknown Video';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
+            let duration = '0:00';
+            let channelName = 'YouTube';
+
+            if (!isUrl) {
+              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
+                params: { q: query, api_key: CHAMA_API },
+                timeout: 20000
+              });
+
+              const results = searchRes.data?.data;
+              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිදු වීඩියෝවක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              const vid = results[0];
+              videoUrl = vid.youtube_url;
+              songTitle = vid.title;
+              thumbnailUrl = vid.thumbnail || thumbnailUrl;
+              channelName = vid.uploader || channelName;
+
+              const mins = Math.floor(vid.duration / 60);
+              const secs = String(vid.duration % 60).padStart(2, '0');
+              duration = `${mins}:${secs}`;
+            }
+
+            const infoText = 
+`╭───〔 🎬 *VIDEO DOWNLOADER* 〕───⊷
+│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
+│ ⏱️ *𝑻𝒊𝒎𝒆:* ${duration}
+│ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
+╰──────────────────────────⊷
+> 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
+
+            const infoMsg = await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoText
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
+
+            // 🎬 MP4 Download (Chama API)
+            const mp4Res = await axios.get(`${CHAMA_BASE}/youtube/mp4`, {
+              params: {
+                url: videoUrl,
+                quality: '720p',
+                source: 'auto',
+                api_key: CHAMA_API
+              },
+              timeout: 60000
+            });
+
+            if (!mp4Res.data?.status || !mp4Res.data?.data?.direct_url) {
+              throw new Error(mp4Res.data?.message || 'MP4 link එක ලබාගන්න බැරි වුණා.');
+            }
+
+            const mp4Data = mp4Res.data.data;
+            if (mp4Data.title) songTitle = mp4Data.title;
+            const downloadUrl = mp4Data.direct_url;
+
+            const videoBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 120000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
+
+            await socket.sendMessage(from, {
+              video: Buffer.from(videoBuffer.data),
+              mimetype: 'video/mp4',
+              fileName: `${cleanTitle}.mp4`,
+              caption: `✅ *${songTitle}*`
+            }, { quoted: infoMsg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Video Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
            // ────────────────── FILE TO URL UPLOADER (Catbox / 0x0.st / Uguu) ──────────────────
         case 'url':
         case 'upload':
