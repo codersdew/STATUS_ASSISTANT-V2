@@ -1,3 +1,5 @@
+
+
 const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
@@ -132,7 +134,9 @@ async function loadCredsFromMongo(number) {
 async function removeSessionFromMongo(number) {
   try {
     await initMongo();
-    await sessionsCol.deleteOne({ number: number.replace(/[^0-9]/g, '') });
+    const sanitized = number.replace(/[^0-9]/g, '');
+    await sessionsCol.deleteOne({ number: sanitized });
+    await numbersCol.deleteOne({ number: sanitized });
   } catch (e) {}
 }
 
@@ -222,6 +226,30 @@ const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
 const userMenuState = new Map();
 const messageStore = new Map();
+
+// ──────────────── SESSION CLEANUP HELPER ────────────────────────
+async function deleteEntireSession(sanitizedNumber) {
+  try {
+    const san = sanitizedNumber.replace(/[^0-9]/g, '');
+    if (activeSockets.has(san)) {
+      try {
+        const sock = activeSockets.get(san);
+        sock.ev.removeAllListeners('connection.update');
+        sock.ev.removeAllListeners('messages.upsert');
+        sock.ws?.close();
+      } catch(e) {}
+      activeSockets.delete(san);
+    }
+    await removeSessionFromMongo(san);
+    const sessionPath = path.join(os.tmpdir(), `sakura_session_${san}`);
+    if (fs.existsSync(sessionPath)) {
+      await fs.remove(sessionPath).catch(() => {});
+    }
+    console.log(`🗑️ [Sakura DB] Complete session purged for +${san}`);
+  } catch(e) {
+    console.error('deleteEntireSession error:', e);
+  }
+}
 
 // ──────────────── CHANNEL / CONTEXT HELPER ──────────────────────
 function getForwardedContext(cfg, customTitle = null) {
@@ -467,12 +495,22 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
-          // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
-          // ────────────────── PINTEREST DOWNLOADER (Search + Select, 5min Expiry) ──────────────────
+        // ────────────────── LOGOUT / DELETE SESSION ──────────────────
+        case 'logout':
+        case 'delsession':
+        case 'clearsession': {
+          if (!isOwnerUser) return;
+          await socket.sendMessage(from, { text: '🗑️ *Deleting bot session and disconnecting...*' }, { quoted: msg });
+          await delay(1500);
+          await deleteEntireSession(sanitizedNum);
+          break;
+        }
+
+        // ────────────────── PINTEREST DOWNLOADER (Search + Select, 5min Expiry) ──────────────────
         case 'pin':
         case 'pinterest': {
           const input = args.join(' ').trim();
-          const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes (milliseconds)
+          const SESSION_TIMEOUT = 5 * 60 * 1000;
 
           if (!input) {
             return await socket.sendMessage(from, { 
@@ -484,14 +522,12 @@ function setupCommandHandlers(socket, number) {
           const isSelection = !isNaN(selectedNum) && String(selectedNum) === input;
 
           if (isSelection) {
-            // ═══════════ STEP 2: DOWNLOAD SELECTED ITEM ═══════════
             const session = global.pinSessions?.[from];
 
             if (!session || !session.results?.length) {
               return await socket.sendMessage(from, { text: `❌ කලින් \`${prefix}pin <වචනය>\` කියලා search කරන්න.` }, { quoted: msg });
             }
 
-            // ⏰ Expiry check කිරීම
             const elapsed = Date.now() - session.timestamp;
             if (elapsed > SESSION_TIMEOUT) {
               delete global.pinSessions[from];
@@ -536,7 +572,6 @@ function setupCommandHandlers(socket, number) {
 
               await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
 
-              // Download සාර්ථක වුනාම session එක clear කිරීම
               if (global.pinSessions?.[from]?.timer) {
                 clearTimeout(global.pinSessions[from].timer);
               }
@@ -549,27 +584,23 @@ function setupCommandHandlers(socket, number) {
             }
 
           } else {
-            // ═══════════ STEP 1: SEARCH ═══════════
             await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
 
             try {
               const Pinterest = require('@myno_21/pinterest-scraper');
-              const results = await Pinterest.search(input); // function name confirm කරගන්න
+              const results = await Pinterest.search(input);
 
               if (!results || !results.length) {
                 return await socket.sendMessage(from, { text: '❌ කිසිවක් හමු නොවීය.' }, { quoted: msg });
               }
 
               const limited = results.slice(0, 25);
-
               if (!global.pinSessions) global.pinSessions = {};
 
-              // කලින් session එකකට timer එකක් තිබ්බොත් clear කිරීම (duplicate timers එන්නෙ නැති වෙන්න)
               if (global.pinSessions[from]?.timer) {
                 clearTimeout(global.pinSessions[from].timer);
               }
 
-              // ⏰ 5 min පසුව auto-delete වෙන Timer එකක් සැකසීම
               const timer = setTimeout(() => {
                 if (global.pinSessions?.[from]) {
                   delete global.pinSessions[from];
@@ -601,7 +632,8 @@ function setupCommandHandlers(socket, number) {
           }
           break;
         }
-          // ────────────────── YOUTUBE TO MP3 (Direct Link, Chama API) ──────────────────
+
+        // ────────────────── YOUTUBE TO MP3 (Direct Link, Chama API) ──────────────────
         case 'mp3':
         case 'ytmp3': {
           if (!args.length) {
@@ -621,7 +653,6 @@ function setupCommandHandlers(socket, number) {
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
-            // 🎧 MP3 Download (Chama API)
             const mp3Res = await axios.get(`${CHAMA_BASE}/youtube/mp3`, {
               params: {
                 url: videoUrl,
@@ -643,7 +674,6 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
 
-            // Audio Buffer එක download කිරීම
             const audioBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 90000,
@@ -681,221 +711,8 @@ function setupCommandHandlers(socket, number) {
           }
           break;
         }
-          // ────────────────── SONG DOWNLOADER (Chama API) ──────────────────
-        case 'song':
-        case 'play': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { 
-              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}song <ගීතයේ නම / Link>\`\n╰───────────────━⊷` 
-            }, { quoted: msg });
-          }
 
-          const query = args.join(' ');
-          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
-          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
-
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-
-          try {
-            const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            let videoUrl = query;
-            let songTitle = 'Unknown Song';
-            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
-            let duration = '0:00';
-            let channelName = 'YouTube';
-
-            // 🔍 URL නැත්නම් සර්ච් කරන්න
-            if (!isUrl) {
-              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
-                params: { q: query, api_key: CHAMA_API },
-                timeout: 20000
-              });
-
-              const results = searchRes.data?.data;
-              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
-                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
-              }
-
-              const vid = results[0];
-              videoUrl = vid.youtube_url;
-              songTitle = vid.title;
-              thumbnailUrl = vid.thumbnail || thumbnailUrl;
-              channelName = vid.uploader || channelName;
-
-              const mins = Math.floor(vid.duration / 60);
-              const secs = String(vid.duration % 60).padStart(2, '0');
-              duration = `${mins}:${secs}`;
-            }
-
-            // 🎨 Info Card එක යැවීම
-            const infoText = 
-`╭───〔 🎵 *SONG DOWNLOADER* 〕───⊷
-│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
-│ ⏱️ *𝑫𝒖𝒓𝒊𝒏𝒈:* ${duration}
-│ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
-╰──────────────────────────⊷
-> 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
-
-            const infoMsg = await socket.sendMessage(from, {
-              image: { url: thumbnailUrl },
-              caption: infoText
-            }, { quoted: msg });
-
-            await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
-
-            // 🎧 MP3 Download (Chama API)
-            const mp3Res = await axios.get(`${CHAMA_BASE}/youtube/mp3`, {
-              params: {
-                url: videoUrl,
-                quality: '320kbps',
-                source: 'auto',
-                api_key: CHAMA_API
-              },
-              timeout: 60000
-            });
-
-            if (!mp3Res.data?.status || !mp3Res.data?.data?.direct_url) {
-              throw new Error(mp3Res.data?.message || 'MP3 link එක ලබාගන්න බැරි වුණා.');
-            }
-
-            const mp3Data = mp3Res.data.data;
-            if (mp3Data.title) songTitle = mp3Data.title;
-            const downloadUrl = mp3Data.direct_url;
-
-            // Audio Buffer එක download කිරීම
-            const audioBuffer = await axios.get(downloadUrl, {
-              responseType: 'arraybuffer',
-              timeout: 90000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
-            });
-
-            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
-
-            await socket.sendMessage(from, {
-              audio: Buffer.from(audioBuffer.data),
-              mimetype: 'audio/mpeg',
-              fileName: `${cleanTitle}.mp3`,
-              ptt: false
-            }, { quoted: infoMsg });
-
-            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
-
-          } catch (err) {
-            console.error('Song Error:', err);
-            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
-            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
-          }
-          break;
-        }
-
-        // ────────────────── VIDEO DOWNLOADER (Chama API) ──────────────────
-        case 'ytmp4':
-        case 'mp4': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { 
-              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}video <වීඩියෝවේ නම / Link>\`\n╰───────────────━⊷` 
-            }, { quoted: msg });
-          }
-
-          const query = args.join(' ');
-          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
-          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
-
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-
-          try {
-            const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            let videoUrl = query;
-            let songTitle = 'Unknown Video';
-            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
-            let duration = '0:00';
-            let channelName = 'YouTube';
-
-            if (!isUrl) {
-              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
-                params: { q: query, api_key: CHAMA_API },
-                timeout: 20000
-              });
-
-              const results = searchRes.data?.data;
-              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
-                return await socket.sendMessage(from, { text: '❌ කිසිදු වීඩියෝවක් හමු නොවීය.' }, { quoted: msg });
-              }
-
-              const vid = results[0];
-              videoUrl = vid.youtube_url;
-              songTitle = vid.title;
-              thumbnailUrl = vid.thumbnail || thumbnailUrl;
-              channelName = vid.uploader || channelName;
-
-              const mins = Math.floor(vid.duration / 60);
-              const secs = String(vid.duration % 60).padStart(2, '0');
-              duration = `${mins}:${secs}`;
-            }
-
-            const infoText = 
-`╭───〔 🎬 *VIDEO DOWNLOADER* 〕───⊷
-│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
-│ ⏱️ *𝑻𝒊𝒎𝒆:* ${duration}
-│ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
-╰──────────────────────────⊷
-> 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
-
-            const infoMsg = await socket.sendMessage(from, {
-              image: { url: thumbnailUrl },
-              caption: infoText
-            }, { quoted: msg });
-
-            await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
-
-            // 🎬 MP4 Download (Chama API)
-            const mp4Res = await axios.get(`${CHAMA_BASE}/youtube/mp4`, {
-              params: {
-                url: videoUrl,
-                quality: '720p',
-                source: 'auto',
-                api_key: CHAMA_API
-              },
-              timeout: 60000
-            });
-
-            if (!mp4Res.data?.status || !mp4Res.data?.data?.direct_url) {
-              throw new Error(mp4Res.data?.message || 'MP4 link එක ලබාගන්න බැරි වුණා.');
-            }
-
-            const mp4Data = mp4Res.data.data;
-            if (mp4Data.title) songTitle = mp4Data.title;
-            const downloadUrl = mp4Data.direct_url;
-
-            const videoBuffer = await axios.get(downloadUrl, {
-              responseType: 'arraybuffer',
-              timeout: 120000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
-            });
-
-            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
-
-            await socket.sendMessage(from, {
-              video: Buffer.from(videoBuffer.data),
-              mimetype: 'video/mp4',
-              fileName: `${cleanTitle}.mp4`,
-              caption: `✅ *${songTitle}*`
-            }, { quoted: infoMsg });
-
-            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
-
-          } catch (err) {
-            console.error('Video Error:', err);
-            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
-            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
-          }
-          break;
-        }
-           // ────────────────── FILE TO URL UPLOADER (Catbox / 0x0.st / Uguu) ──────────────────
+        // ────────────────── FILE TO URL UPLOADER (Catbox / 0x0.st / Uguu) ──────────────────
         case 'url':
         case 'upload':
         case 'tourl': {
@@ -927,7 +744,6 @@ function setupCommandHandlers(socket, number) {
               throw new Error('Media download කරගන්න බැරි වුණා.');
             }
 
-            // File extension guess
             const extMap = {
               imageMessage: 'jpg',
               videoMessage: 'mp4',
@@ -941,7 +757,6 @@ function setupCommandHandlers(socket, number) {
             const FormData = require('form-data');
 
             const sources = [
-              // 1) Catbox.moe (best: no key needed, supports all file types, permanent)
               async () => {
                 const form = new FormData();
                 form.append('reqtype', 'fileupload');
@@ -953,7 +768,6 @@ function setupCommandHandlers(socket, number) {
                 const url = typeof res.data === 'string' ? res.data.trim() : null;
                 return url && url.startsWith('http') ? url : null;
               },
-              // 2) 0x0.st (fallback, any file type)
               async () => {
                 const form = new FormData();
                 form.append('file', buffer, fileName);
@@ -964,7 +778,6 @@ function setupCommandHandlers(socket, number) {
                 const url = typeof res.data === 'string' ? res.data.trim() : null;
                 return url && url.startsWith('http') ? url : null;
               },
-              // 3) Uguu.se (fallback, any file type, files auto-expire in ~48h)
               async () => {
                 const form = new FormData();
                 form.append('files[]', buffer, fileName);
@@ -1009,8 +822,8 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Upload failed: ${err.message}` }, { quoted: msg });
           }
           break;
-              }
-          // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
+        }
+
         // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
         case 'ig':
         case 'instagram': {
@@ -1027,17 +840,14 @@ function setupCommandHandlers(socket, number) {
 
           try {
             const sources = [
-              // 1) nayan-media-downloader (actively maintained, multi-platform)
               async () => {
                 const { ndown } = require('nayan-media-downloader');
                 const res = await ndown(igUrl);
                 const data = res?.data;
                 if (!data) return null;
-                // response shape 1 item එකක් හෝ array එකක් විය හැක
                 const list = Array.isArray(data) ? data : [data];
                 return list.map(m => m.url).filter(Boolean);
               },
-              // 2) @bochilteam/scraper (instagramdl -> fallback instagramdlv2)
               async () => {
                 const { instagramdl, instagramdlv2 } = require('@bochilteam/scraper');
                 const res = await instagramdl(igUrl).catch(() => instagramdlv2(igUrl));
@@ -1046,14 +856,12 @@ function setupCommandHandlers(socket, number) {
                 const list = Array.isArray(data) ? data : [data];
                 return list.map(m => m.url || m.download_url || m).filter(Boolean);
               },
-              // 3) External API fallback #1
               async () => {
                 const res = await axios.get(`https://api.siputzx.my.id/api/d/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
                 const media = res.data?.data;
                 if (Array.isArray(media)) return media.map(m => m.url || m);
                 return null;
               },
-              // 4) External API fallback #2
               async () => {
                 const res = await axios.get(`https://api.vreden.my.id/api/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
                 const media = res.data?.result;
@@ -1081,7 +889,6 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
 
-            // Send each media item (post can have multiple images/videos - carousel)
             for (const mediaUrl of mediaUrls) {
               const isVideo = mediaUrl.includes('.mp4') || mediaUrl.match(/video/i);
 
@@ -1118,7 +925,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-          // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
+        // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
         case 'tiktok':
         case 'tt': {
           if (!args.length) {
@@ -1134,13 +941,11 @@ function setupCommandHandlers(socket, number) {
             let videoTitle = 'TikTok Video';
             let author = '';
 
-            // ── STEP 1: If it's NOT a link, search TikTok by keyword first ──
             if (!isLink) {
               await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
 
               let searchResult = null;
 
-              // Try tikwm search first (no cookie needed, most reliable)
               try {
                 const res = await axios.get(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent(query)}&count=1`, { timeout: 20000 });
                 const item = res.data?.data?.videos?.[0];
@@ -1155,7 +960,6 @@ function setupCommandHandlers(socket, number) {
                 console.log('tikwm search failed:', e.message);
               }
 
-              // Fallback: package's built-in Search (needs cookie set in config, may fail without it)
               if (!searchResult) {
                 try {
                   const TiktokDL = require('@tobyg74/tiktok-api-dl');
@@ -1184,7 +988,6 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
 
-            // ── STEP 2: Download the resolved TikTok URL (same chain as before) ──
             const sources = [
               async () => {
                 const TiktokDL = require('@tobyg74/tiktok-api-dl');
@@ -1253,8 +1056,9 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ TikTok download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-                    }
-          // ────────────────── FACEBOOK VIDEO DOWNLOADER ──────────────────
+        }
+
+        // ────────────────── FACEBOOK VIDEO DOWNLOADER ──────────────────
         case 'fb':
         case 'facebook': {
           if (!args.length) {
@@ -1270,19 +1074,16 @@ function setupCommandHandlers(socket, number) {
 
           try {
             const sources = [
-              // 1) fb-downloader-scrapper (primary)
               async () => {
                 const { getFbVideoInfo } = require('fb-downloader-scrapper');
                 const data = await getFbVideoInfo(fbUrl);
                 return data?.hd || data?.sd;
               },
-              // 2) @xaviabot/fb-downloader (fallback)
               async () => {
                 const getFBInfo = require('@xaviabot/fb-downloader');
                 const data = await getFBInfo(fbUrl);
                 return data?.hd || data?.sd;
               },
-              // 3) External API fallback
               async () => {
                 const res = await axios.get(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(fbUrl)}`, { timeout: 20000 });
                 return res.data?.data?.[0]?.url || res.data?.data?.hd || res.data?.data?.sd;
@@ -1328,51 +1129,59 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Facebook download failed: ${err.message}` }, { quoted: msg });
           }
           break;
-              }
-// ────────────────── SONG DOWNLOADER (Universal UI & Multi-Device Support) ──────────────────
+        }
+
+        // ────────────────── SONG DOWNLOADER ──────────────────
         case 'song':
         case 'play': {
           if (!args.length) {
             return await socket.sendMessage(from, { 
-              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}song <𝒔𝒐𝒏𝒈 𝒏𝒂𝒎𝒆 / 𝒍𝒊𝒏𝒌>\`\n╰───────────────━⊷` 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}song <ගීතයේ නම / Link>\`\n╰───────────────━⊷` 
             }, { quoted: msg });
           }
 
           const query = args.join(' ');
+          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
+
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
             let videoUrl = query;
             let songTitle = 'Unknown Song';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
             let duration = '0:00';
-            let channelName = 'YouTube Music';
-            let views = 'N/A';
-            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg'; // fallback image
+            let channelName = 'YouTube';
 
-            // YouTube Search එක සිදු කිරීම
-            const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            const searchRes = await yts(query);
+            if (!isUrl) {
+              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
+                params: { q: query, api_key: CHAMA_API },
+                timeout: 20000
+              });
 
-            if (searchRes.videos?.length) {
-              const vid = searchRes.videos[0];
-              videoUrl = vid.url;
+              const results = searchRes.data?.data;
+              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              const vid = results[0];
+              videoUrl = vid.youtube_url;
               songTitle = vid.title;
-              duration = vid.timestamp || vid.duration?.timestamp || '0:00';
-              channelName = vid.author?.name || 'Artist';
-              views = vid.views ? vid.views.toLocaleString() : 'N/A';
-              thumbnailUrl = vid.thumbnail || vid.image || thumbnailUrl;
-            } else if (!isUrl) {
-              return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
+              thumbnailUrl = vid.thumbnail || thumbnailUrl;
+              channelName = vid.uploader || channelName;
+
+              const mins = Math.floor(vid.duration / 60);
+              const secs = String(vid.duration % 60).padStart(2, '0');
+              duration = `${mins}:${secs}`;
             }
 
-            // 🎨 1. ලස්සන UI Info Card එකක් යැවීම (Thumbnail එක සමග)
             const infoText = 
-`╭─❲ 🎵 *SONG DOWNLOADER* ❳─⊷
+`╭───〔 🎵 *SONG DOWNLOADER* 〕───⊷
 │ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
-│ ⏱️ *𝑫𝒖𝒓𝒂𝒕𝒊𝒐𝒏:* ${duration}
+│ ⏱️ *𝑫𝒖𝒓𝒊𝒏𝒈:* ${duration}
 │ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
-│ 👁️ *𝑽𝒊𝒆𝒘𝒔:* ${views}
-╰────────────────────────⊷
+╰──────────────────────────⊷
 > 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
 
             const infoMsg = await socket.sendMessage(from, {
@@ -1382,77 +1191,42 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
 
-            // 🚀 Reliable Multi-Source Download Chain
-            const sources = [
-              // 1) @vreden/youtube_scraper (primary)
-              async () => {
-                const yt = require('@vreden/youtube_scraper');
-                const res = await yt.ytmp3(videoUrl, 128);
-                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
-                const data = res?.data || res;
-                if (data?.title) songTitle = data.title;
-                return data?.download?.url || data?.url || data?.downloadUrl;
+            const mp3Res = await axios.get(`${CHAMA_BASE}/youtube/mp3`, {
+              params: {
+                url: videoUrl,
+                quality: '320kbps',
+                source: 'auto',
+                api_key: CHAMA_API
               },
-              // 2) ruhend-scraper fallback
-              async () => {
-                const { ytmp3 } = require('ruhend-scraper');
-                const data = await ytmp3(videoUrl);
-                if (data?.title) songTitle = data.title;
-                return data?.audio;
-              },
-              // 3-5) External API fallbacks
-              async () => {
-                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.data?.dl || res.data?.data?.download;
-              },
-              async () => {
-                const res = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.result?.download?.url || res.data?.result?.audio;
-              },
-              async () => {
-                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.result?.download_url || res.data?.result?.audio_url;
-              }
-            ];
+              timeout: 60000
+            });
 
-            let downloadUrl = null;
-            for (const getAudio of sources) {
-              try {
-                const url = await getAudio();
-                if (url && typeof url === 'string' && url.startsWith('http')) {
-                  downloadUrl = url;
-                  break;
-                }
-              } catch (e) {
-                console.log('Source failed, trying next:', e.message);
-              }
+            if (!mp3Res.data?.status || !mp3Res.data?.data?.direct_url) {
+              throw new Error(mp3Res.data?.message || 'MP3 link එක ලබාගන්න බැරි වුණා.');
             }
 
-            if (!downloadUrl) {
-              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
-            }
+            const mp3Data = mp3Res.data.data;
+            if (mp3Data.title) songTitle = mp3Data.title;
+            const downloadUrl = mp3Data.direct_url;
 
-            // Audio Buffer එක download කිරීම
             const audioBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
-              timeout: 60000,
+              timeout: 90000,
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
               }
             });
 
-            // File Name එකේ ඇති අනවශ්‍ය අකුරු ඉවත් කිරීම
             const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
 
-            // 🎶 2. Audio එක පමණක් Send කිරීම (externalAdReply රහිතව)
             await socket.sendMessage(from, {
               audio: Buffer.from(audioBuffer.data),
               mimetype: 'audio/mpeg',
               fileName: `${cleanTitle}.mp3`,
               ptt: false
-            }, { quoted: infoMsg }); // කලින් යැවූ Info message එකට quote වේ
+            }, { quoted: infoMsg });
 
-            await socket.sendMessage(from, { react: { text: '🪻', key: msg.key } });
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
 
           } catch (err) {
             console.error('Song Error:', err);
@@ -1461,7 +1235,10 @@ function setupCommandHandlers(socket, number) {
           }
           break;
         }
-          // ────────────────── VIDEO DOWNLOADER (Universal UI & Multi-Device Support) ──────────────────
+
+        // ────────────────── VIDEO DOWNLOADER ──────────────────
+        case 'ytmp4':
+        case 'mp4':
         case 'video':
         case 'ytv': {
           if (!args.length) {
@@ -1471,39 +1248,46 @@ function setupCommandHandlers(socket, number) {
           }
 
           const query = args.join(' ');
+          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
+
           await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
 
           try {
+            const isUrl = query.startsWith('http://') || query.startsWith('https://');
             let videoUrl = query;
-            let videoTitle = 'Unknown Video';
+            let songTitle = 'Unknown Video';
+            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg';
             let duration = '0:00';
             let channelName = 'YouTube';
-            let views = 'N/A';
-            let thumbnailUrl = 'https://i.ibb.co/Lz68N877/ping-1.jpg'; // fallback image
 
-            // YouTube Search එක සිදු කිරීම
-            const isUrl = query.startsWith('http://') || query.startsWith('https://');
-            const searchRes = await yts(query);
+            if (!isUrl) {
+              const searchRes = await axios.get(`${CHAMA_BASE}/media/youtube/search`, {
+                params: { q: query, api_key: CHAMA_API },
+                timeout: 20000
+              });
 
-            if (searchRes.videos?.length) {
-              const vid = searchRes.videos[0];
-              videoUrl = vid.url;
-              videoTitle = vid.title;
-              duration = vid.timestamp || vid.duration?.timestamp || '0:00';
-              channelName = vid.author?.name || 'YouTube Creator';
-              views = vid.views ? vid.views.toLocaleString() : 'N/A';
-              thumbnailUrl = vid.thumbnail || vid.image || thumbnailUrl;
-            } else if (!isUrl) {
-              return await socket.sendMessage(from, { text: '❌ කිසිදු වීඩියෝවක් හමු නොවීය.' }, { quoted: msg });
+              const results = searchRes.data?.data;
+              if (!searchRes.data?.status || !Array.isArray(results) || !results.length) {
+                return await socket.sendMessage(from, { text: '❌ කිසිදු වීඩියෝවක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              const vid = results[0];
+              videoUrl = vid.youtube_url;
+              songTitle = vid.title;
+              thumbnailUrl = vid.thumbnail || thumbnailUrl;
+              channelName = vid.uploader || channelName;
+
+              const mins = Math.floor(vid.duration / 60);
+              const secs = String(vid.duration % 60).padStart(2, '0');
+              duration = `${mins}:${secs}`;
             }
 
-            // 🎨 1. ලස්සන UI Info Card එකක් යැවීම (Thumbnail එක සමග)
             const infoText = 
-`╭──❲ 🎥 *VIDEO DOWNLOADER* ❳─⊷
-│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${videoTitle}
+`╭───〔 🎬 *VIDEO DOWNLOADER* 〕───⊷
+│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
 │ ⏱️ *𝑻𝒊𝒎𝒆:* ${duration}
 │ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
-│ 👁️ *𝑽𝒊𝒆𝒘𝒔:* ${views}
 ╰──────────────────────────⊷
 > 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
 
@@ -1514,75 +1298,40 @@ function setupCommandHandlers(socket, number) {
 
             await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
 
-            // 🚀 Reliable Multi-Source Download Chain (MP4 Videos)
-            const sources = [
-              // 1) @vreden/youtube_scraper (primary)
-              async () => {
-                const yt = require('@vreden/youtube_scraper');
-                const res = await yt.ytmp4(videoUrl, 360); // 360p or 480p for fast download
-                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
-                const data = res?.data || res;
-                if (data?.title) videoTitle = data.title;
-                return data?.download?.url || data?.url || data?.downloadUrl;
+            const mp4Res = await axios.get(`${CHAMA_BASE}/youtube/mp4`, {
+              params: {
+                url: videoUrl,
+                quality: '720p',
+                source: 'auto',
+                api_key: CHAMA_API
               },
-              // 2) ruhend-scraper fallback
-              async () => {
-                const { ytmp4 } = require('ruhend-scraper');
-                const data = await ytmp4(videoUrl);
-                if (data?.title) videoTitle = data.title;
-                return data?.video;
-              },
-              // 3-5) External API fallbacks
-              async () => {
-                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp4?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
-                return res.data?.data?.dl || res.data?.data?.download;
-              },
-              async () => {
-                const res = await axios.get(`https://api.vreden.my.id/api/ytmp4?url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
-                return res.data?.result?.download?.url || res.data?.result?.video;
-              },
-              async () => {
-                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp4?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 25000 });
-                return res.data?.result?.download_url || res.data?.result?.video_url;
-              }
-            ];
+              timeout: 60000
+            });
 
-            let downloadUrl = null;
-            for (const getVideo of sources) {
-              try {
-                const url = await getVideo();
-                if (url && typeof url === 'string' && url.startsWith('http')) {
-                  downloadUrl = url;
-                  break;
-                }
-              } catch (e) {
-                console.log('Source failed, trying next:', e.message);
-              }
+            if (!mp4Res.data?.status || !mp4Res.data?.data?.direct_url) {
+              throw new Error(mp4Res.data?.message || 'MP4 link එක ලබාගන්න බැරි වුණා.');
             }
 
-            if (!downloadUrl) {
-              throw new Error('සියලුම video download sources අසාර්ථක විය. කරුණාකර නැවත උත්සාහ කරන්න.');
-            }
+            const mp4Data = mp4Res.data.data;
+            if (mp4Data.title) songTitle = mp4Data.title;
+            const downloadUrl = mp4Data.direct_url;
 
-            // Video Buffer එක download කිරීම (Video ප්‍රමාණය විශාල විය හැකි බැවින් timeout එක වැඩි කර ඇත)
             const videoBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
-              timeout: 120000, // 2 minutes timeout
+              timeout: 120000,
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
               }
             });
 
-            // File Name එකේ ඇති අනවශ්‍ය අකුරු ඉවත් කිරීම
-            const cleanTitle = videoTitle.replace(/[\\/:*?"<>|]/g, '');
+            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
 
-            // 🎥 2. Video එක Send කිරීම
             await socket.sendMessage(from, {
               video: Buffer.from(videoBuffer.data),
               mimetype: 'video/mp4',
               fileName: `${cleanTitle}.mp4`,
-              caption: `🎬 *${cleanTitle}*`
-            }, { quoted: infoMsg }); // කලින් යැවූ Info message එකට quote වේ
+              caption: `✅ *${songTitle}*`
+            }, { quoted: infoMsg });
 
             await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
 
@@ -1592,234 +1341,106 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
           }
           break;
-                                     }
+        }
 
-        // ────────────────── SONG DOWNLOADER (@vreden/youtube_scraper primary + fallback chain) ──────────────────
-        case 'song1':
-        case 'play1': {
-          if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *භාවිතය:* \`${prefix}song <ගීතයේ නම හෝ YouTube Link>\`` }, { quoted: msg });
-          }
-
-          const query = args.join(' ');
-          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
-
+        // ────────────────── USERINFO ──────────────────
+        case 'userinfo':
+        case 'whois':
+        case 'getdp': {
           try {
-            let videoUrl = query;
-            let songTitle = 'Song';
-            let duration = '0:00';
-            let thumbnail = botLogo;
+            let target;
+            const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
+            const mentioned = ctxInfo?.mentionedJid;
+            const quotedSender = ctxInfo?.participant;
+            const inputNum = args.join(' ').trim();
 
-            // Search if it's not a direct URL
-            if (!query.startsWith('http://') && !query.startsWith('https://')) {
-              const searchRes = await yts(query);
-              if (!searchRes.videos?.length) {
-                return await socket.sendMessage(from, { text: '❌ කිසිදු ගීතයක් හමු නොවීය.' }, { quoted: msg });
+            if (mentioned && mentioned.length > 0) {
+              target = mentioned[0];
+            } else if (quotedSender) {
+              target = quotedSender;
+            } else if (inputNum) {
+              const cleanNum = inputNum.replace(/[^0-9]/g, '');
+              if (!cleanNum) {
+                return await socket.sendMessage(from, { text: '❌ Please provide a valid WhatsApp number.' }, { quoted: msg });
               }
-              const vid = searchRes.videos[0];
-              videoUrl = vid.url;
-              songTitle = vid.title;
-              duration = vid.timestamp;
-              thumbnail = vid.thumbnail;
+              target = cleanNum + '@s.whatsapp.net';
+            } else {
+              return await socket.sendMessage(from, {
+                text: `❌ *USER INFO USAGE*\n\n• \`${prefix}userinfo @user\`\n• Reply to a message with \`${prefix}userinfo\`\n• \`${prefix}userinfo 947xxxxxxxx\``
+              }, { quoted: msg });
             }
 
-            await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
+            target = jidNormalizedUser(target);
 
-            // 🚀 Reliable Multi-Source Chain
-            const sources = [
-              // 1) @vreden/youtube_scraper (primary)
-              async () => {
-                const yt = require('@vreden/youtube_scraper');
-                const res = await yt.ytmp3(videoUrl, 128);
-                if (res?.status === false) throw new Error(res?.message || 'vreden failed');
-                const data = res?.data || res;
-                if (data?.title) songTitle = data.title;
-                if (data?.thumbnail) thumbnail = data.thumbnail;
-                return data?.download?.url || data?.url || data?.downloadUrl;
-              },
-              // 2) ruhend-scraper fallback
-              async () => {
-                const { ytmp3 } = require('ruhend-scraper');
-                const data = await ytmp3(videoUrl);
-                if (data?.title) songTitle = data.title;
-                return data?.audio;
-              },
-              // 3-5) External API fallbacks
-              async () => {
-                const res = await axios.get(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.data?.dl || res.data?.data?.download;
-              },
-              async () => {
-                const res = await axios.get(`https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.result?.download?.url || res.data?.result?.audio;
-              },
-              async () => {
-                const res = await axios.get(`https://api.giftedtech.my.id/api/download/ytmp3?apikey=gifted&url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.result?.download_url || res.data?.result?.audio_url;
-              }
-            ];
-
-            let downloadUrl = null;
-            for (const getAudio of sources) {
-              try {
-                const url = await getAudio();
-                if (url && typeof url === 'string' && url.startsWith('http')) {
-                  downloadUrl = url;
-                  break;
+            let userJid = target;
+            try {
+              if (typeof socket.onWhatsApp === 'function') {
+                const result = await socket.onWhatsApp(target);
+                if (!result || result.length === 0 || result[0]?.exists === false) {
+                  return await socket.sendMessage(from, { text: '❌ This number is not registered on WhatsApp.' }, { quoted: msg });
                 }
-              } catch (e) {
-                console.log('Source failed, trying next:', e.message);
-              }
-            }
-
-            if (!downloadUrl) {
-              throw new Error('සියලුම download source අසාර්ථක විය. කරුණාකර මොහොතකින් නැවත උත්සාහ කරන්න.');
-            }
-
-            const audioBuffer = await axios.get(downloadUrl, {
-              responseType: 'arraybuffer',
-              timeout: 60000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
-            });
-
-            await socket.sendMessage(from, {
-              audio: Buffer.from(audioBuffer.data),
-              mimetype: 'audio/mpeg',
-              fileName: `${songTitle.replace(/[\\/:*?"<>|]/g, '')}.mp3`,
-              contextInfo: {
-                ...getForwardedContext(userCfg),
-                externalAdReply: {
-                  title: songTitle,
-                  body: `⏱️ Duration: ${duration} | 🌸 ${botName}`,
-                  thumbnailUrl: thumbnail,
-                  sourceUrl: videoUrl,
-                  mediaType: 1,
-                  renderLargerThumbnail: true
+                if (result[0]?.jid) {
+                  userJid = jidNormalizedUser(result[0].jid);
                 }
               }
-            }, { quoted: msg });
+            } catch (e) {
+              userJid = target;
+            }
 
-            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+            const number = userJid.split('@')[0].split(':')[0];
 
-          } catch (err) {
-            console.error('Song Error:', err);
-            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
-            await socket.sendMessage(from, { text: `❌ Song download failed: ${err.message}` }, { quoted: msg });
-          }
-          break;
+            let contactName = 'Unknown';
+            try {
+              if (typeof socket.getName === 'function') {
+                const name = await socket.getName(userJid);
+                if (name) contactName = name;
               }
-case 'userinfo':
-case 'whois':
-case 'getdp': {
-  try {
-    let target;
-    const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
-    const mentioned = ctxInfo?.mentionedJid;
-    const quotedSender = ctxInfo?.participant;
-    const inputNum = args.join(' ').trim();
+            } catch (e) {}
 
-    // 1. GET TARGET
-    if (mentioned && mentioned.length > 0) {
-      target = mentioned[0];
-    } else if (quotedSender) {
-      target = quotedSender;
-    } else if (inputNum) {
-      const cleanNum = inputNum.replace(/[^0-9]/g, '');
-      if (!cleanNum) {
-        return await socket.sendMessage(from, { text: '❌ Please provide a valid WhatsApp number.' }, { quoted: msg });
-      }
-      target = cleanNum + '@s.whatsapp.net';
-    } else {
-      return await socket.sendMessage(from, {
-        text: `❌ *USER INFO USAGE*\n\n• \`${prefix}userinfo @user\`\n• Reply to a message with \`${prefix}userinfo\`\n• \`${prefix}userinfo 947xxxxxxxx\``
-      }, { quoted: msg });
-    }
+            if (contactName === 'Unknown' && ctxInfo?.pushName) {
+              contactName = ctxInfo.pushName;
+            }
 
-    // 2. NORMALIZE JID
-    target = jidNormalizedUser(target);
+            let userBio = 'Hidden / Not set';
+            let bioDate = 'Unknown';
+            try {
+              if (typeof socket.fetchStatus === 'function') {
+                let statusRes = await socket.fetchStatus(userJid);
+                if (Array.isArray(statusRes)) statusRes = statusRes[0];
+                
+                if (statusRes) {
+                  if (typeof statusRes.status === 'string' && statusRes.status.trim() !== '') {
+                    userBio = statusRes.status;
+                  }
+                  if (statusRes.setAt) {
+                    bioDate = moment(statusRes.setAt).tz('Asia/Colombo').format('YYYY-MM-DD');
+                  }
+                }
+              }
+            } catch (e) {}
 
-    // 3. CHECK WHATSAPP
-    let userJid = target;
-    try {
-      if (typeof socket.onWhatsApp === 'function') {
-        const result = await socket.onWhatsApp(target);
-        if (!result || result.length === 0 || result[0]?.exists === false) {
-          return await socket.sendMessage(from, { text: '❌ This number is not registered on WhatsApp.' }, { quoted: msg });
-        }
-        if (result[0]?.jid) {
-          userJid = jidNormalizedUser(result[0].jid);
-        }
-      }
-    } catch (e) {
-      userJid = target;
-    }
+            let ppUrl = null;
+            try {
+              if (typeof socket.profilePictureUrl === 'function') {
+                try {
+                  ppUrl = await socket.profilePictureUrl(userJid, 'image');
+                } catch {
+                  ppUrl = await socket.profilePictureUrl(userJid, 'preview');
+                }
+              }
+            } catch (e) {
+              ppUrl = null;
+            }
 
-    // 4. NUMBER
-    const number = userJid.split('@')[0].split(':')[0];
+            let accountType = 'Standard Account';
+            try {
+              if (typeof socket.getBusinessProfile === 'function') {
+                const business = await socket.getBusinessProfile(userJid);
+                if (business) accountType = 'Business Account';
+              }
+            } catch (e) {}
 
-    // 5. GET PROFILE NAME
-    let contactName = 'Unknown';
-    try {
-      if (typeof socket.getName === 'function') {
-        const name = await socket.getName(userJid);
-        if (name) contactName = name;
-      }
-    } catch (e) {}
-
-    if (contactName === 'Unknown' && ctxInfo?.pushName) {
-      contactName = ctxInfo.pushName;
-    }
-
-    // 6. GET ABOUT / STATUS (Fixed Array & Object handling)
-    let userBio = 'Hidden / Not set';
-    let bioDate = 'Unknown';
-    try {
-      if (typeof socket.fetchStatus === 'function') {
-        let statusRes = await socket.fetchStatus(userJid);
-        // Baileys සමහර විට Array එකක් return කරන නිසා
-        if (Array.isArray(statusRes)) statusRes = statusRes[0];
-        
-        if (statusRes) {
-          if (typeof statusRes.status === 'string' && statusRes.status.trim() !== '') {
-            userBio = statusRes.status;
-          }
-          if (statusRes.setAt) {
-            bioDate = moment(statusRes.setAt).tz('Asia/Colombo').format('YYYY-MM-DD');
-          }
-        }
-      }
-    } catch (e) {
-      // Privacy නිසා Error එකක් ආවොත් default අගය පවතී
-    }
-
-    // 7. PROFILE PICTURE (Fixed High-Res & Preview fallback)
-    let ppUrl = null;
-    try {
-      if (typeof socket.profilePictureUrl === 'function') {
-        try {
-          ppUrl = await socket.profilePictureUrl(userJid, 'image');
-        } catch {
-          // Full image බැරි වුණොත් preview එක try කරයි
-          ppUrl = await socket.profilePictureUrl(userJid, 'preview');
-        }
-      }
-    } catch (e) {
-      ppUrl = null;
-    }
-
-    // 8. ACCOUNT TYPE
-    let accountType = 'Standard Account';
-    try {
-      if (typeof socket.getBusinessProfile === 'function') {
-        const business = await socket.getBusinessProfile(userJid);
-        if (business) accountType = 'Business Account';
-      }
-    } catch (e) {}
-
-    // 9. MESSAGE
-    const infoText = `╭━━━〔 👤 *USER INFO* 〕━━━╮
+            const infoText = `╭━━━〔 👤 *USER INFO* 〕━━━╮
 ┃
 ┃ 👤 *Name:* ${contactName}
 ┃ 📞 *Number:* +${number}
@@ -1832,28 +1453,26 @@ case 'getdp': {
 ╰━━━━━━━━━━━━━━━━━━╯
 ${botFooter}`;
 
-    // 10. SEND DP & INFO
-    if (ppUrl) {
-      await sendFancyMsg(socket, from, {
-        image: { url: ppUrl },
-        caption: infoText,
-        mentions: [userJid]
-      }, msg, userCfg);
-    } else {
-      await sendFancyMsg(socket, from, {
-        text: infoText,
-        mentions: [userJid]
-      }, msg, userCfg);
-    }
+            if (ppUrl) {
+              await sendFancyMsg(socket, from, {
+                image: { url: ppUrl },
+                caption: infoText,
+                mentions: [userJid]
+              }, msg, userCfg);
+            } else {
+              await sendFancyMsg(socket, from, {
+                text: infoText,
+                mentions: [userJid]
+              }, msg, userCfg);
+            }
 
-  } catch (err) {
-    console.error('❌ USERINFO ERROR:', err);
-    await socket.sendMessage(from, { text: `❌ *USERINFO ERROR*\n\n${err?.message || err}` }, { quoted: msg });
-  }
-  break;
-                                                                    }
+          } catch (err) {
+            console.error('❌ USERINFO ERROR:', err);
+            await socket.sendMessage(from, { text: `❌ *USERINFO ERROR*\n\n${err?.message || err}` }, { quoted: msg });
+          }
+          break;
+        }
 
-          
         case 'menu':
         case 'help':
         case 'panel': {
@@ -1903,7 +1522,9 @@ ${botFooter}`.trim();
 *│* 🎵 \`${prefix}tiktok <url>\` - TikTok No Watermark
 *│* 📘 \`${prefix}fb <url>\` - Facebook Video
 *│* 📷 \`${prefix}ig <url>\` - Instagram Downloader
-*│* 🌸 \`${prefix}anime <name>\` - Anime Info & Search
+*│* 📌 \`${prefix}pin <query>\` - Pinterest Downloader
+*│* 🌐 \`${prefix}tourl\` - File to Direct Link
+*│* 🌸 \`${prefix}movie <name>\` - 23 Site Movie Hub
 *╰────────────────────────*
 ${botFooter}`;
           await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: dlText }, msg, userCfg);
@@ -1941,6 +1562,8 @@ ${botFooter}`;
 *│* 🎨 \`${prefix}sticker\` / \`${prefix}s\` - Make Sticker from Photo/Video
 *│* 🏷️ \`${prefix}take <pack> | <author>\` - Rename Sticker
 *│* 🆔 \`${prefix}jid\` - Get Chat or User JID
+*│* 👤 \`${prefix}userinfo @user\` - Get User Profile & DP
+*│* 🚪 \`${prefix}logout\` - Log Out & Clear Session
 *│* ➕ \`${prefix}addreply <text|audio|image|video>|<word>|<content/url>\`
 *│* ➖ \`${prefix}delreply <trigger_word>\`
 *│* 📋 \`${prefix}listreply\` - View custom auto-replies
@@ -2302,55 +1925,6 @@ ${botFooter}`;
           break;
         }
 
-        case 'song':
-        case 'play': {
-          if (!args.length) return await socket.sendMessage(from, { text: `❌ *Usage:* \`${prefix}song <song_name>\`` }, { quoted: msg });
-          const query = args.join(' ');
-          await socket.sendMessage(from, { react: { text: '🎵', key: msg.key } });
-
-          try {
-            const result = await yts(query);
-            if (!result.videos?.length) return await socket.sendMessage(from, { text: '❌ No songs found.' }, { quoted: msg });
-            const vid = result.videos[0];
-            const apiRes = await axios.get(`${config.API_YT_ALL_URL}?url=https://youtu.be/${vid.videoId}&api_key=${config.NEXORA_API_KEY}`, { timeout: 30000 });
-            const dlLink = apiRes.data?.all_qualities?.audio?.download_url;
-            if (!dlLink) throw new Error('Download URL error');
-
-            await socket.sendMessage(from, {
-              audio: { url: dlLink },
-              mimetype: 'audio/mpeg',
-              fileName: `${vid.title}.mp3`
-            }, { quoted: msg });
-          } catch(e) {
-            await socket.sendMessage(from, { text: `❌ Song download failed: ${e.message}` }, { quoted: msg });
-          }
-          break;
-        }
-
-        case 'video': {
-          if (!args.length) return await socket.sendMessage(from, { text: `❌ *Usage:* \`${prefix}video <video_name>\`` }, { quoted: msg });
-          const query = args.join(' ');
-          await socket.sendMessage(from, { react: { text: '🎬', key: msg.key } });
-
-          try {
-            const result = await yts(query);
-            if (!result.videos?.length) return await socket.sendMessage(from, { text: '❌ No videos found.' }, { quoted: msg });
-            const vid = result.videos[0];
-            const apiRes = await axios.get(`${config.API_YT_ALL_URL}?url=https://youtu.be/${vid.videoId}&api_key=${config.NEXORA_API_KEY}`, { timeout: 30000 });
-            const dlLink = apiRes.data?.all_qualities?.['360p']?.download_url || apiRes.data?.all_qualities?.audio?.download_url;
-            if (!dlLink) throw new Error('Download URL error');
-
-            await socket.sendMessage(from, {
-              video: { url: dlLink },
-              mimetype: 'video/mp4',
-              caption: `🎬 *${vid.title}*\n\n${botFooter}`
-            }, { quoted: msg });
-          } catch(e) {
-            await socket.sendMessage(from, { text: `❌ Video download failed: ${e.message}` }, { quoted: msg });
-          }
-          break;
-        }
-
         case 'autotyping':
         case 'autorecording':
         case 'antidelete':
@@ -2399,6 +1973,7 @@ ${botFooter}`;
 │ ⏳ *Uptime:* ${hours}h ${minutes}m
 │ 🚀 *Version:* ${config.BOT_VERSION}
 ╰─────────────────────────────◆
+*හෙ͠ලෝ͠ හෙලෝ ─⃞මන් ඔන්ලයින් 🌸⃘̬ٜٜඉන්නවා තාමٜ͠🍃⃘̬͞⃝🦋》*
 ${botFooter}`.trim();
 
           await sendFancyMsg(socket, from, {
@@ -2408,936 +1983,7 @@ ${botFooter}`.trim();
           }, msg, userCfg);
           break;
         }
-        // ══════════════════════════════════════════════════════════════════════
-        // 🎬 MOVIE, TV SERIES & SUBTITLE ENGINE (23 SITES)
-        // ══════════════════════════════════════════════════════════════════════
-        case 'movie':
-        case 'sakura':
-        case 'dl':
-        case 'sinhalasub':
-        case 'cinesubz':
-        case 'baiscope':
-        case 'lksub':
-        case 'cineru':
-        case 'chithrapata':
-        case 'subz':
-        case 'subzcom':
-        case 'zoom':
-        case 'piratelk':
-        case 'moviebox':
-        case 'movieboxdl':
-        case 'thenkiri':
-        case 'cinemx':
-        case 'cinevibes':
-        case 'moviesublk':
-        case 'mflix':
-        case 'bestmovies':
-        case 'animeclub':
-        case 'animeheaven':
-        case 'pupilvideo':
-        case 'sinhalacartoons':
-        case 'col3neg':
-        case 'subtitlecat':
-        case 'subtitle': {
-          const chatJid = from;
-          const sender  = nowsender;
 
-          const DEFAULT_FOOTER = userCfg?.footer || config.BOT_FOOTER || config.BOT_FOOTER;
-          const API_BASE       = userCfg?.API_MAIN_URL1 || config.API_MAIN_URL1 || '';
-          const API_KEY        = userCfg?.API_KEY_1 || config.API_KEY_1 || '';
-          const DEFAULT_IMAGE  = userCfg?.logo || config.config.DEFAULT_LOGO || config.DEFAULT_LOGO;
-
-          // ─── SITE CONFIG MAP (23 SITES) ──────────────────────────────────
-          const SITE_CONFIGS = {
-            sinhalasub: {
-              label: 'SinhalaSub.lk',
-              searchPath: '/api/v1/movies/sinhalasub/search',
-              infoPath: '/api/v1/movies/sinhalasub/infodl',
-              tvDlPath: '/api/v1/movies/sinhalasub/tv/dl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            cinesubz: {
-              label: 'CineSubz.lk',
-              searchPath: '/api/v1/movies/cinesubz/search',
-              infoPath: '/api/v1/movies/cinesubz/infodl',
-              tvInfoPath: '/api/v1/movies/cinesubz/tv/info',
-              tvDlPath: '/api/v1/movies/cinesubz/tv/dl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            baiscope: {
-              label: 'Baiscope.lk',
-              searchPath: '/api/v1/movies/baiscope/search',
-              infoPath: '/api/v1/movies/baiscope/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            lksub: {
-              label: 'LKSub.com',
-              searchPath: '/api/v1/movies/lksub/search',
-              infoPath: '/api/v1/movies/lksub/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            cineru: {
-              label: 'Cineru.lk',
-              searchPath: '/api/v1/movies/cineru/search',
-              infoPath: '/api/v1/movies/cineru/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            chithrapata: {
-              label: 'Chithrapata.lk',
-              searchPath: '/api/v1/chithrapata/search',
-              infoPath: '/api/v1/chithrapata/infodl',
-              paramKey: 'url',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-              searchResultField: 'results',
-            },
-            subz: {
-              label: 'Subz.lk',
-              searchPath: '/api/v1/movies/subz/search',
-              infoPath: '/api/v1/movies/subz/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            subzcom: {
-              label: 'Subz.com',
-              searchPath: '/api/v1/movies/subzcom/search',
-              infoPath: '/api/v1/movies/subzcom/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            zoom: {
-              label: 'Zoom.lk',
-              searchPath: '/api/v1/movies/zoom/search',
-              infoPath: '/api/v1/movies/zoom/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            piratelk: {
-              label: 'PirateLK',
-              searchPath: '/api/v1/movies/piratelk/search',
-              infoPath: '/api/v1/movies/piratelk/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            moviebox: {
-              label: 'MovieBox.ng',
-              searchPath: '/api/v1/movie/moviebox/search',
-              infoPath: '/api/v1/movie/moviebox/info',
-              tvInfoPath: '/api/v1/movie/moviebox/tv/info',
-              tvDlPath: '/api/v1/movie/moviebox/tv/dl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            thenkiri: {
-              label: 'Thenkiri',
-              searchPath: '/api/v1/movies/thenkiri/search',
-              infoPath: '/api/v1/movies/thenkiri/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            cinemx: {
-              label: 'Cinemx.lk',
-              searchPath: '/api/v1/movies/cinemx/search',
-              infoPath: '/api/v1/movies/cinemx/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            cinevibes: {
-              label: 'Cinevibes.lk',
-              searchPath: '/api/v1/movies/cinevibes/search',
-              infoPath: '/api/v1/movies/cinevibes/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            moviesublk: {
-              label: 'MovieSubLK',
-              searchPath: '/api/v1/movies/moviesublk/search',
-              infoPath: '/api/v1/movies/moviesublk/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            mflix: {
-              label: 'Mflix',
-              searchPath: '/api/v1/movies/mflix/search',
-              infoPath: '/api/v1/movies/mflix/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            bestmovies: {
-              label: 'BestMovies',
-              searchPath: '/api/v1/movies/bestmovies/search',
-              infoPath: '/api/v1/movies/bestmovies/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            animeclub: {
-              label: 'AnimeClub2.com',
-              searchPath: '/api/v1/movie/animeclub/search',
-              infoPath: '/api/v1/movie/animeclub/info',
-              tvInfoPath: '/api/v1/movie/animeclub/tv/info',
-              tvDlPath: '/api/v1/movie/animeclub/tv/dl',
-              paramKey: 'url',
-              hasMovie: true,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            animeheaven: {
-              label: 'AnimeHeaven',
-              searchPath: '/api/v1/movie/animeheaven/search',
-              infoPath: '/api/v1/movie/animeheaven/info',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            pupilvideo: {
-              label: 'PupilVideo',
-              searchPath: '/api/v1/cartoons/pupilvideo/search',
-              infoPath: '/api/v1/cartoons/pupilvideo/infodl',
-              tvInfoPath: '/api/v1/cartoons/pupilvideo/tv/info',
-              tvDlPath: '/api/v1/cartoons/pupilvideo/tv/dl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            sinhalacartoons: {
-              label: 'SinhalaCartoons',
-              searchPath: '/api/v1/cartoons/sinhalacartoons/search',
-              infoPath: '/api/v1/cartoons/sinhalacartoons/infodl',
-              paramKey: 'q',
-              hasMovie: true,
-              hasTv: false,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            col3neg: {
-              label: 'Col3neg (Sinhala Dubbed TV)',
-              searchPath: '/api/v1/tv/col3neg/search',
-              infoPath: '/api/v1/tv/col3neg/info',
-              tvInfoPath: '/api/v1/tv/col3neg/info',
-              tvDlPath: '/api/v1/tv/col3neg/dl',
-              paramKey: 'q',
-              hasMovie: false,
-              hasTv: true,
-              dlField: 'downloads',
-              titleField: 'title',
-              imageField: 'image',
-            },
-            subtitlecat: {
-              label: 'SubtitleCat',
-              searchPath: '/api/v1/subtitles/subtitlecat/search',
-              infoPath: '/api/v1/subtitles/subtitlecat/info',
-              paramKey: 'url',
-              hasMovie: false,
-              hasTv: false,
-              isSubtitle: true,
-              dlField: 'subtitles',
-              titleField: 'title',
-              imageField: null,
-              searchResultField: 'results',
-            },
-          };
-
-          // ─── SITE SELECTION MENU ────────────────────────────────────────
-          const SITE_MENU_ITEMS = [
-            { key: 'sinhalasub',     emoji: '🇱🇰', label: 'SinhalaSub.lk' },
-            { key: 'cinesubz',       emoji: '🎞️',  label: 'CineSubz.lk' },
-            { key: 'baiscope',       emoji: '🎬',  label: 'Baiscope.lk' },
-            { key: 'lksub',          emoji: '📽️',  label: 'LKSub.com' },
-            { key: 'cineru',         emoji: '🍿',  label: 'Cineru.lk' },
-            { key: 'chithrapata',    emoji: '🎥',  label: 'Chithrapata.lk' },
-            { key: 'subz',           emoji: '📝',  label: 'Subz.lk' },
-            { key: 'subzcom',        emoji: '📝',  label: 'Subz.com' },
-            { key: 'zoom',           emoji: '🔎',  label: 'Zoom.lk' },
-            { key: 'piratelk',       emoji: '🏴‍☠️', label: 'PirateLK' },
-            { key: 'moviebox',       emoji: '📦',  label: 'MovieBox.ng' },
-            { key: 'thenkiri',       emoji: '🌴',  label: 'Thenkiri' },
-            { key: 'cinemx',         emoji: '🎭',  label: 'Cinemx.lk' },
-            { key: 'cinevibes',      emoji: '✨',  label: 'Cinevibes.lk' },
-            { key: 'moviesublk',     emoji: '🎦',  label: 'MovieSubLK' },
-            { key: 'mflix',          emoji: '🌐',  label: 'Mflix' },
-            { key: 'bestmovies',     emoji: '⭐',  label: 'BestMovies' },
-            { key: 'animeclub',      emoji: '🈵',  label: 'AnimeClub' },
-            { key: 'animeheaven',    emoji: '👼',  label: 'AnimeHeaven' },
-            { key: 'pupilvideo',     emoji: '🎠',  label: 'PupilVideo' },
-            { key: 'sinhalacartoons',emoji: '🐉',  label: 'SinhalaCartoons' },
-            { key: 'col3neg',        emoji: '📺',  label: 'Col3neg (Sinhala Dubbed)' },
-            { key: 'subtitlecat',    emoji: '🐱',  label: 'SubtitleCat (.SRT)' },
-          ];
-
-          // ── Helpers ───────────────────────────────────────────────────
-          function getCircledNumber(num) {
-            const c = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩',
-                       '⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];
-            return c[num - 1] || `[${num}]`;
-          }
-
-          function getSubEmoji(title) {
-            const l = (title || '').toLowerCase();
-            if (l.includes('සිංහල') || l.includes('sinhala') || /\bsi\b/.test(l)) return '🇱🇰';
-            if (l.includes('english')    || /\ben\b/.test(l))                      return '🇬🇧';
-            if (l.includes('arabic')     || l.includes('العربية'))                 return '🇸🇦';
-            if (l.includes('spanish')    || l.includes('español'))                  return '🇪🇸';
-            if (l.includes('french')     || l.includes('français'))                 return '🇫🇷';
-            if (l.includes('german')     || l.includes('deutsch'))                  return '🇩🇪';
-            if (l.includes('tamil')      || /\bta\b/.test(l))                      return '🇮🇳';
-            if (l.includes('hindi')      || /\bhi\b/.test(l))                      return '🇮🇳';
-            if (l.includes('indonesian') || /\bid\b/.test(l))                      return '🇮🇩';
-            if (l.includes('japanese')   || /\bja\b/.test(l))                      return '🇯🇵';
-            if (l.includes('korean')     || /\bko\b/.test(l))                      return '🇰🇷';
-            if (l.includes('chinese')    || /\bzh\b/.test(l))                      return '🇨🇳';
-            return '📝';
-          }
-
-          const waitForUserReply = (targetMsgId, timeoutMs = 120000) => {
-            return new Promise((resolve) => {
-              const timeout = setTimeout(() => {
-                socket.ev.off('messages.upsert', listener);
-                resolve(null);
-              }, timeoutMs);
-              const listener = ({ messages }) => {
-                const m = messages[0];
-                if (!m?.message) return;
-                const ctx = m.message.extendedTextMessage?.contextInfo;
-                if (ctx?.stanzaId === targetMsgId) {
-                  const replier = m.key.participant ? jidNormalizedUser(m.key.participant) : jidNormalizedUser(m.key.remoteJid);
-                  if (m.key.remoteJid === chatJid && replier === sender) {
-                    clearTimeout(timeout);
-                    socket.ev.off('messages.upsert', listener);
-                    const text = m.message.conversation || m.message.extendedTextMessage?.text;
-                    resolve({ text: text?.trim(), key: m.key });
-                  }
-                }
-              };
-              socket.ev.on('messages.upsert', listener);
-            });
-          };
-
-          const apiGet = async (path) => {
-            const sep = path.includes('?') ? '&' : '?';
-            const url = `${API_BASE}${path}${sep}api_key=${API_KEY}`;
-            const res = await axios.get(url, { timeout: 35000 });
-            return res.data;
-          };
-
-          const sendDownload = async (dl, title, quotedKey) => {
-            const link = dl.link || dl.url || dl.download_link || dl.direct_link || dl.srt_link || '';
-            if (!link) return false;
-            const name  = dl.name || dl.quality || dl.langName || 'Download';
-            const size  = dl.size || '';
-            const isDoc = link.match(/\.(srt|vtt|sub|ass|ssa)$/i);
-            const mime  = isDoc ? 'application/x-subrip' : 'video/mp4';
-            const ext   = isDoc ? '.srt' : '.mp4';
-            const fname = `${title} - ${name}${ext}`;
-
-            await socket.sendMessage(chatJid, {
-              document: { url: link },
-              mimetype: mime,
-              fileName: fname,
-              caption : `🎬 *${title}*\n📥 *${name}*${size ? `\n💾 *Size:* ${size}` : ''}${DEFAULT_FOOTER}`
-            }, { quoted: { key: quotedKey, message: { conversation: '' } } });
-            return true;
-          };
-
-          // ── STEP 0: Determine Site ────────────────────────────────────
-          let activeSiteKey = null;
-
-          const directSiteMap = {
-            sinhalasub: 'sinhalasub', cinesubz: 'cinesubz', baiscope: 'baiscope',
-            lksub: 'lksub', cineru: 'cineru', chithrapata: 'chithrapata',
-            subz: 'subz', subzcom: 'subzcom', zoom: 'zoom', piratelk: 'piratelk',
-            moviebox: 'moviebox', movieboxdl: 'moviebox', thenkiri: 'thenkiri',
-            cinemx: 'cinemx', cinevibes: 'cinevibes', moviesublk: 'moviesublk',
-            mflix: 'mflix', bestmovies: 'bestmovies', animeclub: 'animeclub',
-            animeheaven: 'animeheaven', pupilvideo: 'pupilvideo',
-            sinhalacartoons: 'sinhalacartoons', col3neg: 'col3neg', subtitlecat: 'subtitlecat',
-            subtitle: 'subtitlecat',
-          };
-
-          if (directSiteMap[command]) {
-            activeSiteKey = directSiteMap[command];
-          } else {
-            let menuText = `*© 🌷 ${botName} Movie Hub*\n\n`
-              + `🌐 *Select a Movie Source Site:*\n`
-              + `🌺 Reply with the site number\n\n`;
-            SITE_MENU_ITEMS.forEach((s, i) => {
-              menuText += `${getCircledNumber(i + 1)} ${s.emoji} *${s.label}*\n`;
-            });
-            menuText += DEFAULT_FOOTER;
-
-            const siteMenuMsg = await socket.sendMessage(chatJid, { text: menuText }, { quoted: msg });
-            const siteReply   = await waitForUserReply(siteMenuMsg.key.id);
-
-            if (!siteReply) {
-              await socket.sendMessage(chatJid, { text: `⏳ *Timeout!* _Request cancelled._` }, { quoted: siteMenuMsg });
-              break;
-            }
-
-            const siteIdx = parseInt(siteReply.text) - 1;
-            if (isNaN(siteIdx) || siteIdx < 0 || siteIdx >= SITE_MENU_ITEMS.length) {
-              await socket.sendMessage(chatJid, { text: `⚠️ *Invalid selection!*` }, { quoted: siteReply });
-              break;
-            }
-            activeSiteKey = SITE_MENU_ITEMS[siteIdx].key;
-          }
-
-          const site = SITE_CONFIGS[activeSiteKey];
-          if (!site) { break; }
-
-          // ── STEP 1: Search Query ───────────────────────────────────────
-          let searchQuery = args.join(' ');
-
-          if (!searchQuery) {
-            const promptMsg = await socket.sendMessage(chatJid, {
-              text: `*❪ ${site.label} ❫*\n\n🔍 *What do you want to search?*\n📝 _Reply with a movie, series or anime name._${DEFAULT_FOOTER}`
-            }, { quoted: msg });
-            const queryReply = await waitForUserReply(promptMsg.key.id);
-            if (!queryReply) {
-              await socket.sendMessage(chatJid, { text: `⏳ *Timeout!* _Request cancelled._` }, { quoted: promptMsg });
-              break;
-            }
-            searchQuery = queryReply.text;
-          }
-
-          await socket.sendMessage(chatJid, {
-            text: `*❪ SEARCHING ❫*\n\n🔍 *Searching ${site.label}...*\n📝 *Query:* _${searchQuery}_\n🌷 _Please wait..._`
-          }, { quoted: msg });
-
-          try {
-            // ── STEP 2: Search API ──────────────────────────────────────
-            const searchData  = await apiGet(`${site.searchPath}?q=${encodeURIComponent(searchQuery)}`);
-            const resultField = site.searchResultField || 'data';
-            const results     = (searchData[resultField] || searchData.data || []).slice(0, 20);
-
-            if (!results.length) {
-              await socket.sendMessage(chatJid, {
-                text: `*❪ NO RESULTS ❫*\n\n🥹 *No results found on ${site.label}!*\n🎬 *Query:* _${searchQuery}_${DEFAULT_FOOTER}`
-              }, { quoted: msg });
-              break;
-            }
-
-            let listText = `*❪ ${site.label.toUpperCase()} RESULTS ❫*\n\n`
-              + `🎯 *Query:* _${searchQuery}_\n`
-              + `📊 *Found:* ${results.length} item(s)\n\n`
-              + `*🌷 REPLY WITH A NUMBER 👇*\n\n`;
-
-            results.forEach((item, i) => {
-              const type  = (item.type === 'tvshows' || item.type === 'tv') ? '📺 TV' : '🎥 Movie';
-              const title = (item.title || item.name || 'Unknown').substring(0, 40);
-              const qual  = item.quality ? ` | ${item.quality}` : '';
-              listText   += `${getCircledNumber(i + 1)} ➜ ${type} | _${title}_${qual}\n`;
-            });
-            listText += DEFAULT_FOOTER;
-
-            const thumbUrl = results[0]?.image || DEFAULT_IMAGE;
-            let listMsg;
-            try {
-              listMsg = await socket.sendMessage(chatJid, {
-                image: { url: thumbUrl },
-                caption: listText
-              }, { quoted: msg });
-            } catch {
-              listMsg = await socket.sendMessage(chatJid, { text: listText }, { quoted: msg });
-            }
-
-            // ── STEP 3: Select Item ─────────────────────────────────────
-            const pickReply = await waitForUserReply(listMsg.key.id);
-            if (!pickReply) {
-              await socket.sendMessage(chatJid, { text: `⏳ *Timeout!* _Request cancelled._` }, { quoted: listMsg });
-              break;
-            }
-
-            const pickIdx = parseInt(pickReply.text) - 1;
-            if (isNaN(pickIdx) || pickIdx < 0 || pickIdx >= results.length) {
-              await socket.sendMessage(chatJid, { text: `⚠️ *Invalid selection!*` }, { quoted: pickReply });
-              break;
-            }
-
-            const selected = results[pickIdx];
-            const isTv     = selected.type === 'tvshows' || selected.type === 'tv';
-
-            await socket.sendMessage(chatJid, { react: { text: '⏳', key: pickReply.key } });
-
-            // ── FLOW A: SUBTITLES ONLY (SubtitleCat) ────────────────────
-            if (site.isSubtitle) {
-              const infoParam = site.paramKey === 'url'
-                ? `url=${encodeURIComponent(selected.link || selected.url)}`
-                : `q=${encodeURIComponent(selected.link || selected.url)}`;
-              const infoData = await apiGet(`${site.infoPath}?${infoParam}`);
-              const title    = infoData[site.titleField] || selected.title || searchQuery;
-              const subs     = infoData[site.dlField] || infoData.subtitles || [];
-
-              if (!subs.length) {
-                await socket.sendMessage(chatJid, {
-                  text: `❌ *No subtitle files found!*\n📽️ *Title:* _${title}_${DEFAULT_FOOTER}`
-                }, { quoted: pickReply });
-                break;
-              }
-
-              let subMenu = `*❪ SUBTITLES ❫*\n\n📽️ *${title}*\n\n*🌷 SELECT LANGUAGE*\n\n`;
-              subs.forEach((s, i) => {
-                const lang = s.language || s.lang || s.name || `Subtitle ${i+1}`;
-                subMenu += `${getCircledNumber(i + 1)} ➜ ${getSubEmoji(lang)} _${lang}_\n`;
-              });
-              subMenu += DEFAULT_FOOTER;
-
-              const subMenuMsg = await socket.sendMessage(chatJid, { text: subMenu }, { quoted: pickReply });
-              const subReply   = await waitForUserReply(subMenuMsg.key.id);
-              if (!subReply) break;
-
-              const subIdx = parseInt(subReply.text) - 1;
-              if (isNaN(subIdx) || subIdx < 0 || subIdx >= subs.length) {
-                await socket.sendMessage(chatJid, { text: `⚠️ *Invalid selection!*` }, { quoted: subReply });
-                break;
-              }
-
-              await socket.sendMessage(chatJid, { react: { text: '📤', key: subReply.key } });
-              await sendDownload(subs[subIdx], title, subReply.key);
-              await socket.sendMessage(chatJid, { react: { text: '✅', key: subReply.key } });
-              break;
-            }
-
-            // ── FLOW B: TV SERIES (AnimeClub, Col3neg, MovieBox, CineSubz) 
-            if (isTv && site.hasTv && site.tvInfoPath) {
-              const tvParam = site.paramKey === 'url'
-                ? `url=${encodeURIComponent(selected.link || selected.url)}`
-                : `q=${encodeURIComponent(selected.link || selected.url)}`;
-              const tvData   = await apiGet(`${site.tvInfoPath}?${tvParam}`);
-              const tvInfo   = tvData.data || tvData;
-              const tvTitle  = tvInfo[site.titleField] || tvInfo.title || selected.title || searchQuery;
-              const tvImage  = tvInfo[site.imageField] || tvInfo.image || DEFAULT_IMAGE;
-              const episodes = tvInfo.episodes || [];
-              const seasons  = tvInfo.seasons  || [];
-
-              if (episodes.length > 0 && !seasons.length) {
-                const displayEps = episodes.slice(0, 20);
-                let epMenu = `*❪ ${site.label.toUpperCase()} ❫*\n\n`
-                  + `📺 *${tvTitle}*\n📦 *Episodes:* ${episodes.length}\n\n`
-                  + `*💞 SELECT AN EPISODE 💞*\n\n`;
-                displayEps.forEach((ep, i) => {
-                  const epLabel = ep.episode_name || ep.title || ep.name || `Episode ${i+1}`;
-                  epMenu += `${getCircledNumber(i + 1)} ➜ _${epLabel.substring(0, 45)}_\n`;
-                });
-                if (episodes.length > 20) epMenu += `\n_... and ${episodes.length - 20} more episodes_\n`;
-                epMenu += DEFAULT_FOOTER;
-
-                let epMenuMsg;
-                try {
-                  epMenuMsg = await socket.sendMessage(chatJid, {
-                    image: { url: tvImage }, caption: epMenu
-                  }, { quoted: pickReply });
-                } catch {
-                  epMenuMsg = await socket.sendMessage(chatJid, { text: epMenu }, { quoted: pickReply });
-                }
-
-                const epReply = await waitForUserReply(epMenuMsg.key.id);
-                if (!epReply) break;
-
-                const epIdx = parseInt(epReply.text) - 1;
-                if (isNaN(epIdx) || epIdx < 0 || epIdx >= displayEps.length) {
-                  await socket.sendMessage(chatJid, { text: `⚠️ *Invalid Episode!*` }, { quoted: epReply });
-                  break;
-                }
-
-                const chosenEp    = displayEps[epIdx];
-                const chosenEpUrl = chosenEp.episode_url || chosenEp.link || chosenEp.url;
-
-                await socket.sendMessage(chatJid, { react: { text: '🔎', key: epReply.key } });
-
-                const dlParam = site.paramKey === 'url'
-                  ? `url=${encodeURIComponent(chosenEpUrl)}`
-                  : `q=${encodeURIComponent(chosenEpUrl)}`;
-                const dlData    = await apiGet(`${site.tvDlPath}?${dlParam}`);
-                const downloads = dlData.downloads || dlData.data?.downloads || dlData.data || [];
-
-                if (!downloads.length) {
-                  await socket.sendMessage(chatJid, { text: `❌ *No downloads found for this episode!*` }, { quoted: epReply });
-                  break;
-                }
-
-                await socket.sendMessage(chatJid, { react: { text: '📤', key: epReply.key } });
-                for (const dl of downloads) {
-                  await sendDownload(dl, `${tvTitle} - ${chosenEp.episode_name || chosenEp.title || ''}`, epReply.key);
-                  await delay(1000);
-                }
-                await socket.sendMessage(chatJid, { react: { text: '✅', key: epReply.key } });
-
-              } else if (seasons.length > 0) {
-                const totalEps = seasons.reduce((s, x) => s + (x.episodes?.length || 0), 0);
-
-                let seasonMenu = `*❪ ${site.label.toUpperCase()} ❫*\n\n`
-                  + `📺 *${tvTitle}*\n`
-                  + `🗂️ *Seasons:* ${seasons.length}   📦 *Total Episodes:* ${totalEps}\n\n`
-                  + `*🌺 SELECT SEASON OR SHORTCUT*\n\n`
-                  + `*00* ➜ 📥 ALL Seasons ALL Episodes\n`
-                  + `*0*  ➜ 📁 ALL Episodes of ONE Season\n\n`;
-                seasons.forEach((s, i) => {
-                  const epCount = s.episodes?.length || 0;
-                  seasonMenu += `${getCircledNumber(i + 1)} ➜ Season ${s.season} (${epCount} Episodes)\n`;
-                });
-                seasonMenu += `\n_Reply with a number._${DEFAULT_FOOTER}`;
-
-                let seasonMsg;
-                try {
-                  seasonMsg = await socket.sendMessage(chatJid, {
-                    image: { url: tvImage }, caption: seasonMenu
-                  }, { quoted: pickReply });
-                } catch {
-                  seasonMsg = await socket.sendMessage(chatJid, { text: seasonMenu }, { quoted: pickReply });
-                }
-
-                const seasonReply = await waitForUserReply(seasonMsg.key.id);
-                if (!seasonReply) {
-                  await socket.sendMessage(chatJid, { text: `⏳ *Timeout!* _Cancelled._` }, { quoted: seasonMsg });
-                  break;
-                }
-
-                const rawInput = seasonReply.text?.trim();
-
-                const downloadOneEp = async (seasonNum, epNum, quality, subLang) => {
-                  const epPath = site.tvDlPath.includes('moviebox')
-                    ? `${site.tvDlPath}?q=${encodeURIComponent(selected.link)}&se=${seasonNum}&ep=${epNum}`
-                    : `${site.tvDlPath}?q=${encodeURIComponent(selected.link)}&season=${seasonNum}&episode=${epNum}`;
-                  const epData = await apiGet(epPath);
-                  const allDls = epData.data || epData.downloads || [];
-
-                  const video = allDls.find(d => d.quality === quality)
-                    || allDls.find(d => !d.quality?.includes('SUB') && !d.title?.toLowerCase().includes('subtitle'));
-                  if (!video) return false;
-
-                  await socket.sendMessage(chatJid, {
-                    document: { url: video.link || video.url },
-                    mimetype: 'video/mp4',
-                    fileName: `${tvTitle} S${seasonNum}E${epNum} [${video.quality || 'HD'}].mp4`,
-                    caption: `🎬 *${tvTitle}*\n📺 Season ${seasonNum} – Episode ${epNum}\n📽️ Quality: ${video.quality || 'HD'}${DEFAULT_FOOTER}`
-                  });
-
-                  if (subLang) {
-                    const sub = allDls.find(d => d.title?.includes(subLang));
-                    if (sub) {
-                      await socket.sendMessage(chatJid, {
-                        document: { url: sub.link || sub.url },
-                        mimetype: 'application/x-subrip',
-                        fileName: `${tvTitle} S${seasonNum}E${epNum} - ${subLang}.srt`
-                      });
-                    }
-                  }
-                  return true;
-                };
-
-                const pickQualityAndSub = async (seasonNum, epNum, quotedKey) => {
-                  const epPath = site.tvDlPath.includes('moviebox')
-                    ? `${site.tvDlPath}?q=${encodeURIComponent(selected.link)}&se=${seasonNum}&ep=${epNum}`
-                    : `${site.tvDlPath}?q=${encodeURIComponent(selected.link)}&season=${seasonNum}&episode=${epNum}`;
-                  const sample = await apiGet(epPath);
-                  const allDls = sample.data || sample.downloads || [];
-                  const videos = allDls.filter(d => !d.quality?.includes('SUB') && !d.title?.toLowerCase().includes('subtitle'));
-                  const subs   = allDls.filter(d => d.quality?.includes('SUB') || d.title?.toLowerCase().includes('subtitle'));
-                  const uniqueQ = [...new Map(videos.map(x => [x.quality, x])).values()];
-
-                  if (!uniqueQ.length) return null;
-
-                  let qText = `📺 *${tvTitle}*\n\n🌷 *SELECT QUALITY* 💞\n\n`;
-                  uniqueQ.forEach((q, i) => { qText += `${getCircledNumber(i+1)} ➜ 🎥 ${q.quality}\n`; });
-                  qText += DEFAULT_FOOTER;
-                  const qMsg   = await socket.sendMessage(chatJid, { text: qText }, { quoted: { key: quotedKey, message: { conversation: '' } } });
-                  const qReply = await waitForUserReply(qMsg.key.id);
-                  if (!qReply) return null;
-
-                  const quality = uniqueQ[parseInt(qReply.text) - 1]?.quality || uniqueQ[0].quality;
-
-                  let subLang = null, lastKey = qReply.key;
-                  if (subs.length) {
-                    const uniqueSubs = [...new Map(subs.map(s => {
-                      const lang = (s.title || '').replace('Subtitle - ', '').replace(/ \(S\d+E\d+\)/i, '').trim();
-                      return [lang, { ...s, langName: lang }];
-                    })).values()];
-
-                    let sText = `📺 *${tvTitle}*\n\n💞 *SELECT SUBTITLE* 💞\n\n`;
-                    uniqueSubs.forEach((s, i) => { sText += `${getCircledNumber(i+1)} ➜ ${getSubEmoji(s.langName)} ${s.langName}\n`; });
-                    sText += `${getCircledNumber(uniqueSubs.length+1)} ➜ ❌ No Subtitles\n`;
-                    sText += DEFAULT_FOOTER;
-
-                    const sMsg   = await socket.sendMessage(chatJid, { text: sText }, { quoted: qReply });
-                    const sReply = await waitForUserReply(sMsg.key.id);
-                    if (!sReply) return null;
-
-                    lastKey = sReply.key;
-                    const sIdx = parseInt(sReply.text) - 1;
-                    if (sIdx >= 0 && sIdx < uniqueSubs.length) subLang = uniqueSubs[sIdx].langName;
-                  }
-
-                  return { quality, subLang, lastKey };
-                };
-
-                if (rawInput === '00') {
-                  const resolved = await pickQualityAndSub(seasons[0].season, seasons[0].episodes[0], seasonReply.key);
-                  if (!resolved) break;
-                  const { quality, subLang, lastKey } = resolved;
-
-                  await socket.sendMessage(chatJid, {
-                    text: `📥 *Full Series Download!*\n📺 *${tvTitle}*\n🗂️ Seasons: ${seasons.length}\n📦 Episodes: ${totalEps}\n📽️ Quality: ${quality}\n📝 Subtitle: ${subLang || 'None'}\n\n⚡ _Keep bot running..._`
-                  }, { quoted: { key: lastKey, message: { conversation: '' } } });
-
-                  let ok = 0, fail = 0;
-                  for (const season of seasons) {
-                    await socket.sendMessage(chatJid, { text: `🗂️ *Starting Season ${season.season}...*` });
-                    for (const epNum of season.episodes) {
-                      try {
-                        const done = await downloadOneEp(season.season, epNum, quality, subLang);
-                        done ? ok++ : fail++;
-                      } catch { fail++; }
-                      await delay(2000);
-                    }
-                    await socket.sendMessage(chatJid, { text: `✅ *Season ${season.season} done!*  ✅ ${ok} OK  ❌ ${fail} Failed` });
-                  }
-                  await socket.sendMessage(chatJid, {
-                    text: `🎉 *FULL SERIES COMPLETE!*\n📺 *${tvTitle}*\n✅ Success: ${ok}\n❌ Failed: ${fail}${DEFAULT_FOOTER}`
-                  });
-
-                } else if (rawInput === '0') {
-                  let sznText = `📺 *${tvTitle}*\n\n🌷 *SELECT SEASON* 🌷\n\n`;
-                  seasons.forEach((s, i) => { sznText += `${getCircledNumber(i+1)} ➜ Season ${s.season} (${s.episodes?.length || 0} Episodes)\n`; });
-                  sznText += DEFAULT_FOOTER;
-
-                  const sznMsg   = await socket.sendMessage(chatJid, { text: sznText }, { quoted: seasonReply });
-                  const sznReply = await waitForUserReply(sznMsg.key.id);
-                  if (!sznReply) break;
-
-                  const sznIdx = parseInt(sznReply.text) - 1;
-                  if (isNaN(sznIdx) || sznIdx < 0 || sznIdx >= seasons.length) {
-                    await socket.sendMessage(chatJid, { text: `⚠️ *Invalid season!*` }, { quoted: sznReply });
-                    break;
-                  }
-                  const activeSeason = seasons[sznIdx];
-                  const resolved     = await pickQualityAndSub(activeSeason.season, activeSeason.episodes[0], sznReply.key);
-                  if (!resolved) break;
-
-                  const { quality, subLang, lastKey } = resolved;
-                  await socket.sendMessage(chatJid, {
-                    text: `📥 *Season ${activeSeason.season} Download!*\n📺 *${tvTitle}*\n📦 Episodes: ${activeSeason.episodes.length}\n📽️ Quality: ${quality}\n📝 Subtitle: ${subLang || 'None'}\n\n🌷 _Keep bot running..._`
-                  }, { quoted: { key: lastKey, message: { conversation: '' } } });
-
-                  let ok = 0, fail = 0;
-                  for (const epNum of activeSeason.episodes) {
-                    try {
-                      const done = await downloadOneEp(activeSeason.season, epNum, quality, subLang);
-                      done ? ok++ : fail++;
-                    } catch { fail++; }
-                    await delay(2000);
-                  }
-                  await socket.sendMessage(chatJid, {
-                    text: `✅ *SEASON COMPLETE!*\n📺 *${tvTitle}*\n🗂️ Season: ${activeSeason.season}\n✅ ${ok} OK  ❌ ${fail} Failed${DEFAULT_FOOTER}`
-                  });
-
-                } else {
-                  const sznIdx = parseInt(rawInput) - 1;
-                  if (isNaN(sznIdx) || sznIdx < 0 || sznIdx >= seasons.length) {
-                    await socket.sendMessage(chatJid, { text: `⚠️ *Invalid input!* Reply *00* / *0* / or a season number.` }, { quoted: seasonReply });
-                    break;
-                  }
-                  const activeSeason = seasons[sznIdx];
-                  const eps = activeSeason.episodes || [];
-
-                  let epText = `📺 *${tvTitle} — Season ${activeSeason.season}*\n📦 *Episodes:* ${eps.length}\n\n*🌷 SELECT EPISODE 🌷*\n\n`;
-                  eps.forEach((ep, i) => { epText += `${getCircledNumber(i+1)} ➜ Episode ${ep}\n`; });
-                  epText += DEFAULT_FOOTER;
-
-                  const epMsg   = await socket.sendMessage(chatJid, { text: epText }, { quoted: seasonReply });
-                  const epReply = await waitForUserReply(epMsg.key.id);
-                  if (!epReply) break;
-
-                  const epIdx = parseInt(epReply.text) - 1;
-                  if (isNaN(epIdx) || epIdx < 0 || epIdx >= eps.length) {
-                    await socket.sendMessage(chatJid, { text: `⚠️ *Invalid episode!*` }, { quoted: epReply });
-                    break;
-                  }
-                  const chosenEp = eps[epIdx];
-                  const resolved = await pickQualityAndSub(activeSeason.season, chosenEp, epReply.key);
-                  if (!resolved) break;
-
-                  const { quality, subLang, lastKey } = resolved;
-                  await socket.sendMessage(chatJid, { react: { text: '📤', key: lastKey } });
-                  const ok = await downloadOneEp(activeSeason.season, chosenEp, quality, subLang);
-                  await socket.sendMessage(chatJid, { react: { text: ok ? '✅' : '❌', key: lastKey } });
-                  if (!ok) {
-                    await socket.sendMessage(chatJid, { text: `❌ *No video found for S${activeSeason.season}E${chosenEp}!*` });
-                  }
-                }
-
-              } else {
-                await socket.sendMessage(chatJid, { text: `❌ *No episodes found for this TV series!*` }, { quoted: pickReply });
-              }
-
-            // ── FLOW C: MOVIE / SINGLE FILE DOWNLOAD ────────────────────
-            } else {
-              const infoParam = site.paramKey === 'url'
-                ? `url=${encodeURIComponent(selected.link || selected.url)}`
-                : `q=${encodeURIComponent(selected.link || selected.url)}`;
-              const infoData  = await apiGet(`${site.infoPath}?${infoParam}`);
-              const movieInfo = infoData.data || infoData.result || infoData;
-              const title     = movieInfo[site.titleField] || movieInfo.title || selected.title || searchQuery;
-              const image     = movieInfo[site.imageField] || movieInfo.image || DEFAULT_IMAGE;
-              const allDls    = movieInfo[site.dlField] || movieInfo.downloads || [];
-
-              if (!allDls.length) {
-                await socket.sendMessage(chatJid, {
-                  text: `❌ *No download links found!*\n📽️ *Title:* _${title}_${DEFAULT_FOOTER}`
-                }, { quoted: pickReply });
-                break;
-              }
-
-              const videoDls = allDls.filter(d => !d.quality?.includes('SUB') && !d.name?.toLowerCase().includes('subtitle'));
-              const subDls   = allDls.filter(d =>  d.quality?.includes('SUB') ||  d.name?.toLowerCase().includes('subtitle'));
-              const hasMixed = videoDls.length > 0;
-              const displayDls = hasMixed ? videoDls : allDls;
-
-              let infoText = `*❪ ${site.label.toUpperCase()} ❫*\n\n🎬 *${title}*\n`;
-              if (movieInfo.imdb)     infoText += `⭐ *IMDb:* ${movieInfo.imdb}\n`;
-              if (movieInfo.language) infoText += `🌐 *Language:* ${movieInfo.language}\n`;
-              if (movieInfo.story)    infoText += `\n📖 _${movieInfo.story.substring(0, 200)}..._\n`;
-              infoText += `\n*🌺 SELECT QUALITY / FILE 🌷*\n\n`;
-              displayDls.forEach((d, i) => {
-                const name = d.name || d.quality || `Option ${i+1}`;
-                const size = d.size ? ` | 💾 ${d.size}` : '';
-                infoText += `${getCircledNumber(i + 1)} ➜ ${name.substring(0, 50)}${size}\n`;
-              });
-              infoText += DEFAULT_FOOTER;
-
-              let infoMsg;
-              try {
-                infoMsg = await socket.sendMessage(chatJid, {
-                  image: { url: image }, caption: infoText
-                }, { quoted: pickReply });
-              } catch {
-                infoMsg = await socket.sendMessage(chatJid, { text: infoText }, { quoted: pickReply });
-              }
-
-              const qualReply = await waitForUserReply(infoMsg.key.id);
-              if (!qualReply) break;
-
-              const qualIdx = parseInt(qualReply.text) - 1;
-              if (isNaN(qualIdx) || qualIdx < 0 || qualIdx >= displayDls.length) {
-                await socket.sendMessage(chatJid, { text: `⚠️ *Invalid selection!*` }, { quoted: qualReply });
-                break;
-              }
-
-              const chosenVideo = displayDls[qualIdx];
-              let lastKey       = qualReply.key;
-
-              let chosenSub = null;
-              if (hasMixed && subDls.length > 0) {
-                let subMenuText = `🎬 *${title}*\n\n*👇 SELECT SUBTITLE 👇*\n\n`;
-                subDls.forEach((s, i) => {
-                  const lang = (s.name || s.language || `Subtitle ${i+1}`).replace('Subtitle - ', '');
-                  subMenuText += `${getCircledNumber(i+1)} ➜ ${getSubEmoji(lang)} _${lang}_\n`;
-                });
-                subMenuText += `${getCircledNumber(subDls.length + 1)} ➜ ❌ No Subtitles\n`;
-                subMenuText += DEFAULT_FOOTER;
-
-                const subMsg   = await socket.sendMessage(chatJid, { text: subMenuText }, { quoted: qualReply });
-                const subReply = await waitForUserReply(subMsg.key.id);
-                if (!subReply) break;
-
-                lastKey = subReply.key;
-                const subIdx = parseInt(subReply.text) - 1;
-                if (subIdx >= 0 && subIdx < subDls.length) chosenSub = subDls[subIdx];
-              }
-
-              await socket.sendMessage(chatJid, { react: { text: '📤', key: lastKey } });
-              await sendDownload(chosenVideo, title, lastKey);
-              if (chosenSub) await sendDownload(chosenSub, title, lastKey);
-              await socket.sendMessage(chatJid, { react: { text: '✅', key: lastKey } });
-            }
-
-          } catch (error) {
-            console.error(`[MovieCase] Error:`, error);
-            await socket.sendMessage(chatJid, {
-              text: `❌ *ERROR*\n\n⚠️ *Site:* ${site?.label || activeSiteKey}\n*Error:* ${error.message || 'Unknown error.'}\n\n_Please try again or use a different site._${DEFAULT_FOOTER}`
-            }, { quoted: msg });
-          }
-          break;
-        }
 
         case 'owner': {
           const ownerClean = config.OWNER_NUMBER.split(',')[0].replace(/[^0-9]/g, '');
@@ -3365,8 +2011,7 @@ function setupAutoRestart(socket, number) {
     const statusCode = lastDisconnect?.error?.output?.statusCode;
     if (statusCode === DisconnectReason.loggedOut) {
       console.log(`[Sakura] Session ${san} logged out.`);
-      activeSockets.delete(san);
-      await removeSessionFromMongo(san);
+      await deleteEntireSession(san);
       return;
     }
 
@@ -3388,20 +2033,24 @@ function setupAutoRestart(socket, number) {
 }
 
 // ───────────────── EMPIRE PAIRING CORE ──────────────────────────
-async function EmpirePair(number, res) {
+async function EmpirePair(number, res, isForce = false) {
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
   const sessionPath = path.join(os.tmpdir(), `sakura_session_${sanitizedNumber}`);
   await initMongo().catch(()=>{});
 
-  try {
-    const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
-    if (mongoDoc && mongoDoc.files) {
-      fs.ensureDirSync(sessionPath);
-      for (const [fname, content] of Object.entries(mongoDoc.files)) {
-        try { fs.writeFileSync(path.join(sessionPath, fname), content, 'utf8'); } catch(e) {}
+  if (isForce) {
+    await deleteEntireSession(sanitizedNumber);
+  } else {
+    try {
+      const mongoDoc = await loadCredsFromMongo(sanitizedNumber);
+      if (mongoDoc && mongoDoc.files) {
+        fs.ensureDirSync(sessionPath);
+        for (const [fname, content] of Object.entries(mongoDoc.files)) {
+          try { fs.writeFileSync(path.join(sessionPath, fname), content, 'utf8'); } catch(e) {}
+        }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
   const logger = pino({ level: 'silent' });
@@ -3429,10 +2078,20 @@ async function EmpirePair(number, res) {
     if (!socket.authState.creds.registered) {
       let code;
       try {
-        await delay(500);
-        code = await socket.requestPairingCode(sanitizedNumber, null);
-      } catch (error) {}
+        await delay(1000);
+        code = await socket.requestPairingCode(sanitizedNumber);
+      } catch (error) {
+        console.error('Pairing code generation error:', error.message);
+      }
       if (!res.headersSent) res.send({ code });
+    } else {
+      // If it's already registered, respond to prevent HTTP timeout
+      if (!res.headersSent) {
+        res.send({ 
+          status: 'already_connected', 
+          message: 'This session is already registered. To re-pair, use ?force=true or /delete' 
+        });
+      }
     }
 
     socket.ev.on('creds.update', async () => {
@@ -3463,15 +2122,41 @@ async function EmpirePair(number, res) {
 
 // ───────────────── EXPRESS ROUTER ENDPOINTS ─────────────────────
 router.get('/', async (req, res) => {
-  const { number } = req.query;
+  const { number, force, reset } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
   const sanitized = number.replace(/[^0-9]/g, '');
 
+  const isForce = force === 'true' || force === '1' || reset === 'true' || reset === '1';
+
   if (activeSockets.has(sanitized)) {
-    try { activeSockets.get(sanitized).ws?.close(); } catch(e) {}
-    activeSockets.delete(sanitized);
+    if (isForce) {
+      await deleteEntireSession(sanitized);
+    } else {
+      return res.send({ 
+        status: 'already_connected', 
+        message: `+${sanitized} is already active. To re-generate code, add &force=true` 
+      });
+    }
   }
-  await EmpirePair(number, res);
+
+  await EmpirePair(number, res, isForce);
+});
+
+// Explicit session deletion / logout endpoint
+router.get('/delete', async (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).send({ error: 'Number parameter is required' });
+  const sanitized = number.replace(/[^0-9]/g, '');
+  await deleteEntireSession(sanitized);
+  res.send({ status: 'success', message: `Session for +${sanitized} deleted successfully.` });
+});
+
+router.get('/logout', async (req, res) => {
+  const { number } = req.query;
+  if (!number) return res.status(400).send({ error: 'Number parameter is required' });
+  const sanitized = number.replace(/[^0-9]/g, '');
+  await deleteEntireSession(sanitized);
+  res.send({ status: 'success', message: `Logged out and session cleared for +${sanitized}.` });
 });
 
 router.get('/active', (req, res) => {
