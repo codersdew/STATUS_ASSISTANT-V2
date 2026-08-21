@@ -467,6 +467,86 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
           // ────────────────── HIGH-SPEED SONG DOWNLOADER ──────────────────
+          // ────────────────── YOUTUBE TO MP3 (Direct Link, Chama API) ──────────────────
+        case 'mp3':
+        case 'ytmp3': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}mp3 <YouTube Link>\`\n╰───────────────━⊷` 
+            }, { quoted: msg });
+          }
+
+          const videoUrl = args[0];
+          const CHAMA_API = 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+          const CHAMA_BASE = 'https://chama-movie-api.koyeb.app/api/v1';
+
+          if (!videoUrl.includes('youtube.com') && !videoUrl.includes('youtu.be')) {
+            return await socket.sendMessage(from, { text: '❌ වලංගු YouTube link එකක් යොදන්න.' }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            // 🎧 MP3 Download (Chama API)
+            const mp3Res = await axios.get(`${CHAMA_BASE}/youtube/mp3`, {
+              params: {
+                url: videoUrl,
+                quality: '320kbps',
+                source: 'auto',
+                api_key: CHAMA_API
+              },
+              timeout: 60000
+            });
+
+            if (!mp3Res.data?.status || !mp3Res.data?.data?.direct_url) {
+              throw new Error(mp3Res.data?.message || 'MP3 link එක ලබාගන්න බැරි වුණා.');
+            }
+
+            const mp3Data = mp3Res.data.data;
+            const songTitle = mp3Data.title || 'Unknown Song';
+            const thumbnailUrl = mp3Data.thumbnail || 'https://i.ibb.co/Lz68N877/ping-1.jpg';
+            const downloadUrl = mp3Data.direct_url;
+
+            await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
+
+            // Audio Buffer එක download කිරීම
+            const audioBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 90000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              }
+            });
+
+            const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
+
+            const infoText = 
+`╭───〔 🎵 *MP3 DOWNLOADER* 〕───⊷
+│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
+╰──────────────────────────⊷
+> ✅ _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒆𝒅!_`;
+
+            await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoText
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, {
+              audio: Buffer.from(audioBuffer.data),
+              mimetype: 'audio/mpeg',
+              fileName: `${cleanTitle}.mp3`,
+              ptt: false
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('MP3 Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
           // ────────────────── SONG DOWNLOADER (Chama API) ──────────────────
         case 'song':
         case 'play': {
@@ -516,11 +596,11 @@ function setupCommandHandlers(socket, number) {
             // 🎨 Info Card එක යැවීම
             const infoText = 
 `╭───〔 🎵 *SONG DOWNLOADER* 〕───⊷
-│ 📌 *නම:* ${songTitle}
-│ ⏱️ *කාලය:* ${duration}
-│ 👤 *Channel:* ${channelName}
+│ 📌 *𝑻𝒊𝒕𝒍𝒆:* ${songTitle}
+│ ⏱️ *𝑫𝒖𝒓𝒊𝒏𝒈:* ${duration}
+│ 👤 *𝑪𝒉𝒂𝒏𝒏𝒆𝒍:* ${channelName}
 ╰──────────────────────────⊷
-> ⚡ _ගීතය Download වෙමින් පවතී, කරුණාකර රැඳී සිටින්න..._`;
+> 🪻 _𝑫𝒐𝒘𝒏𝒍𝒐𝒂𝒅𝒊𝒏𝒈..._`;
 
             const infoMsg = await socket.sendMessage(from, {
               image: { url: thumbnailUrl },
