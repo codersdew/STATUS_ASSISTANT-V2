@@ -224,8 +224,38 @@ async function getAutoReplies(number) {
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
-const userMenuState = new Map();
+const disconnectTracker = new Map(); // Tracks first disconnect time for 1-minute retry window
 const messageStore = new Map();
+
+// ──────────────── DELETE SESSION HELPER ─────────────────────────
+async function deleteEntireSession(sanitizedNumber) {
+  try {
+    const san = sanitizedNumber.replace(/[^0-9]/g, '');
+    disconnectTracker.delete(san);
+    reconnectInProgress.delete(san);
+
+    if (activeSockets.has(san)) {
+      try {
+        const sock = activeSockets.get(san);
+        sock.ev.removeAllListeners('connection.update');
+        sock.ev.removeAllListeners('messages.upsert');
+        sock.ws?.close();
+      } catch (e) {}
+      activeSockets.delete(san);
+    }
+
+    await removeSessionFromMongo(san);
+
+    const sessionPath = path.join(os.tmpdir(), `sakura_session_${san}`);
+    if (fs.existsSync(sessionPath)) {
+      await fs.remove(sessionPath).catch(() => {});
+    }
+    console.log(`🗑️ [Sakura DB] Session completely purged for +${san}`);
+  } catch (e) {
+    console.error('deleteEntireSession error:', e);
+  }
+}
+
 
 // ──────────────── SESSION CLEANUP HELPER ────────────────────────
 async function deleteEntireSession(sanitizedNumber) {
@@ -495,6 +525,38 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+          // ────────────────── STATUS REACT EMOJI SETTING ──────────────────
+        case 'setstatusemoji':
+        case 'setlikeemoji':
+        case 'statusemoji': {
+          if (!isOwnerUser) return;
+          const input = args.join(' ').trim();
+          if (!input) {
+            return await socket.sendMessage(from, {
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:*\n│ \`${prefix}setstatusemoji 🌸,❤️,🔥\`\n│ හෝ\n│ \`${prefix}setstatusemoji 🌸 ❤️ 🔥\`\n╰───────────────━⊷`
+            }, { quoted: msg });
+          }
+
+          // Emojis list එකක් බවට පත් කිරීම
+          const emojiList = input.includes(',')
+            ? input.split(',').map(e => e.trim()).filter(Boolean)
+            : input.split(/\s+/).filter(Boolean);
+
+          if (!emojiList.length) {
+            return await socket.sendMessage(from, { text: '❌ කරුණාකර වලංගු emoji එකක් හෝ කිහිපයක් ලබා දෙන්න.' }, { quoted: msg });
+          }
+
+          userCfg.AUTO_LIKE_EMOJI = emojiList;
+          await setUserConfigInMongo(sanitizedNum, userCfg);
+
+          await socket.sendMessage(from, {
+            text: `✅ *Status React Emojis Updated!*\n\n🌸 *නව Emojis:* ${emojiList.join(' ')}\n\n${botFooter}`
+          }, { quoted: msg });
+          break;
+        }
+
+        
+
         // ────────────────── LOGOUT / DELETE SESSION ──────────────────
         case 'logout':
         case 'delsession':
@@ -2001,31 +2063,64 @@ ${botFooter}`.trim();
   });
 }
 
-// ───────────────── AUTO-RESTART & LIFECYCLE ─────────────────────
+// ────────── AUTO-RESTART WITH 1-MINUTE RETRY GRACE PERIOD ──────────
 function setupAutoRestart(socket, number) {
   socket.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect } = update;
+    const san = number.replace(/[^0-9]/g, '');
+
+    // සාර්ථකව සම්බන්ධ වූ විට Failure Timer එක reset වේ
+    if (connection === 'open') {
+      disconnectTracker.delete(san);
+      activeSockets.set(san, socket);
+      await addNumberToMongo(san);
+      console.log(`🌸 [Sakura Connected] +${san} is active!`);
+      return;
+    }
+
     if (connection !== 'close') return;
 
-    const san = number.replace(/[^0-9]/g, '');
     const statusCode = lastDisconnect?.error?.output?.statusCode;
+    console.log(`⚠️ [Sakura Disconnect] +${san} Disconnected. Status Code: ${statusCode || 'Unknown'}`);
+
+    // WhatsApp Logout එකක් සිදුවුවහොත් පමණක් වහාම delete කරයි
     if (statusCode === DisconnectReason.loggedOut) {
-      console.log(`[Sakura] Session ${san} logged out.`);
+      console.log(`[Sakura] +${san} logged out permanently. Purging session.`);
+      disconnectTracker.delete(san);
       await deleteEntireSession(san);
       return;
     }
 
+    // Bad MAC හෝ Connection Drops සඳහා විනාඩි 1ක (60s) Grace Period එකක් ලබාදීම
+    const firstFailedTime = disconnectTracker.get(san) || Date.now();
+    if (!disconnectTracker.has(san)) {
+      disconnectTracker.set(san, firstFailedTime);
+    }
+
+    const elapsed = Date.now() - firstFailedTime;
+
+    // විනාඩියකට (60000ms) වඩා Reconnect වීමට නොහැකි වුවහොත් පමණක් Session Delete කරයි
+    if (elapsed >= 60000) {
+      console.log(`❌ [Sakura Timeout] +${san} failed to connect within 1 minute. Purging corrupted session.`);
+      disconnectTracker.delete(san);
+      await deleteEntireSession(san);
+      return;
+    }
+
+    // විනාඩියක් ගතවන තුරු තත්පර 5න් 5ට Reconnect කිරීමට උත්සාහ කරයි
     if (reconnectInProgress.has(san)) return;
     reconnectInProgress.add(san);
     activeSockets.delete(san);
 
-    console.log(`[Sakura] Auto reconnecting session ${san} in 5s...`);
+    const remainingSec = Math.max(0, Math.round((60000 - elapsed) / 1000));
+    console.log(`🔄 [Sakura] Retrying +${san} in 5s... (${remainingSec}s left before auto-purge)`);
+
     await delay(5000);
     try {
       const mockRes = { headersSent: false, send: () => {}, status: () => mockRes };
       await EmpirePair(san, mockRes);
     } catch (e) {
-      console.error(`Reconnect error for ${san}:`, e.message);
+      console.error(`Reconnect attempt error for ${san}:`, e.message);
     } finally {
       reconnectInProgress.delete(san);
     }
@@ -2036,7 +2131,7 @@ function setupAutoRestart(socket, number) {
 async function EmpirePair(number, res, isForce = false) {
   const sanitizedNumber = number.replace(/[^0-9]/g, '');
   const sessionPath = path.join(os.tmpdir(), `sakura_session_${sanitizedNumber}`);
-  await initMongo().catch(()=>{});
+  await initMongo().catch(() => {});
 
   if (isForce) {
     await deleteEntireSession(sanitizedNumber);
@@ -2046,7 +2141,7 @@ async function EmpirePair(number, res, isForce = false) {
       if (mongoDoc && mongoDoc.files) {
         fs.ensureDirSync(sessionPath);
         for (const [fname, content] of Object.entries(mongoDoc.files)) {
-          try { fs.writeFileSync(path.join(sessionPath, fname), content, 'utf8'); } catch(e) {}
+          try { fs.writeFileSync(path.join(sessionPath, fname), content, 'utf8'); } catch (e) {}
         }
       }
     } catch (e) {}
@@ -2071,10 +2166,10 @@ async function EmpirePair(number, res, isForce = false) {
     socketCreationTime.set(sanitizedNumber, Date.now());
 
     setupStatusHandlers(socket, sanitizedNumber);
-    setupGroupParticipantHandlers(socket, sanitizedNumber);
     setupCommandHandlers(socket, sanitizedNumber);
     setupAutoRestart(socket, sanitizedNumber);
 
+    // Pairing code ඉල්ලීම
     if (!socket.authState.creds.registered) {
       let code;
       try {
@@ -2085,11 +2180,10 @@ async function EmpirePair(number, res, isForce = false) {
       }
       if (!res.headersSent) res.send({ code });
     } else {
-      // If it's already registered, respond to prevent HTTP timeout
       if (!res.headersSent) {
-        res.send({ 
-          status: 'already_connected', 
-          message: 'This session is already registered. To re-pair, use ?force=true or /delete' 
+        res.send({
+          status: 'already_connected',
+          message: 'Session is active. Add &force=true to regenerate pairing code.'
         });
       }
     }
@@ -2103,15 +2197,6 @@ async function EmpirePair(number, res, isForce = false) {
           await saveCredsToMongo(sanitizedNumber, credsObj, state.keys, sessionPath);
         }
       } catch (err) {}
-    });
-
-    socket.ev.on('connection.update', async (update) => {
-      const { connection } = update;
-      if (connection === 'open') {
-        activeSockets.set(sanitizedNumber, socket);
-        await addNumberToMongo(sanitizedNumber);
-        console.log(`🌸 [Sakura Connected] +${sanitizedNumber} connected successfully!`);
-      }
     });
 
   } catch (error) {
@@ -2128,21 +2213,21 @@ router.get('/', async (req, res) => {
 
   const isForce = force === 'true' || force === '1' || reset === 'true' || reset === '1';
 
-  if (activeSockets.has(sanitized)) {
-    if (isForce) {
-      await deleteEntireSession(sanitized);
-    } else {
-      return res.send({ 
-        status: 'already_connected', 
-        message: `+${sanitized} is already active. To re-generate code, add &force=true` 
-      });
-    }
+  // අලුතින් Code එකක් ඉල්ලද්දී දැනට active නැත්නම් පරණ Session එක Purge කර අලුත් Code එකක් දෙයි
+  if (!activeSockets.has(sanitized)) {
+    await deleteEntireSession(sanitized);
+  } else if (isForce) {
+    await deleteEntireSession(sanitized);
+  } else {
+    return res.send({
+      status: 'already_connected',
+      message: `+${sanitized} is already active. To re-generate code, add &force=true`
+    });
   }
 
   await EmpirePair(number, res, isForce);
 });
 
-// Explicit session deletion / logout endpoint
 router.get('/delete', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
@@ -2167,8 +2252,8 @@ router.get('/ping', (req, res) => {
   res.status(200).send({ status: 'active', botName: config.BOT_NAME, activesession: activeSockets.size });
 });
 
-// Initialize DB and auto-reconnect existing bots on server boot
-initMongo().catch(()=>{});
+// Boot auto-reconnect
+initMongo().catch(() => {});
 (async () => {
   try {
     const nums = await getAllNumbersFromMongo();
