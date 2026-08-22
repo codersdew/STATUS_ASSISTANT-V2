@@ -509,22 +509,158 @@ function setupCommandHandlers(socket, number) {
  // ====================================================
 // 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 
 // ====================================================
-      case 'movie':
+      // ====================================================
+        // 🎬 MOVIE SEARCH & DOWNLOADER (KEZU / CHAMA API)
+        // ====================================================
+        case 'movie':
         case 'm': {
-          if (!args.length) {
-            return await reply(`*❪ ⚠️ INVALID USAGE ❫*\n\n🎬 *Example:*\n• ${prefix}movie avatar\n• ${prefix}m oppenheimer`);
+          const input = args.join(' ').trim();
+          const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 Minutes valid
+          const API_BASE = config.API_MAIN_URL1 ? config.API_MAIN_URL1.replace(/\/$/, '') : 'https://chama-movie-api.koyeb.app';
+          const API_KEY = config.API_KEY_1 || 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
+
+          if (!input) {
+            return await socket.sendMessage(from, {
+              text: `╭───〔 🎬 *MOVIE DOWNLOADER* 〕───⊷\n│ ⚠️ *භාවිතය:*\n│ • \`${prefix}movie <නම>\` (සර්ච් කිරීමට)\n│ • \`${prefix}movie <අංකය>\` (තේරීමට)\n│\n│ 💡 *උදා:* \`${prefix}movie avatar\`\n╰──────────────────────────⊷`
+            }, { quoted: msg });
           }
 
-          const query = args.join(' ');
-          await reply(`🔍 *Searching across all Movie Sources for:* _${query}_...`);
+          if (!global.movieSessions) global.movieSessions = {};
+          const session = global.movieSessions[from];
 
-          const API_BASE = "https://chama-movie-api.koyeb.app";
-          const API_KEY = "chama_api_c82b12fffda71170b553f662d39426ec";
+          const selectedNum = parseInt(input);
+          const isSelection = !isNaN(selectedNum) && String(selectedNum) === input;
+
+          // ─────────── STEP 2 & 3: NUMBER SELECTION ───────────
+          if (isSelection && session) {
+            const elapsed = Date.now() - session.timestamp;
+            if (elapsed > SESSION_TIMEOUT) {
+              delete global.movieSessions[from];
+              return await socket.sendMessage(from, { 
+                text: `⌛ *Session එක Expire වී ඇත.* කරුණාකර නැවත \`${prefix}movie <නම>\` ලෙස search කරන්න.` 
+              }, { quoted: msg });
+            }
+
+            // ── STEP 2: MOVIE ITEM SELECTION ──
+            if (session.step === 'SELECT_MOVIE') {
+              const choice = selectedNum - 1;
+              if (choice < 0 || choice >= session.results.length) {
+                return await socket.sendMessage(from, { 
+                  text: `❌ කරුණාකර 1 සිට ${session.results.length} අතර වලංගු අංකයක් ලබා දෙන්න.` 
+                }, { quoted: msg });
+              }
+
+              const selectedItem = session.results[choice];
+              const site = selectedItem.site;
+
+              await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+              try {
+                const infoEndpoint = site === 'moviebox' ? 'info' : 'infodl';
+                const detailsUrl = `${API_BASE}/api/v1/movie/${site}/${infoEndpoint}?q=${encodeURIComponent(selectedItem.link)}&api_key=${API_KEY}`;
+                const detailsResponse = await axios.get(detailsUrl, { timeout: 30000 });
+                const movieInfo = detailsResponse.data?.data || {};
+                const validDownloads = movieInfo.downloads || [];
+
+                if (!validDownloads.length) {
+                  return await socket.sendMessage(from, { 
+                    text: `❌ *No direct downloads found for this title!*\nවෙනත් source එකකින් තෝරා බලන්න.` 
+                  }, { quoted: msg });
+                }
+
+                // Update session state to STEP 3 (Select Quality)
+                global.movieSessions[from] = {
+                  step: 'SELECT_QUALITY',
+                  movieInfo,
+                  selectedItem,
+                  downloads: validDownloads,
+                  timestamp: Date.now()
+                };
+
+                const posterUrl = movieInfo.image || selectedItem.image || config.DEFAULT_LOGO;
+                let movieDetailsText = `╭───〔 🎬 *${(botName || 'MOVIE BOT').toUpperCase()} DETAILS* 〕───⊷\n`;
+                movieDetailsText += `│ 🎬 *Title:* ${movieInfo.title || selectedItem.title}\n`;
+                movieDetailsText += `│ ⭐ *IMDB:* ★ ${movieInfo.imdb || movieInfo.rating || 'N/A'}\n`;
+                movieDetailsText += `│ 📅 *Year:* ${movieInfo.year || 'N/A'}\n`;
+                movieDetailsText += `│ ⏳ *Duration:* ${movieInfo.duration || 'N/A'}\n`;
+                movieDetailsText += `│ 🎭 *Genres:* ${Array.isArray(movieInfo.genres) ? movieInfo.genres.join(', ') : (movieInfo.genres || 'N/A')}\n`;
+                movieDetailsText += `│ 🗿 *Source:* ${site.toUpperCase()}\n`;
+                movieDetailsText += `╰──────────────────────────⊷\n\n`;
+                movieDetailsText += `*👇 SELECT A QUALITY NUMBER 👇*\n\n`;
+
+                validDownloads.forEach((dl, i) => {
+                  const num = (i + 1) < 10 ? `0${i + 1}` : `${i + 1}`;
+                  movieDetailsText += `*${num}* ➜ 💎 _${dl.quality || dl.name || 'HD'}_ 💾 _${dl.size || 'N/A'}_\n`;
+                });
+
+                movieDetailsText += `\n> 💡 *Download කිරීමට අංකය Reply කරන්න:* \`${prefix}movie 1\``;
+                movieDetailsText += `\n${botFooter}`;
+
+                await socket.sendMessage(from, {
+                  image: { url: posterUrl },
+                  caption: movieDetailsText
+                }, { quoted: msg });
+
+              } catch (err) {
+                console.error('Movie Info Error:', err);
+                await socket.sendMessage(from, { 
+                  text: `❌ *විස්තර ලබාගැනීමේදී දෝෂයක් සිදු විය:* ${err.message}` 
+                }, { quoted: msg });
+              }
+              return;
+            }
+
+            // ── STEP 3: QUALITY SELECTION & DOWNLOAD ──
+            if (session.step === 'SELECT_QUALITY') {
+              const qChoice = selectedNum - 1;
+              if (qChoice < 0 || qChoice >= session.downloads.length) {
+                return await socket.sendMessage(from, { 
+                  text: `❌ කරුණාකර 1 සිට ${session.downloads.length} අතර quality අංකයක් ලබා දෙන්න.` 
+                }, { quoted: msg });
+              }
+
+              const selectedDl = session.downloads[qChoice];
+              const movieInfo = session.movieInfo || {};
+              const title = movieInfo.title || session.selectedItem?.title || 'Movie';
+              const dlQuality = selectedDl.quality || selectedDl.name || 'HD';
+              const cleanFileName = `${title.replace(/[\\/:*?"<>|]/g, '')} (${dlQuality}).mp4`;
+
+              await socket.sendMessage(from, { react: { text: '📤', key: msg.key } });
+              await socket.sendMessage(from, { 
+                text: `🎬 *Downloading & Uploading:* _${title} (${dlQuality})_...\n⏳ කරුණාකර රැඳී සිටින්න.` 
+              }, { quoted: msg });
+
+              try {
+                // Document එකක් ලෙස වීඩියෝව යැවීම
+                await socket.sendMessage(from, {
+                  document: { url: selectedDl.link },
+                  mimetype: 'video/mp4',
+                  fileName: cleanFileName,
+                  caption: `🎬 *${title}*\n📊 *Quality:* ${dlQuality}\n${botFooter}`
+                }, { quoted: msg });
+
+                await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+              } catch (e) {
+                // File Size එක විශාල නම් direct download link එක ලබා දීම
+                await socket.sendMessage(from, { 
+                  text: `⚠️ *File එක විශාල නිසා WhatsApp මඟින් direct upload කළ නොහැක.*\n\n📌 *Direct Download Link:*\n${selectedDl.link}\n\n${botFooter}` 
+                }, { quoted: msg });
+              }
+
+              delete global.movieSessions[from];
+              return;
+            }
+          }
+
+          // ─────────── STEP 1: INITIAL MOVIE SEARCH ───────────
+          const query = input;
+          await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
+          await socket.sendMessage(from, { text: `🔍 *Searching across all Movie Sources for:* _${query}_...` }, { quoted: msg });
 
           const sites = ["cinesubz", "sinhalasub", "thenkiri", "moviesublk", "baiscope", "cineru"];
           const promises = sites.map(site =>
-            axios.get(`${API_BASE}/api/v1/movie/${site}/search?q=${encodeURIComponent(query)}&api_key=${API_KEY}`)
-              .then(res => res.data.status && res.data.data ? res.data.data.map(item => ({ ...item, site })) : [])
+            axios.get(`${API_BASE}/api/v1/movie/${site}/search?q=${encodeURIComponent(query)}&api_key=${API_KEY}`, { timeout: 15000 })
+              .then(res => (res.data?.status && Array.isArray(res.data?.data)) ? res.data.data.map(item => ({ ...item, site })) : [])
               .catch(() => [])
           );
 
@@ -536,71 +672,40 @@ function setupCommandHandlers(socket, number) {
               if (i < arr.length) results.push(arr[i]);
             }
           }
-          results = results.slice(0, 30);
+          results = results.slice(0, 25);
 
           if (results.length === 0) {
-            return await reply(`😞 *No movie results found for:* _${query}_`);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            return await socket.sendMessage(from, { text: `😞 *No movie results found for:* _${query}_` }, { quoted: msg });
           }
 
-          let listText = `*❪ 🍿 ${botName.toUpperCase()} SEARCH 🍿 ❫*\n\n🎯 *Query:* _${query}_\n📊 *Results:* _${results.length} Items_\n\n*👇 SELECT A NUMBER 👇*\n\n`;
+          // Save search results to session
+          global.movieSessions[from] = {
+            step: 'SELECT_MOVIE',
+            results: results,
+            timestamp: Date.now()
+          };
+
+          let listText = `╭───〔 🍿 *${(botName || 'MOVIE BOT').toUpperCase()} SEARCH* 🍿 〕───⊷\n`;
+          listText += `│ 🎯 *Query:* _${query}_\n`;
+          listText += `│ 📊 *Results:* _${results.length} Items_\n`;
+          listText += `╰──────────────────────────⊷\n\n`;
+          listText += `*👇 SELECT A MOVIE NUMBER 👇*\n\n`;
+
           results.forEach((item, index) => {
-            const siteTag = item.site.toUpperCase();
+            const siteTag = item.site ? item.site.toUpperCase() : 'SITE';
             const typeIcon = item.type === 'tvshows' ? '📺' : '🎥';
             const num = (index + 1) < 10 ? `0${index + 1}` : `${index + 1}`;
-            listText += `*${num}* ➜ ${typeIcon} [_${siteTag}_] _${item.title.substring(0, 32)}_\n`;
+            const cleanTitle = (item.title || 'Untitled').substring(0, 35);
+            listText += `*${num}* ➜ ${typeIcon} [_${siteTag}_] _${cleanTitle}_\n`;
           });
-          listText += botFooter;
 
-          const sentMsg = await socket.sendMessage(from, { text: listText }, { quoted: msg });
-          const userReply = await waitForUserReply(sentMsg.key.id);
-          if (!userReply) return;
+          listText += `\n> 💬 *චිත්‍රපටය තෝරාගැනීමට:* \`${prefix}movie <number>\``;
+          listText += `\n> ⏰ _වලංගු කාලය: මිනිත්තු 5 කි_`;
+          listText += `\n${botFooter}`;
 
-          const choice = parseInt(userReply.text) - 1;
-          if (isNaN(choice) || choice < 0 || choice >= results.length) {
-            return await socket.sendMessage(from, { text: '⚠️ *Invalid Selection Number!*' }, { quoted: userReply.m });
-          }
-
-          const selectedItem = results[choice];
-          const site = selectedItem.site;
-
-          await socket.sendMessage(from, { react: { text: '⏳', key: userReply.key } });
-          const infoEndpoint = site === 'moviebox' ? 'info' : 'infodl';
-          const detailsResponse = await axios.get(`${API_BASE}/api/v1/movie/${site}/${infoEndpoint}?q=${encodeURIComponent(selectedItem.link)}&api_key=${API_KEY}`);
-          const movieInfo = detailsResponse.data?.data || {};
-          const validDownloads = movieInfo.downloads || [];
-
-          if (validDownloads.length === 0) {
-            return await socket.sendMessage(from, { text: '❌ *No direct downloads found for this title!*' }, { quoted: userReply.m });
-          }
-
-          const posterUrl = movieInfo.image || selectedItem.image || config.DEFAULT_LOGO;
-          const movieDetailsText = `*❪ 🎬 ${botName.toUpperCase()} DETAILS 🎬 ❫*\n\n🎬 *Title:* ${movieInfo.title || selectedItem.title}\n⭐ *IMDB:* ★ ${movieInfo.imdb || movieInfo.rating || 'N/A'}\n📅 *Year:* ${movieInfo.year || 'N/A'}\n⏳ *Duration:* ${movieInfo.duration || 'N/A'}\n🎭 *Genres:* ${Array.isArray(movieInfo.genres) ? movieInfo.genres.join(', ') : movieInfo.genres || 'N/A'}\n🗿 *Source:* ${site.toUpperCase()}\n\n*👇 SELECT A QUALITY NUMBER TO DOWNLOAD 👇*\n\n` +
-            validDownloads.map((dl, i) => `*${(i + 1) < 10 ? '0' + (i + 1) : (i + 1)}* ➜ 💎 _${dl.quality || dl.name || 'HD'}_ 💾 _${dl.size || 'N/A'}_`).join('\n') + botFooter;
-
-          const qMsg = await socket.sendMessage(from, { image: { url: posterUrl }, caption: movieDetailsText }, { quoted: userReply.m });
-          const qUserReply = await waitForUserReply(qMsg.key.id);
-          if (!qUserReply) return;
-
-          const qChoice = parseInt(qUserReply.text) - 1;
-          if (isNaN(qChoice) || qChoice < 0 || qChoice >= validDownloads.length) return;
-
-          const selectedDl = validDownloads[qChoice];
-          const dlQuality = selectedDl.quality || selectedDl.name || 'HD';
-
-          await socket.sendMessage(from, { react: { text: '📤', key: qUserReply.key } });
-          await socket.sendMessage(from, { text: `🎬 *Uploading ${movieInfo.title} (${dlQuality})...*` }, { quoted: qUserReply.m });
-
-          try {
-            await socket.sendMessage(from, {
-              document: { url: selectedDl.link },
-              mimetype: 'video/mp4',
-              fileName: `${movieInfo.title} (${dlQuality}).mp4`,
-              caption: `🎬 *${movieInfo.title}*\n📊 *Quality:* ${dlQuality}${botFooter}`
-            }, { quoted: qUserReply.m });
-            await socket.sendMessage(from, { react: { text: '✅', key: qUserReply.key } });
-          } catch (e) {
-            await socket.sendMessage(from, { text: `📌 *Direct Download Link:*\n${selectedDl.link}${botFooter}` }, { quoted: qUserReply.m });
-          }
+          await socket.sendMessage(from, { text: listText }, { quoted: msg });
+          await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
           break;
         }
           // ────────────────── INSTANT MULTI-FORWARD (ANY MEDIA / FILE / TEXT) ──────────────────
