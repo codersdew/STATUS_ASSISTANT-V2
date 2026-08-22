@@ -855,42 +855,57 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-        case 'system':
-        case 'p': {
-          const start = Date.now();
-          await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
-          const latency = Date.now() - start;
+        // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
+case 'ping':
+case 'p': {
+  const start = Date.now();
+  await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
+  const latency = Date.now() - start;
 
-          // Fake Verified WhatsApp Status Quoted Message (Purple status bar)
-          const fstatus = {
-            key: {
-              participant: '0@s.whatsapp.net',
-              remoteJid: 'status@broadcast',
-              fromMe: false,
-              id: 'WHATSAPP_STATUS'
-            },
-            message: {
-              conversation: 'smart automation.'
-            }
-          };
+  // Fake Verified WhatsApp Status Quoted Message (Purple status bar + Group Icon)
+  const fstatus = {
+    key: {
+      participant: '0@s.whatsapp.net',
+      remoteJid: 'status@broadcast',
+      fromMe: false,
+      id: 'WHATSAPP_STATUS'
+    },
+    message: {
+      conversation: '👥 smart automation.' // මෙතැනට 👥 emoji එක එක් කර ඇත
+    }
+  };
 
-          const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName} - Ultra Fast*`;
+  // Normal WhatsApp වල පෙනීමට Image URL එක Buffer එකක් කරගැනීම
+  let thumbBuffer;
+  try {
+    const axios = require('axios');
+    const imgUrl = botLogo || config.DEFAULT_LOGO || 'https://i.ibb.co/cS3MjzWj/IMG-20260707-WA0014.jpg';
+    const response = await axios.get(imgUrl, { responseType: 'arraybuffer' });
+    thumbBuffer = Buffer.from(response.data);
+  } catch (e) {
+    // Local image එකක් භාවිත කරන්නේ නම්:
+    // const fs = require('fs');
+    // thumbBuffer = fs.readFileSync('./path_to_logo.jpg');
+  }
 
-          await socket.sendMessage(from, {
-            text: pingText,
-            contextInfo: {
-              externalAdReply: {
-                title: "🏓 PONG!",
-                body: "View details",
-                thumbnailUrl: botLogo || config.DEFAULT_LOGO,
-                sourceUrl: `https://whatsapp.com/channel/${(userCfg.NEWSLETTER_JID || config.NEWSLETTER_JID).split('@')[0]}`,
-                mediaType: 1,
-                renderLargerThumbnail: false
-              }
-            }
-          }, { quoted: fstatus });
-          break;
-        }
+  const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'Whiteshadow MD'} - Ultra Fast*`;
+
+  await socket.sendMessage(from, {
+    text: pingText,
+    contextInfo: {
+      externalAdReply: {
+        title: "🏓 PONG!",
+        body: "View details",
+        showAdAttribution: true, // නිල් පාට Verified Badge එක එන්නේ මෙයින්
+        thumbnail: thumbBuffer, // Normal WhatsApp වල පෙනීමට URL වෙනුවට Buffer ලබාදෙන්න
+        sourceUrl: `https://whatsapp.com/channel/${(userCfg.NEWSLETTER_JID || config.NEWSLETTER_JID || '').split('@')[0]}`,
+        mediaType: 1,
+        renderLargerThumbnail: false // රවුම්/කුඩා thumbnail එකක් ලෙස දිස්වීමට
+      }
+    }
+  }, { quoted: fstatus });
+  break;
+}
         // ────────────────── MENU COMMAND ──────────────────
         case 'menu':
         case 'help':
