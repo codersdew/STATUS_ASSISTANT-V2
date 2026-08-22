@@ -856,8 +856,8 @@ function setupCommandHandlers(socket, number) {
         }
 // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
         // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-case 'ping':
-case 'p': {
+case 'system':
+case 'p1': {
   const start = Date.now();
   await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
   const latency = Date.now() - start;
