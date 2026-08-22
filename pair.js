@@ -548,6 +548,84 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+          // ────────────────── RENAME DOCUMENT / FILE ──────────────────
+        case 'rename':
+        case 'rn':
+        case 'renamefile': {
+          const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+          let newName = args.join(' ').trim();
+
+          if (!quoted) {
+            return await socket.sendMessage(from, {
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:*\n│ ඕනෑම Document එකකට/File එකකට Reply කර:\n│ 🔹 \`${prefix}rename <අලුත් නම>\`\n│\n│ 📝 *Ex:* \`${prefix}rename Episode 01.mkv\`\n╰───────────────━⊷`
+            }, { quoted: msg });
+          }
+
+          if (!newName) {
+            return await socket.sendMessage(from, {
+              text: `❌ කරුණාකර file එක සඳහා ලබාදෙන අලුත් නම ඇතුළත් කරන්න.\n*Ex:* \`${prefix}rename Sample Document.pdf\``
+            }, { quoted: msg });
+          }
+
+          let cleanQuoted = quoted;
+          if (cleanQuoted.ephemeralMessage) cleanQuoted = cleanQuoted.ephemeralMessage.message;
+          if (cleanQuoted.viewOnceMessageV2) cleanQuoted = cleanQuoted.viewOnceMessageV2.message;
+          if (cleanQuoted.viewOnceMessage) cleanQuoted = cleanQuoted.viewOnceMessage.message;
+
+          const targetDoc = cleanQuoted.documentWithCaptionMessage?.message?.documentMessage 
+            || cleanQuoted.documentMessage 
+            || cleanQuoted.videoMessage 
+            || cleanQuoted.audioMessage 
+            || cleanQuoted.imageMessage;
+
+          if (!targetDoc) {
+            return await socket.sendMessage(from, {
+              text: '❌ කරුණාකර වලංගු Document එකකට හෝ File එකකට Reply කරන්න.'
+            }, { quoted: msg });
+          }
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            const origFileName = targetDoc.fileName || '';
+            const mimetype = targetDoc.mimetype || 'application/octet-stream';
+
+            // Original extension එක ලබාගැනීම (නැතහොත් mime type එකෙන් ලබාගැනීම)
+            let origExt = '';
+            if (origFileName && origFileName.includes('.')) {
+              origExt = '.' + origFileName.split('.').pop();
+            }
+
+            // User අලුත් නමට extension එකක් නොදුන්නේ නම් original extension එක එකතු කිරීම
+            if (origExt && !newName.toLowerCase().endsWith(origExt.toLowerCase()) && !newName.includes('.')) {
+              newName += origExt;
+            }
+
+            // File name එකේ තිබිය නොහැකි සංකේත ඉවත් කිරීම
+            const cleanFileName = newName.replace(/[\\/:*?"<>|]/g, '');
+
+            const buffer = await downloadMediaMessage(cleanQuoted);
+
+            if (!buffer || buffer.length === 0) {
+              throw new Error('File එක Download කරගැනීමට නොහැකි විය.');
+            }
+
+            await socket.sendMessage(from, {
+              document: buffer,
+              mimetype: mimetype,
+              fileName: cleanFileName,
+              caption: `📄 *Renamed File:* \`${cleanFileName}\`\n\n${botFooter}`
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Rename Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *Rename Error:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
         // ====================================================
         // 🎬 MOVIE SEARCH & DOWNLOADER (KEZU / CHAMA API)
         // ====================================================
