@@ -1,4 +1,6 @@
-
+// ====================================================
+// 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 (#𝘗𝘙𝘖𝘍𝘐𝘟 ) 𝘈𝘐
+// ====================================================
 
 const express = require('express');
 const fs = require('fs-extra');
@@ -224,7 +226,7 @@ async function getAutoReplies(number) {
 const activeSockets = new Map();
 const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
-const userMenuState = new Map();
+const userMenuState = new Map(); // Stores { id: msgId, timestamp: Date.now() }
 const messageStore = new Map();
 const pendingInactivityTimers = new Map();
 
@@ -350,7 +352,6 @@ function setupStatusHandlers(socket, sessionNumber) {
             { react: { text: randomEmoji, key: msg.key } },
             { statusJidList: [msg.key.participant] }
           );
-          console.log(`🌸 [Status React Success] ${randomEmoji} on ${msg.key.participant}`);
         } catch (error) {
           console.warn('⚠️ Failed to react to status:', error.message);
         }
@@ -481,27 +482,55 @@ function setupCommandHandlers(socket, number) {
     if (userCfg.AUTO_RECORDING === 'true') await socket.sendPresenceUpdate('recording', from);
 
     const quotedMsgId = messageContent?.extendedTextMessage?.contextInfo?.stanzaId;
-    const lastMenuId = userMenuState.get(from);
     let isCmd = body.startsWith(prefix);
     let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
     let args = body.trim().split(/ +/).slice(1);
 
-    // ────────────── NON-PREFIX SMART NUMBER SELECTION ──────────────
+    // ────────────── SMART CONFLICT-FREE NUMBER SELECTION ──────────────
     if (!isCmd && /^[0-9]+$/.test(body)) {
       const choice = body.trim();
-      
-      // 1. Movie Session Selection (Direct 1, 2, 3...)
-      if (global.movieSessions && global.movieSessions[from] && (Date.now() - global.movieSessions[from].timestamp < 5 * 60 * 1000)) {
+      const movieSes = global.movieSessions?.[from];
+      const pinSes = global.pinSessions?.[from];
+      const menuSes = userMenuState.get(from);
+
+      const isMovieValid = movieSes && (Date.now() - movieSes.timestamp < 5 * 60 * 1000);
+      const isPinValid = pinSes && (Date.now() - pinSes.timestamp < 5 * 60 * 1000);
+      const isMenuValid = menuSes && (Date.now() - (menuSes.timestamp || 0) < 5 * 60 * 1000);
+
+      let targetAction = null;
+
+      // 1. Quoted check (Exact Reply Priority)
+      if (quotedMsgId) {
+        if (isMovieValid && movieSes.messageId === quotedMsgId) {
+          targetAction = 'movie';
+        } else if (isPinValid && pinSes.messageId === quotedMsgId) {
+          targetAction = 'pin';
+        } else if (isMenuValid && menuSes.id === quotedMsgId) {
+          targetAction = 'menu';
+        }
+      }
+
+      // 2. Non-quoted check (Latest Timestamp Priority)
+      if (!targetAction) {
+        const candidates = [];
+        if (isMovieValid) candidates.push({ type: 'movie', time: movieSes.timestamp });
+        if (isPinValid) candidates.push({ type: 'pin', time: pinSes.timestamp });
+        if (isMenuValid) candidates.push({ type: 'menu', time: menuSes.timestamp });
+
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.time - a.time);
+          targetAction = candidates[0].type;
+        }
+      }
+
+      // Route according to matched action
+      if (targetAction === 'movie') {
         command = 'movie';
         args = [choice];
-      }
-      // 2. Pinterest Session Selection (Direct 1, 2, 3...)
-      else if (global.pinSessions && global.pinSessions[from] && (Date.now() - global.pinSessions[from].timestamp < 5 * 60 * 1000)) {
+      } else if (targetAction === 'pin') {
         command = 'pin';
         args = [choice];
-      }
-      // 3. Menu Navigation
-      else if (quotedMsgId === lastMenuId || !quotedMsgId) {
+      } else if (targetAction === 'menu') {
         switch (choice) {
           case '1': command = 'dlmenu'; break;
           case '2': command = 'groupmenu'; break;
@@ -531,7 +560,7 @@ function setupCommandHandlers(socket, number) {
 
           if (!input) {
             return await socket.sendMessage(from, {
-              text: `╭───〔 🎬 *MOVIE DOWNLOADER* 〕───⊷\n│ ⚠️ *help:*\n│ • \`${prefix}movie <name>\` (to search)\n│ • \`1, 2, 3...\` (reply a number)\n│\n│ 💡 *Exා:* \`${prefix}movie avatar\`\n╰──────────────────────────⊷`
+              text: `╭───〔 🎬 *MOVIE DOWNLOADER* 〕───⊷\n│ ⚠️ *help:*\n│ • \`${prefix}movie <name>\` (to search)\n│ • \`1, 2, 3...\` (reply a number)\n│\n│ 💡 *Ex:* \`${prefix}movie avatar\`\n╰──────────────────────────⊷`
             }, { quoted: msg });
           }
 
@@ -578,14 +607,6 @@ function setupCommandHandlers(socket, number) {
                   }, { quoted: msg });
                 }
 
-                global.movieSessions[from] = {
-                  step: 'SELECT_QUALITY',
-                  movieInfo,
-                  selectedItem,
-                  downloads: validDownloads,
-                  timestamp: Date.now()
-                };
-
                 const posterUrl = movieInfo.image || selectedItem.image || config.DEFAULT_LOGO;
                 let movieDetailsText = `╭───〔 🎬 *${(botName || 'MOVIE BOT').toUpperCase()} DETAILS* 〕───⊷\n`;
                 movieDetailsText += `│ 🎬 *Title:* ${movieInfo.title || selectedItem.title}\n`;
@@ -605,10 +626,19 @@ function setupCommandHandlers(socket, number) {
                 movieDetailsText += `\n> 💡 *Download කිරීමට අංකය පමණක් Reply කරන්න (උදා: 1)*`;
                 movieDetailsText += `\n${botFooter}`;
 
-                await socket.sendMessage(from, {
+                const sentQualityMsg = await socket.sendMessage(from, {
                   image: { url: posterUrl },
                   caption: movieDetailsText
                 }, { quoted: msg });
+
+                global.movieSessions[from] = {
+                  step: 'SELECT_QUALITY',
+                  movieInfo,
+                  selectedItem,
+                  downloads: validDownloads,
+                  messageId: sentQualityMsg?.key?.id,
+                  timestamp: Date.now()
+                };
 
               } catch (err) {
                 console.error('Movie Info Error:', err);
@@ -685,12 +715,6 @@ function setupCommandHandlers(socket, number) {
             return await socket.sendMessage(from, { text: `😞 *No movie results found for:* _${query}_` }, { quoted: msg });
           }
 
-          global.movieSessions[from] = {
-            step: 'SELECT_MOVIE',
-            results: results,
-            timestamp: Date.now()
-          };
-
           let listText = `╭───〔 🍿 *${(botName || 'MOVIE BOT').toUpperCase()} SEARCH* 🍿 〕───⊷\n`;
           listText += `│ 🎯 *Query:* _${query}_\n`;
           listText += `│ 📊 *Results:* _${results.length} Items_\n`;
@@ -709,12 +733,220 @@ function setupCommandHandlers(socket, number) {
           listText += `\n> ⏰ _වලංගු කාලය: මිනිත්තු 5 කි_`;
           listText += `\n${botFooter}`;
 
-          await socket.sendMessage(from, {
+          const sentMovieMsg = await socket.sendMessage(from, {
             image: { url: botLogo },
             caption: listText
           }, { quoted: msg });
 
+          global.movieSessions[from] = {
+            step: 'SELECT_MOVIE',
+            results: results,
+            messageId: sentMovieMsg?.key?.id,
+            timestamp: Date.now()
+          };
+
           await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+          break;
+        }
+
+        // ────────────────── SHORT MODDED CODE-BLOCK PING ──────────────────
+        case 'ping':
+        case 'p': {
+          const start = Date.now();
+          await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
+          const latency = Date.now() - start;
+          const uptime = process.uptime();
+          const runtime = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+          const ram = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+
+          let speedTier = '🚀 LIGHTNING';
+          if (latency > 250) speedTier = '⚡ ULTRA FAST';
+          if (latency > 600) speedTier = '🐢 NORMAL';
+
+          const moddedPing = "```" + `
+「 🌸 SAKURA SPEED 🌸 」
+│
+│ 🪻 SPEED   : ${latency}ms [${speedTier}]
+│ ⏱️ RUNTIME : ${runtime}
+│ 💾 RAM     : ${ram} MB
+│ 🌷 BOT     : ${botName}
+│ 👑 MASTER  : ${config.OWNER_NAME}
+` + "```";
+
+          await socket.sendMessage(from, { text: moddedPing.trim() }, { quoted: msg });
+          break;
+        }
+
+        // ────────────────── MENU COMMAND ──────────────────
+        case 'menu':
+        case 'help':
+        case 'panel': {
+          await socket.sendMessage(from, { react: { text: "🌸", key: msg.key } });
+          const uptime = process.uptime();
+          const runtime = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
+          const ramUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+
+          const mainText = `*│* 🌸 *${botName}* 
+*╭─────────────···▸*
+*│* 👤 *User:* @${senderNumber}
+*│* ⏱️ *Uptime:* ${runtime}
+*│* 💾 *RAM:* ${ramUsage} MB
+*│* 🔣 *Prefix:* \`${prefix}\`
+*╰──────────────···▸*
+
+🔢 *REPLY WITH A CATEGORY NUMBER:*
+
+*╭─『 📚 ALL CATEGORIES 』*
+*│ [1]* 📥 *Downloaders* 
+*│ [2]* 👥 *Group Admin & Protection*
+*│ [3]* 🛠️ *Utilities & Tools* 
+*│ [4]* 🎭 *Fun & Games*
+*│ [5]* ⚙️ *Settings & Bot Toggles*
+*│ [6]* 📢 *Channel & Newsletter Suite*
+*│ [7]* 🎨 *Bot Customization*
+*╰──────────────────────*
+
+> 💡 *Quick Action:* Reply directly with *1*, *2*, *3*, *4*, *5*, *6*, or *7* to view commands.
+${botFooter}`.trim();
+
+          const sentMenu = await sendFancyMsg(socket, from, {
+            image: { url: botLogo },
+            caption: mainText,
+            mentions: [nowsender]
+          }, msg, userCfg);
+
+          if (sentMenu?.key?.id) {
+            userMenuState.set(from, { id: sentMenu.key.id, timestamp: Date.now() });
+          }
+          break;
+        }
+
+        case 'dlmenu': {
+          const dlText = `
+*╭───❰ 📥 DOWNLOAD MENU ❱───*
+*│* 🎵 \`${prefix}song <name/url>\` - Download MP3
+*│* 🎬 \`${prefix}video <name/url>\` - Download MP4
+*│* 🎵 \`${prefix}tiktok <url>\` - TikTok No Watermark
+*│* 📘 \`${prefix}fb <url>\` - Facebook Video
+*│* 📷 \`${prefix}ig <url>\` - Instagram Downloader
+*│* 📌 \`${prefix}pin <query>\` - Pinterest Downloader
+*│* 🌐 \`${prefix}tourl\` - File to Direct Link
+*│* 🌸 \`${prefix}movie <name>\` - 23 Site Movie Hub
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: dlText }, msg, userCfg);
+          break;
+        }
+
+        case 'groupmenu': {
+          const gText = `
+*╭───❰ 👥 GROUP COMMANDS ❱───*
+*│* 🛡️ \`${prefix}antilink on/off\` - Auto delete invite links
+*│* 🤖 \`${prefix}antibot on/off\` - Auto kick other bots
+*│* 🤬 \`${prefix}antibadword on/off\` - Filter bad words
+*│* ➕ \`${prefix}addbadword <word>\` - Add word to list
+*│* ➖ \`${prefix}delbadword <word>\` - Remove bad word
+*│* 👋 \`${prefix}welcome on/off\` - New member greetings
+*│* 🚪 \`${prefix}goodbye on/off\` - Leaving member message
+*│* 📢 \`${prefix}tagall <text>\` - Mention everyone
+*│* 👻 \`${prefix}hidetag <text>\` - Ghost mention
+*│* 👑 \`${prefix}promote @user\` - Give Admin
+*│* 👤 \`${prefix}demote @user\` - Remove Admin
+*│* 🚫 \`${prefix}kick @user\` - Remove participant
+*│* 🔒 \`${prefix}mute\` / \`${prefix}unmute\` - Group chat lock
+*│* 🔗 \`${prefix}glink\` - Get Group Invite Link
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: gText }, msg, userCfg);
+          break;
+        }
+
+        case 'utilmenu': {
+          const uText = `
+*╭───❰ 🛠️ UTILITY COMMANDS ❱───*
+*│* 👁️ \`${prefix}vv\` / \`${prefix}readviewonce\` - Retrieve View-Once Media
+*│* 📥 \`${prefix}savestatus\` / \`${prefix}ss\` - Save quoted Status
+*│* 🎨 \`${prefix}sticker\` / \`${prefix}s\` - Make Sticker from Photo/Video
+*│* 🏷️ \`${prefix}take <pack> | <author>\` - Rename Sticker
+*│* 🆔 \`${prefix}jid\` - Get Chat or User JID
+*│* 👤 \`${prefix}userinfo @user\` - Get User Profile & DP
+*│* 🚪 \`${prefix}logout\` - Log Out & Clear Session
+*│* ➕ \`${prefix}addreply <text|audio|image|video>|<word>|<content/url>\`
+*│* ➖ \`${prefix}delreply <trigger_word>\`
+*│* 📋 \`${prefix}listreply\` - View custom auto-replies
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: uText }, msg, userCfg);
+          break;
+        }
+
+        case 'funmenu': {
+          const fText = `
+*╭───❰ 🎭 FUN & GAMES ❱───*
+*│* 💖 \`${prefix}ship @user1 @user2\` - Love Compatibility %
+*│* 😂 \`${prefix}joke\` - Random Funny Joke
+*│* 💡 \`${prefix}fact\` - Interesting Random Fact
+*│* 🔥 \`${prefix}dare\` - Random Dare challenge
+*│* 🤫 \`${prefix}truth\` - Random Truth question
+*│* ✊ \`${prefix}rps <rock|paper|scissors>\` - Mini Game
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: fText }, msg, userCfg);
+          break;
+        }
+
+        case 'settingsmenu':
+        case 'settings': {
+          const sText = `
+*╭───❰ ⚙️ SETTINGS PANEL ❱───*
+*│* 👁️ *Auto Status View:* ${userCfg.AUTO_VIEW_STATUS || 'true'}
+*│* ❤️ *Auto Status React:* ${userCfg.AUTO_LIKE_STATUS || 'true'}
+*│* ✍️ *Auto Typing:* ${userCfg.AUTO_TYPING || 'false'}
+*│* 🎙️ *Auto Recording:* ${userCfg.AUTO_RECORDING || 'false'}
+*│* 🗑️ *Anti Delete:* ${userCfg.ANTI_DELETE || 'off'}
+*│* 🔣 *Current Prefix:* \`${prefix}\`
+*│* 🌸 *Status Emojis:* ${(userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI).join(' ')}
+*╰────────────────────────*
+
+*🔧 TOGGLE SHORTCUTS:*
+• \`${prefix}autostatusview on/off\`
+• \`${prefix}autostatusreact on/off\`
+• \`${prefix}autotyping on/off\`
+• \`${prefix}autorecording on/off\`
+• \`${prefix}antidelete on/off\`
+• \`${prefix}setstatusemoji <emojis>\`
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: sText }, msg, userCfg);
+          break;
+        }
+
+        case 'channelmenu': {
+          const chText = `
+*╭───❰ 📢 CHANNEL COMMANDS ❱───*
+*│* ℹ️ \`${prefix}channelinfo <jid/url>\` - Newsletter Info
+*│* 💖 \`${prefix}channelreact <jid> <server_msg_id> <emoji>\`
+*│* 🚀 \`${prefix}channelpost <jid> <message>\` - Post to Channel
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: chText }, msg, userCfg);
+          break;
+        }
+
+        case 'customizemenu': {
+          const cText = `
+*╭───❰ 🎨 CUSTOMIZE BOT ❱───*
+*│* 🏷️ \`${prefix}setbotname <New Name>\`
+*│* 🖼️ \`${prefix}setlogo <Image Direct URL>\`
+*│* 🔣 \`${prefix}setprefix <symbol>\`
+*│* 📜 \`${prefix}setfooter <Footer Text>\`
+*│* 🌸 \`${prefix}setstatusemoji <emoji1,emoji2>\`
+*│* ⚡ \`${prefix}ping\` - Check Latency
+*│* 🖥️ \`${prefix}system\` - Host Stats
+*│* 👑 \`${prefix}owner\` - Owner Contact Info
+*│* 📍 \`${prefix}alive\` - Bot Status
+*╰────────────────────────*
+${botFooter}`;
+          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: cText }, msg, userCfg);
           break;
         }
 
@@ -796,7 +1028,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── MASTER OWNER: SESSIONS LIST & REMOTE CONFIG ──────────────────
+        // ────────────────── MASTER OWNER CONTROLS ──────────────────
         case 'sessions':
         case 'listsessions':
         case 'bots': {
@@ -964,11 +1196,6 @@ function setupCommandHandlers(socket, number) {
               const limited = results.slice(0, 25);
               if (!global.pinSessions) global.pinSessions = {};
 
-              global.pinSessions[from] = { 
-                results: limited, 
-                timestamp: Date.now()
-              };
-
               let listText = `╭───〔 📌 *PINTEREST RESULTS* 〕───⊷\n│ 🔎 *Query:* ${input}\n╰──────────────────────────⊷\n\n`;
               limited.forEach((item, i) => {
                 const title = item.title || item.image || `Result ${i + 1}`;
@@ -976,7 +1203,13 @@ function setupCommandHandlers(socket, number) {
               });
               listText += `\n> 💬 *අවශ්‍ය අංකය පමණක් Reply කරන්න (1-${limited.length})*`;
 
-              await socket.sendMessage(from, { text: listText }, { quoted: msg });
+              const sentPinMsg = await socket.sendMessage(from, { text: listText }, { quoted: msg });
+              global.pinSessions[from] = { 
+                results: limited, 
+                messageId: sentPinMsg?.key?.id,
+                timestamp: Date.now()
+              };
+
               await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
 
             } catch (err) {
@@ -1779,176 +2012,6 @@ ${botFooter}`;
           break;
         }
 
-        case 'menu':
-        case 'help':
-        case 'panel': {
-          await socket.sendMessage(from, { react: { text: "🌸", key: msg.key } });
-          const uptime = process.uptime();
-          const runtime = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m`;
-          const ramUsage = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
-
-          const mainText = `*│* 🌸 *${botName}* 
-*╭─────────────···▸*
-*│* 👤 *User:* @${senderNumber}
-*│* ⏱️ *Uptime:* ${runtime}
-*│* 💾 *RAM:* ${ramUsage} MB
-*│* 🔣 *Prefix:* \`${prefix}\`
-*╰──────────────···▸*
-
-🔢 *REPLY WITH A CATEGORY NUMBER:*
-
-*╭─『 📚 ALL CATEGORIES 』*
-*│ [1]* 📥 *Downloaders* 
-*│ [2]* 👥 *Group Admin & Protection*
-*│ [3]* 🛠️ *Utilities & Tools* 
-*│ [4]* 🎭 *Fun & Games*
-*│ [5]* ⚙️ *Settings & Bot Toggles*
-*│ [6]* 📢 *Channel & Newsletter Suite*
-*│ [7]* 🎨 *Bot Customization*
-*╰──────────────────────*
-
-> 💡 *Quick Action:* Reply directly with *1*, *2*, *3*, *4*, *5*, *6*, or *7* to view commands.
-${botFooter}`.trim();
-
-          const sentMenu = await sendFancyMsg(socket, from, {
-            image: { url: botLogo },
-            caption: mainText,
-            mentions: [nowsender]
-          }, msg, userCfg);
-
-          if (sentMenu?.key?.id) userMenuState.set(from, sentMenu.key.id);
-          break;
-        }
-
-        case 'dlmenu': {
-          const dlText = `
-*╭───❰ 📥 DOWNLOAD MENU ❱───*
-*│* 🎵 \`${prefix}song <name/url>\` - Download MP3
-*│* 🎬 \`${prefix}video <name/url>\` - Download MP4
-*│* 🎵 \`${prefix}tiktok <url>\` - TikTok No Watermark
-*│* 📘 \`${prefix}fb <url>\` - Facebook Video
-*│* 📷 \`${prefix}ig <url>\` - Instagram Downloader
-*│* 📌 \`${prefix}pin <query>\` - Pinterest Downloader
-*│* 🌐 \`${prefix}tourl\` - File to Direct Link
-*│* 🌸 \`${prefix}movie <name>\` - 23 Site Movie Hub
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: dlText }, msg, userCfg);
-          break;
-        }
-
-        case 'groupmenu': {
-          const gText = `
-*╭───❰ 👥 GROUP COMMANDS ❱───*
-*│* 🛡️ \`${prefix}antilink on/off\` - Auto delete invite links
-*│* 🤖 \`${prefix}antibot on/off\` - Auto kick other bots
-*│* 🤬 \`${prefix}antibadword on/off\` - Filter bad words
-*│* ➕ \`${prefix}addbadword <word>\` - Add word to list
-*│* ➖ \`${prefix}delbadword <word>\` - Remove bad word
-*│* 👋 \`${prefix}welcome on/off\` - New member greetings
-*│* 🚪 \`${prefix}goodbye on/off\` - Leaving member message
-*│* 📢 \`${prefix}tagall <text>\` - Mention everyone
-*│* 👻 \`${prefix}hidetag <text>\` - Ghost mention
-*│* 👑 \`${prefix}promote @user\` - Give Admin
-*│* 👤 \`${prefix}demote @user\` - Remove Admin
-*│* 🚫 \`${prefix}kick @user\` - Remove participant
-*│* 🔒 \`${prefix}mute\` / \`${prefix}unmute\` - Group chat lock
-*│* 🔗 \`${prefix}glink\` - Get Group Invite Link
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: gText }, msg, userCfg);
-          break;
-        }
-
-        case 'utilmenu': {
-          const uText = `
-*╭───❰ 🛠️ UTILITY COMMANDS ❱───*
-*│* 👁️ \`${prefix}vv\` / \`${prefix}readviewonce\` - Retrieve View-Once Media
-*│* 📥 \`${prefix}savestatus\` / \`${prefix}ss\` - Save quoted Status
-*│* 🎨 \`${prefix}sticker\` / \`${prefix}s\` - Make Sticker from Photo/Video
-*│* 🏷️ \`${prefix}take <pack> | <author>\` - Rename Sticker
-*│* 🆔 \`${prefix}jid\` - Get Chat or User JID
-*│* 👤 \`${prefix}userinfo @user\` - Get User Profile & DP
-*│* 🚪 \`${prefix}logout\` - Log Out & Clear Session
-*│* ➕ \`${prefix}addreply <text|audio|image|video>|<word>|<content/url>\`
-*│* ➖ \`${prefix}delreply <trigger_word>\`
-*│* 📋 \`${prefix}listreply\` - View custom auto-replies
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: uText }, msg, userCfg);
-          break;
-        }
-
-        case 'funmenu': {
-          const fText = `
-*╭───❰ 🎭 FUN & GAMES ❱───*
-*│* 💖 \`${prefix}ship @user1 @user2\` - Love Compatibility %
-*│* 😂 \`${prefix}joke\` - Random Funny Joke
-*│* 💡 \`${prefix}fact\` - Interesting Random Fact
-*│* 🔥 \`${prefix}dare\` - Random Dare challenge
-*│* 🤫 \`${prefix}truth\` - Random Truth question
-*│* ✊ \`${prefix}rps <rock|paper|scissors>\` - Mini Game
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: fText }, msg, userCfg);
-          break;
-        }
-
-        case 'settingsmenu':
-        case 'settings': {
-          const sText = `
-*╭───❰ ⚙️ SETTINGS PANEL ❱───*
-*│* 👁️ *Auto Status View:* ${userCfg.AUTO_VIEW_STATUS || 'true'}
-*│* ❤️ *Auto Status React:* ${userCfg.AUTO_LIKE_STATUS || 'true'}
-*│* ✍️ *Auto Typing:* ${userCfg.AUTO_TYPING || 'false'}
-*│* 🎙️ *Auto Recording:* ${userCfg.AUTO_RECORDING || 'false'}
-*│* 🗑️ *Anti Delete:* ${userCfg.ANTI_DELETE || 'off'}
-*│* 🔣 *Current Prefix:* \`${prefix}\`
-*│* 🌸 *Status Emojis:* ${(userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI).join(' ')}
-*╰────────────────────────*
-
-*🔧 TOGGLE SHORTCUTS:*
-• \`${prefix}autostatusview on/off\`
-• \`${prefix}autostatusreact on/off\`
-• \`${prefix}autotyping on/off\`
-• \`${prefix}autorecording on/off\`
-• \`${prefix}antidelete on/off\`
-• \`${prefix}setstatusemoji <emojis>\`
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: sText }, msg, userCfg);
-          break;
-        }
-
-        case 'channelmenu': {
-          const chText = `
-*╭───❰ 📢 CHANNEL COMMANDS ❱───*
-*│* ℹ️ \`${prefix}channelinfo <jid/url>\` - Newsletter Info
-*│* 💖 \`${prefix}channelreact <jid> <server_msg_id> <emoji>\`
-*│* 🚀 \`${prefix}channelpost <jid> <message>\` - Post to Channel
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: chText }, msg, userCfg);
-          break;
-        }
-
-        case 'customizemenu': {
-          const cText = `
-*╭───❰ 🎨 CUSTOMIZE BOT ❱───*
-*│* 🏷️ \`${prefix}setbotname <New Name>\`
-*│* 🖼️ \`${prefix}setlogo <Image Direct URL>\`
-*│* 🔣 \`${prefix}setprefix <symbol>\`
-*│* 📜 \`${prefix}setfooter <Footer Text>\`
-*│* 🌸 \`${prefix}setstatusemoji <emoji1,emoji2>\`
-*│* ⚡ \`${prefix}ping\` - Check Latency
-*│* 🖥️ \`${prefix}system\` - Host Stats
-*│* 👑 \`${prefix}owner\` - Owner Contact Info
-*│* 📍 \`${prefix}alive\` - Bot Status
-*╰────────────────────────*
-${botFooter}`;
-          await sendFancyMsg(socket, from, { image: { url: botLogo }, caption: cText }, msg, userCfg);
-          break;
-        }
-
         case 'vv':
         case 'readviewonce': {
           const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -2257,17 +2320,6 @@ ${botFooter}`;
           break;
         }
 
-        // ────────────────── SHORT PING ──────────────────
-        case 'ping': {
-          const start = Date.now();
-          await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
-          const latency = Date.now() - start;
-          await socket.sendMessage(from, {
-            text: `🌸 *${botName}* | ⚡ *Ping:* ${latency}ms`
-          }, { quoted: msg });
-          break;
-        }
-
         case 'alive': {
           await socket.sendMessage(from, { react: { text: "🌸", key: msg.key } });
           const uptime = process.uptime();
@@ -2512,3 +2564,4 @@ initMongo().catch(()=>{});
 })();
 
 module.exports = router;
+
