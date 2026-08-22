@@ -854,7 +854,43 @@ function setupCommandHandlers(socket, number) {
           await socket.sendMessage(from, { text: moddedPing.trim() }, { quoted: msg });
           break;
         }
+// ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
+        case 'system':
+        case 'p': {
+          const start = Date.now();
+          await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
+          const latency = Date.now() - start;
 
+          // Fake Verified WhatsApp Status Quoted Message (Purple status bar)
+          const fstatus = {
+            key: {
+              participant: '0@s.whatsapp.net',
+              remoteJid: 'status@broadcast',
+              fromMe: false,
+              id: 'WHATSAPP_STATUS'
+            },
+            message: {
+              conversation: 'smart automation.'
+            }
+          };
+
+          const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName} - Ultra Fast*`;
+
+          await socket.sendMessage(from, {
+            text: pingText,
+            contextInfo: {
+              externalAdReply: {
+                title: "🏓 PONG!",
+                body: "View details",
+                thumbnailUrl: botLogo || config.DEFAULT_LOGO,
+                sourceUrl: `https://whatsapp.com/channel/${(userCfg.NEWSLETTER_JID || config.NEWSLETTER_JID).split('@')[0]}`,
+                mediaType: 1,
+                renderLargerThumbnail: false
+              }
+            }
+          }, { quoted: fstatus });
+          break;
+        }
         // ────────────────── MENU COMMAND ──────────────────
         case 'menu':
         case 'help':
