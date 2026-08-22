@@ -31,7 +31,13 @@ app.use('/', async (req, res, next) => {
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`
-KEZU KOLLA ON FIRE ! 🫡
+KEZU BOT RUNNING ✅
+
+░██    ░██         ░███
+░██    ░██      ░██   ░██
+░██████        ░██     ░██
+░██    ░██      ░██   ░██
+░██     ░██  ██   ░███    ██
 
 
 Server running on http://localhost:` + PORT)
