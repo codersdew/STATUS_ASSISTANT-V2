@@ -764,8 +764,8 @@ function setupCommandHandlers(socket, number) {
           if (latency > 600) speedTier = '🐢 NORMAL';
 
           const moddedPing = "```" + `
-「 🌸 SAKURA SPEED 🌸 」
-│
+「 🌸 SAKURA BOT SPEED 🌸 」
+
 │ 🪻 SPEED   : ${latency}ms [${speedTier}]
 │ ⏱️ RUNTIME : ${runtime}
 │ 💾 RAM     : ${ram} MB
