@@ -506,491 +506,103 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
-      // ==============================================================================
-// 🎬 ALL MOVIE SITES SWITCH-CASE (DIRECT COPY & PASTE FOR BAILEYS BOT)
-// ==============================================================================
+ // ====================================================
+// 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 
+// ====================================================
+      case 'movie':
+        case 'm': {
+          if (!args.length) {
+            return await reply(`*❪ ⚠️ INVALID USAGE ❫*\n\n🎬 *Example:*\n• ${prefix}movie avatar\n• ${prefix}m oppenheimer`);
+          }
 
-case 'cinesubz':
-case 'cs':
-case 'sinhalasub':
-case 'ss':
-case 'mflix':
-case 'mf':
-case 'baiscope':
-case 'bs':
-case 'thenkiri':
-case 'tk':
-case 'moviesublk':
-case 'mslk':
-case 'cineru':
-case 'cr':
-case 'moviebox':
-case 'mb':
-case 'subzcom':
-case 'szc':
-case 'subz':
-case 'sz':
-case 'lksub':
-case 'ls':
-case 'piratelk':
-case 'plk':
-case 'sinhalatop':
-case 'st':
-case 'pupilvideo':
-case 'pv':
-case 'chithrapata':
-case 'cp':
-case 'cinemx':
-case 'cmx':
-case 'cinevibes':
-case 'cvb':
-case 'bestmovies':
-case 'bm':
-case 'ridomovies':
-case 'rido':
-case 'tamilyogi':
-case 'ty':
-case 'isaimini':
-case 'im':
-case 'ibomtv':
-case 'ib':
-case 'subtitlecat':
-case 'scat':
-case 'cmovie':
-case 'movie':
-case 'allmovie': {
-    const from = sender;
-    const axios = require('axios');
-    const fs = require('fs');
-    const path = require('path');
-    const { exec } = require('child_process');
+          const query = args.join(' ');
+          await reply(`🔍 *Searching across all Movie Sources for:* _${query}_...`);
 
-    const API_BASE = "https://chama-movie-api.koyeb.app";
-    const API_KEY = "chama_api_7f4ac9c10c749bcedbd4437a066009a2";
+          const API_BASE = "https://chama-movie-api.koyeb.app";
+          const API_KEY = "chama_api_c82b12fffda71170b553f662d39426ec";
 
-    const cmdSiteMap = {
-        'cinesubz': 'cinesubz', 'cs': 'cinesubz',
-        'sinhalasub': 'sinhalasub', 'ss': 'sinhalasub',
-        'mflix': 'mflix', 'mf': 'mflix',
-        'baiscope': 'baiscope', 'bs': 'baiscope',
-        'thenkiri': 'thenkiri', 'tk': 'thenkiri',
-        'moviesublk': 'moviesublk', 'mslk': 'moviesublk',
-        'cineru': 'cineru', 'cr': 'cineru',
-        'moviebox': 'moviebox', 'mb': 'moviebox',
-        'subzcom': 'subzcom', 'szc': 'subzcom',
-        'subz': 'subz', 'sz': 'subz',
-        'lksub': 'lksub', 'ls': 'lksub',
-        'piratelk': 'piratelk', 'plk': 'piratelk',
-        'sinhalatop': 'sinhalatop', 'st': 'sinhalatop',
-        'pupilvideo': 'pupilvideo', 'pv': 'pupilvideo',
-        'chithrapata': 'chithrapata', 'cp': 'chithrapata',
-        'cinemx': 'cinemx', 'cmx': 'cinemx',
-        'cinevibes': 'cinevibes', 'cvb': 'cinevibes',
-        'bestmovies': 'bestmovies', 'bm': 'bestmovies',
-        'ridomovies': 'ridomovies', 'rido': 'ridomovies',
-        'tamilyogi': 'tamilyogi', 'ty': 'tamilyogi',
-        'isaimini': 'isaimini', 'im': 'isaimini',
-        'ibomtv': 'ibomtv', 'ib': 'ibomtv',
-        'subtitlecat': 'subtitlecat', 'scat': 'subtitlecat'
-    };
+          const sites = ["cinesubz", "sinhalasub", "thenkiri", "moviesublk", "baiscope", "cineru"];
+          const promises = sites.map(site =>
+            axios.get(`${API_BASE}/api/v1/movie/${site}/search?q=${encodeURIComponent(query)}&api_key=${API_KEY}`)
+              .then(res => res.data.status && res.data.data ? res.data.data.map(item => ({ ...item, site })) : [])
+              .catch(() => [])
+          );
 
-    const cleanCmd = (command || '').toLowerCase().replace(/^[./!#$]/, '').trim();
-    let defaultSite = cmdSiteMap[cleanCmd] || null;
-
-    try {
-        const extractMessageText = (m) => {
-            if (!m || !m.message) return '';
-            let msg = m.message;
-            if (msg.ephemeralMessage) msg = msg.ephemeralMessage.message || msg;
-            if (msg.viewOnceMessage) msg = msg.viewOnceMessage.message || msg;
-            if (msg.viewOnceMessageV2) msg = msg.viewOnceMessageV2.message || msg;
-            if (msg.documentWithCaptionMessage) msg = msg.documentWithCaptionMessage.message || msg;
-
-            return (
-                msg.conversation ||
-                msg.extendedTextMessage?.text ||
-                msg.imageMessage?.caption ||
-                msg.videoMessage?.caption ||
-                msg.documentMessage?.caption ||
-                msg.buttonsResponseMessage?.selectedButtonId ||
-                msg.templateButtonReplyMessage?.selectedId ||
-                msg.listResponseMessage?.singleSelectReply?.selectedRowId ||
-                ''
-            ).trim();
-        };
-
-        const waitForReply = (chatJid, filterFn, timeoutMs = 180000) => {
-            return new Promise((resolve) => {
-                const handler = (update) => {
-                    const m = update.messages?.[0];
-                    if (!m || !m.message) return;
-                    if (m.key.remoteJid !== chatJid) return;
-                    const body = extractMessageText(m);
-                    let msgObj = m.message;
-                    if (msgObj.ephemeralMessage) msgObj = msgObj.ephemeralMessage.message || msgObj;
-                    const quotedId = msgObj?.extendedTextMessage?.contextInfo?.stanzaId || msgObj?.imageMessage?.contextInfo?.stanzaId;
-                    if (filterFn(body, quotedId, m)) {
-                        socket.ev.off('messages.upsert', handler);
-                        clearTimeout(timer);
-                        resolve({ m, body, quotedId });
-                    }
-                };
-                const timer = setTimeout(() => {
-                    socket.ev.off('messages.upsert', handler);
-                    resolve(null);
-                }, timeoutMs);
-                socket.ev.on('messages.upsert', handler);
-            });
-        };
-
-        // Parse Target JID & Movie Query
-        let targetJidInput = args[0] || '.';
-        let movieQuery = "";
-
-        if (targetJidInput === '.' || targetJidInput.toLowerCase() === 'here' || targetJidInput.includes('@') || targetJidInput.includes('whatsapp.com/channel/')) {
-            movieQuery = args.slice(1).join(' ').trim();
-        } else {
-            targetJidInput = '.';
-            movieQuery = args.join(' ').trim();
-        }
-
-        if (!movieQuery) {
-            return await socket.sendMessage(from, {
-                text: `⚠️ *කරුණාකර Movie නම ලබා දෙන්න!*\n\n📝 *Format:* \`.${cleanCmd} <target_jid / .> <movie_name>\`\n*Example:* \`.${cleanCmd} . Avatar\``
-            }, { quoted: msg });
-        }
-
-        // Target Resolution
-        let targetJid = targetJidInput;
-        if (targetJid === '.' || targetJid.toLowerCase() === 'here') {
-            targetJid = from;
-        } else if (targetJid.includes('whatsapp.com/channel/')) {
-            const inviteCode = targetJid.split('whatsapp.com/channel/')[1].split('/')[0].split('?')[0];
-            try {
-                const metadata = await socket.newsletterMetadata('invite', inviteCode);
-                targetJid = metadata.id;
-            } catch (err) {
-                return await socket.sendMessage(from, { text: `❌ *Failed to resolve Channel link:* _${err.message}_` }, { quoted: msg });
-            }
-        } else if (!targetJid.includes('@')) {
-            if (/^\d{12,}$/.test(targetJid)) targetJid = `${targetJid}@newsletter`;
-            else targetJid = `${targetJid.replace(/[^0-9]/g, '')}@s.whatsapp.net`;
-        }
-
-        let selectedSites = [];
-        let siteLabel = "";
-
-        // If .cmovie / .allmovie -> show site selection menu
-        if (!defaultSite) {
-            const siteMenuText = `❪ SELECT MOVIE SOURCE / SITE ❫\n\n🔍 Movie Query: ${movieQuery}\n🎯 Target Chat: \`${targetJid}\`\n\n01 ➜ 🎬 CINESUBZ\n02 ➜ 🎬 SINHALASUB\n03 ➜ 🎬 MFLIX (K-DRAMAS)\n04 ➜ 🎬 THENKIRI\n05 ➜ 🎬 MOVIESUBLK\n06 ➜ 🎬 BAISCOPE\n07 ➜ 🎬 CINERU\n08 ➜ 🎬 MOVIEBOX\n09 ➜ 🎬 TAMILYOGI\n10 ➜ 🎬 IBOMMA\n11 ➜ 🌐 ALL SITES (SEARCH ALL)\n\n👇 REPLY WITH A NUMBER (1-11) TO CHOOSE SITE 👇\n\n> 🌸`;
-
-            await socket.sendMessage(from, { text: siteMenuText }, { quoted: msg });
-
-            const siteReply = await waitForReply(from, (body) => {
-                const num = parseInt(body);
-                return !isNaN(num) && num >= 1 && num <= 11;
-            });
-            if (!siteReply) return;
-
-            const siteChoiceNum = parseInt(siteReply.body);
-            const siteMap = {
-                1: ['cinesubz'],
-                2: ['sinhalasub'],
-                3: ['mflix'],
-                4: ['thenkiri'],
-                5: ['moviesublk'],
-                6: ['baiscope'],
-                7: ['cineru'],
-                8: ['moviebox'],
-                9: ['tamilyogi'],
-                10: ['ibomtv'],
-                11: ['cinesubz', 'sinhalasub', 'mflix', 'thenkiri', 'moviesublk', 'baiscope', 'cineru', 'moviebox', 'tamilyogi']
-            };
-
-            selectedSites = siteMap[siteChoiceNum];
-            siteLabel = siteChoiceNum === 11 ? "ALL SITES" : selectedSites[0].toUpperCase();
-        } else {
-            selectedSites = [defaultSite];
-            siteLabel = defaultSite.toUpperCase();
-        }
-
-        // Search Phase
-        await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
-        await socket.sendMessage(from, { text: `🔍 *Searching "${movieQuery}" on ${siteLabel}...*\n⚡ _Please wait a moment..._` }, { quoted: msg });
-
-        const searchUrlForSite = (s) => {
-            if (s === 'chithrapata') return `${API_BASE}/api/v1/chithrapata/search?q=${encodeURIComponent(movieQuery)}&api_key=${API_KEY}`;
-            if (s === 'subtitlecat') return `${API_BASE}/api/v1/subtitles/subtitlecat/search?q=${encodeURIComponent(movieQuery)}&api_key=${API_KEY}`;
-            return `${API_BASE}/api/v1/movie/${s}/search?q=${encodeURIComponent(movieQuery)}&api_key=${API_KEY}`;
-        };
-
-        const promises = selectedSites.map(s => 
-            axios.get(searchUrlForSite(s), { timeout: 15000 })
-                .then(res => {
-                    const data = res.data?.data || res.data || [];
-                    return Array.isArray(data) ? data.map(item => ({ ...item, site: s })) : [];
-                })
-                .catch(() => [])
-        );
-
-        const resultsArrays = await Promise.all(promises);
-        let results = [];
-        const maxLen = Math.max(...resultsArrays.map(arr => arr.length), 0);
-        for (let i = 0; i < maxLen; i++) {
+          const resultsArrays = await Promise.all(promises);
+          let results = [];
+          const maxLen = Math.max(...resultsArrays.map(arr => arr.length), 0);
+          for (let i = 0; i < maxLen; i++) {
             for (const arr of resultsArrays) {
-                if (i < arr.length) results.push(arr[i]);
+              if (i < arr.length) results.push(arr[i]);
             }
-        }
-        results = results.slice(0, 30);
+          }
+          results = results.slice(0, 30);
 
-        if (results.length === 0) {
-            return await socket.sendMessage(from, {
-                text: `❌ *No movie results found on ${siteLabel} for:* _${movieQuery}_`
-            }, { quoted: msg });
-        }
+          if (results.length === 0) {
+            return await reply(`😞 *No movie results found for:* _${query}_`);
+          }
 
-        // Results Menu
-        let listText = `*❪ MOVIE SEARCH RESULTS (${siteLabel}) ❫*\n\n🔍 *Movie Query:* _${movieQuery}_\n🎯 *Target Chat:* \`${targetJid}\`\n📊 *Results Found:* ${results.length}\n\n*👇 REPLY WITH NUMBER TO CHOOSE MOVIE 👇*\n\n`;
-
-        results.forEach((item, index) => {
+          let listText = `*❪ 🍿 ${botName.toUpperCase()} SEARCH 🍿 ❫*\n\n🎯 *Query:* _${query}_\n📊 *Results:* _${results.length} Items_\n\n*👇 SELECT A NUMBER 👇*\n\n`;
+          results.forEach((item, index) => {
             const siteTag = item.site.toUpperCase();
             const typeIcon = item.type === 'tvshows' ? '📺' : '🎥';
             const num = (index + 1) < 10 ? `0${index + 1}` : `${index + 1}`;
-            const title = item.title || item.name || 'Untitled';
-            listText += `*${num}* ➜ ${typeIcon} [_${siteTag}_] _${title.substring(0, 35)}_\n`;
-        });
+            listText += `*${num}* ➜ ${typeIcon} [_${siteTag}_] _${item.title.substring(0, 32)}_\n`;
+          });
+          listText += botFooter;
 
-        listText += `\n> 🌸`;
-        await socket.sendMessage(from, { text: listText }, { quoted: msg });
+          const sentMsg = await socket.sendMessage(from, { text: listText }, { quoted: msg });
+          const userReply = await waitForUserReply(sentMsg.key.id);
+          if (!userReply) return;
 
-        const movieReply = await waitForReply(from, (body) => {
-            const choice = parseInt(body) - 1;
-            return !isNaN(choice) && choice >= 0 && choice < results.length;
-        });
-        if (!movieReply) return;
+          const choice = parseInt(userReply.text) - 1;
+          if (isNaN(choice) || choice < 0 || choice >= results.length) {
+            return await socket.sendMessage(from, { text: '⚠️ *Invalid Selection Number!*' }, { quoted: userReply.m });
+          }
 
-        const choice = parseInt(movieReply.body) - 1;
-        const selectedItem = results[choice];
-        const site = selectedItem.site;
-        let mm = movieReply.m;
+          const selectedItem = results[choice];
+          const site = selectedItem.site;
 
-        await socket.sendMessage(from, { react: { text: '⏳', key: mm.key } });
-        await socket.sendMessage(from, { text: `🎬 *Fetching Quality Options from ${site.toUpperCase()}...*\n⚡ _Please wait a moment..._` }, { quoted: mm });
+          await socket.sendMessage(from, { react: { text: '⏳', key: userReply.key } });
+          const infoEndpoint = site === 'moviebox' ? 'info' : 'infodl';
+          const detailsResponse = await axios.get(`${API_BASE}/api/v1/movie/${site}/${infoEndpoint}?q=${encodeURIComponent(selectedItem.link)}&api_key=${API_KEY}`);
+          const movieInfo = detailsResponse.data?.data || {};
+          const validDownloads = movieInfo.downloads || [];
 
-        const postLink = selectedItem.link || selectedItem.url || selectedItem.href || selectedItem.post_url;
-        const infoUrl = site === 'chithrapata'
-            ? `${API_BASE}/api/v1/chithrapata/infodl?url=${encodeURIComponent(postLink)}&api_key=${API_KEY}`
-            : (site === 'subtitlecat'
-                ? `${API_BASE}/api/v1/subtitles/subtitlecat/infodl?url=${encodeURIComponent(postLink)}&api_key=${API_KEY}`
-                : `${API_BASE}/api/v1/movie/${site}/infodl?q=${encodeURIComponent(postLink)}&api_key=${API_KEY}`);
+          if (validDownloads.length === 0) {
+            return await socket.sendMessage(from, { text: '❌ *No direct downloads found for this title!*' }, { quoted: userReply.m });
+          }
 
-        const detailsResponse = await axios.get(infoUrl, { timeout: 25000 });
-        const movieInfo = detailsResponse.data?.data || detailsResponse.data || {};
-        let validDownloads = movieInfo?.downloads || (Array.isArray(movieInfo) ? movieInfo : []);
-        const episodes = movieInfo?.episodes || [];
+          const posterUrl = movieInfo.image || selectedItem.image || config.DEFAULT_LOGO;
+          const movieDetailsText = `*❪ 🎬 ${botName.toUpperCase()} DETAILS 🎬 ❫*\n\n🎬 *Title:* ${movieInfo.title || selectedItem.title}\n⭐ *IMDB:* ★ ${movieInfo.imdb || movieInfo.rating || 'N/A'}\n📅 *Year:* ${movieInfo.year || 'N/A'}\n⏳ *Duration:* ${movieInfo.duration || 'N/A'}\n🎭 *Genres:* ${Array.isArray(movieInfo.genres) ? movieInfo.genres.join(', ') : movieInfo.genres || 'N/A'}\n🗿 *Source:* ${site.toUpperCase()}\n\n*👇 SELECT A QUALITY NUMBER TO DOWNLOAD 👇*\n\n` +
+            validDownloads.map((dl, i) => `*${(i + 1) < 10 ? '0' + (i + 1) : (i + 1)}* ➜ 💎 _${dl.quality || dl.name || 'HD'}_ 💾 _${dl.size || 'N/A'}_`).join('\n') + botFooter;
 
-        // TV Series Handling
-        if ((!validDownloads || validDownloads.length === 0) && episodes && episodes.length > 0) {
-            let modeText = `*❪ TV SERIES DOWNLOAD OPTIONS ❫*\n\n📺 *TV Series:* _${movieInfo?.title || selectedItem.title}_\n🎯 *Target Chat:* \`${targetJid}\`\n🗿 *Source Site:* ${site.toUpperCase()}\n📊 *Total Episodes:* ${episodes.length}\n\n*1️⃣* ➜ 📦 *DOWNLOAD ALL EPISODES (BULK)*\n*2️⃣* ➜ 🎬 *SELECT SINGLE EPISODE*\n\n*👇 REPLY WITH A NUMBER (1 OR 2) 👇*\n\n> 🌸`;
-            await socket.sendMessage(from, { text: modeText }, { quoted: mm });
+          const qMsg = await socket.sendMessage(from, { image: { url: posterUrl }, caption: movieDetailsText }, { quoted: userReply.m });
+          const qUserReply = await waitForUserReply(qMsg.key.id);
+          if (!qUserReply) return;
 
-            const modeReply = await waitForReply(from, (body) => ['1', '2'].includes(body));
-            if (!modeReply) return;
-            mm = modeReply.m;
+          const qChoice = parseInt(qUserReply.text) - 1;
+          if (isNaN(qChoice) || qChoice < 0 || qChoice >= validDownloads.length) return;
 
-            if (modeReply.body === '1') {
-                // Bulk Mode
-                await socket.sendMessage(from, { react: { text: '📦', key: mm.key } });
-                await socket.sendMessage(from, { text: `📦 *Starting Auto Bulk Download of ALL ${episodes.length} Episodes...*\n⚡ _Sending episodes in background!_` }, { quoted: mm });
+          const selectedDl = validDownloads[qChoice];
+          const dlQuality = selectedDl.quality || selectedDl.name || 'HD';
 
-                (async () => {
-                    const posterUrl = movieInfo.image || selectedItem.image || "https://chama-movie-api.koyeb.app/assets/chama_logo-K0qFVJ-7.png";
-                    const seriesTitle = movieInfo.title || selectedItem.title;
-                    const tvDetailsText = `*❪ TV SERIES DETAILS ❫*\n\n📺 *${seriesTitle}*\n⭐ *IMDB* ➜ ★ ${movieInfo.imdb || movieInfo.rating || 'N/A'}\n📅 *Year* ➜ ${movieInfo.year || 'N/A'}\n📊 *Total Episodes* ➜ ${episodes.length}\n🗿 *Source Site* ➜ ${site.toUpperCase()}\n\n> 🌸`;
-                    await socket.sendMessage(targetJid, { image: { url: posterUrl }, caption: tvDetailsText }).catch(() => {});
+          await socket.sendMessage(from, { react: { text: '📤', key: qUserReply.key } });
+          await socket.sendMessage(from, { text: `🎬 *Uploading ${movieInfo.title} (${dlQuality})...*` }, { quoted: qUserReply.m });
 
-                    for (let i = 0; i < episodes.length; i++) {
-                        const ep = episodes[i];
-                        const epName = ep.episode_name || ep.name || ep.title || `Episode ${i + 1}`;
-                        const epUrl = ep.episode_url || ep.url || ep.link;
-
-                        try {
-                            const epRes = await axios.get(`${API_BASE}/api/v1/movie/${site}/infodl?q=${encodeURIComponent(epUrl)}&api_key=${API_KEY}`, { timeout: 20000 });
-                            const epData = epRes.data?.data;
-                            const epDls = Array.isArray(epData) ? epData : (epData?.downloads || []);
-                            if (epDls.length > 0) {
-                                const dlUrl = epDls[0].link || epDls[0].url;
-                                const quality = epDls[0].quality || epDls[0].size || 'HD';
-                                const dlFileName = `${seriesTitle} - ${epName} (${quality}).mp4`;
-
-                                try {
-                                    await socket.sendMessage(targetJid, {
-                                        document: { url: dlUrl },
-                                        mimetype: 'video/mp4',
-                                        fileName: dlFileName,
-                                        caption: `🎬 *${seriesTitle}*\n📌 *${epName}*\n📊 *Quality:* ${quality}\n\n> 🌸`
-                                    });
-                                } catch (e) {
-                                    await socket.sendMessage(targetJid, { text: `📌 *${epName}* (${quality}) Direct Link:\n${dlUrl}` });
-                                }
-                            }
-                        } catch (epErr) {
-                            console.error(`[Bulk Ep ${i+1} err]:`, epErr.message);
-                        }
-                    }
-                })().catch(console.error);
-                return;
-            } else {
-                // Single Episode Mode
-                let epText = `*❪ SELECT TV SERIES EPISODE ❫*\n\n📺 *TV Series:* _${movieInfo?.title || selectedItem.title}_\n🎯 *Target Chat:* \`${targetJid}\`\n🗿 *Source Site:* ${site.toUpperCase()}\n📊 *Total Episodes:* ${episodes.length}\n\n*👇 REPLY WITH EPISODE NUMBER (1-${episodes.length}) 👇*\n\n`;
-                episodes.forEach((ep, idx) => {
-                    const num = (idx + 1) < 10 ? `0${idx + 1}` : `${idx + 1}`;
-                    const epName = ep.episode_name || ep.name || ep.title || `Episode ${idx + 1}`;
-                    epText += `*${num}* ➜ 📺 *${epName}*\n`;
-                });
-                epText += `\n> 🌸`;
-
-                await socket.sendMessage(from, { text: epText }, { quoted: mm });
-                const epReply = await waitForReply(from, (body) => {
-                    const num = parseInt(body) - 1;
-                    return !isNaN(num) && num >= 0 && num < episodes.length;
-                });
-                if (!epReply) return;
-
-                mm = epReply.m;
-                const selectedEp = episodes[parseInt(epReply.body) - 1];
-                const epUrl = selectedEp.episode_url || selectedEp.url || selectedEp.link;
-
-                await socket.sendMessage(from, { react: { text: '⏳', key: mm.key } });
-                const epRes = await axios.get(`${API_BASE}/api/v1/movie/${site}/infodl?q=${encodeURIComponent(epUrl)}&api_key=${API_KEY}`, { timeout: 20000 });
-                const epData = epRes.data?.data;
-                validDownloads = Array.isArray(epData) ? epData : (epData?.downloads || []);
-                movieInfo.title = `${movieInfo.title || selectedItem.title} - ${selectedEp.episode_name || selectedEp.title || 'Episode'}`;
-            }
+          try {
+            await socket.sendMessage(from, {
+              document: { url: selectedDl.link },
+              mimetype: 'video/mp4',
+              fileName: `${movieInfo.title} (${dlQuality}).mp4`,
+              caption: `🎬 *${movieInfo.title}*\n📊 *Quality:* ${dlQuality}${botFooter}`
+            }, { quoted: qUserReply.m });
+            await socket.sendMessage(from, { react: { text: '✅', key: qUserReply.key } });
+          } catch (e) {
+            await socket.sendMessage(from, { text: `📌 *Direct Download Link:*\n${selectedDl.link}${botFooter}` }, { quoted: qUserReply.m });
+          }
+          break;
         }
-
-        if (!validDownloads || validDownloads.length === 0) {
-            return await socket.sendMessage(from, { text: `❌ *No download links found for this movie on ${site.toUpperCase()}!*` }, { quoted: mm });
-        }
-
-        const videoDls = validDownloads.filter(d => d.quality !== 'SUB' && !d.title?.toLowerCase().includes('subtitle') && !d.name?.toLowerCase().includes('subtitle'));
-        const dlOptions = videoDls.length > 0 ? videoDls : validDownloads;
-        const posterUrl = movieInfo.image || selectedItem.image || "https://chama-movie-api.koyeb.app/assets/chama_logo-K0qFVJ-7.png";
-        const movieTitle = movieInfo.title || selectedItem.title;
-
-        // Quality Menu
-        let qText = `*❪ CHOOSE MOVIE QUALITY ❫*\n\n🎬 *Movie:* _${movieTitle}_\n🎯 *Target Chat:* \`${targetJid}\`\n🗿 *Source Site:* ${site.toUpperCase()}\n\n*👇 SELECT A QUALITY NUMBER 👇*\n\n`;
-        dlOptions.forEach((dl, idx) => {
-            const num = (idx + 1) < 10 ? `0${idx + 1}` : `${idx + 1}`;
-            const qName = dl.quality || dl.name || dl.title || `Quality ${idx + 1}`;
-            const fSize = dl.size || dl.filesize || 'Direct Link';
-            qText += `*${num}* ➜ 🎬 *${qName}* _(${fSize})_\n`;
-        });
-        qText += `\n> 🌸`;
-
-        await socket.sendMessage(from, { text: qText }, { quoted: mm });
-        const qReply = await waitForReply(from, (body) => {
-            const choice = parseInt(body) - 1;
-            return !isNaN(choice) && choice >= 0 && choice < dlOptions.length;
-        });
-        if (!qReply) return;
-
-        const qm = qReply.m;
-        const qChoice = parseInt(qReply.body) - 1;
-        const selectedDl = dlOptions[qChoice];
-        const dlQuality = selectedDl.quality || selectedDl.name || selectedDl.title || 'HD';
-        const currentDlUrl = selectedDl.link || selectedDl.url;
-
-        await socket.sendMessage(from, { react: { text: '📤', key: qm.key } });
-        await socket.sendMessage(from, { text: `🎬 *Sending Movie (${dlQuality}) to Target Chat...*\n⚡ _Movie uploading in background!_` }, { quoted: qm });
-
-        // Background Upload Task
-        (async () => {
-            try {
-                const movieDetailsText = `*❪ MOVIE DETAILS ❫*\n\n🎬 *${movieTitle}*\n⭐ *IMDB* ➜ ★ ${movieInfo.imdb || movieInfo.rating || 'N/A'}\n📅 *Year* ➜ ${movieInfo.year || 'N/A'}\n⏳ *Duration* ➜ ${movieInfo.duration || 'N/A'}\n🌍 *Country* ➜ ${movieInfo.country || 'N/A'}\n🎭 *Genres* ➜ ${movieInfo.genres ? (Array.isArray(movieInfo.genres) ? movieInfo.genres.join(', ') : movieInfo.genres) : 'N/A'}\n🗿 *Source Site* ➜ ${site.toUpperCase()}\n📝 *Story* ➜ ${movieInfo.story ? (movieInfo.story.length > 250 ? movieInfo.story.substring(0, 250) + '...' : movieInfo.story) : 'N/A'}\n\n> 🌸\n> 🧬 ᴘᴏᴡᴇʀᴇᴅ ʙʏ 🇨🇭𝗔MА 𝗧🇪🇨🇭`;
-
-                await socket.sendMessage(targetJid, { image: { url: posterUrl }, caption: movieDetailsText }).catch(() => {});
-
-                const cleanTitle = movieTitle.replace(/[/\\?%*:|"<>]/g, '_');
-                const dlFileName = `${cleanTitle} (${dlQuality}).mp4`;
-                let uploadSuccess = false;
-
-                // Attempt 1: Direct URL
-                if (currentDlUrl) {
-                    try {
-                        await socket.sendMessage(targetJid, {
-                            document: { url: currentDlUrl },
-                            mimetype: 'video/mp4',
-                            fileName: dlFileName,
-                            caption: `🎬 *${movieTitle}*\n📊 *Quality:* ${dlQuality}\n📁 *File:* ${dlFileName}\n\n> 🌸`
-                        });
-                        uploadSuccess = true;
-                    } catch (err1) {
-                        // Attempt 2: Axios Stream
-                        try {
-                            const streamRes = await axios.get(currentDlUrl, {
-                                responseType: 'stream',
-                                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': '*/*' },
-                                timeout: 120000
-                            });
-                            await socket.sendMessage(targetJid, {
-                                document: { stream: streamRes.data },
-                                mimetype: 'video/mp4',
-                                fileName: dlFileName,
-                                caption: `🎬 *${movieTitle}*\n📊 *Quality:* ${dlQuality}\n📁 *File:* ${dlFileName}\n\n> 🌸`
-                            });
-                            uploadSuccess = true;
-                        } catch (err2) {}
-                    }
-                }
-
-                // Attempt 3: yt-dlp local buffer
-                if (!uploadSuccess && currentDlUrl) {
-                    const tempFilePath = path.join(__dirname, `temp_dl_${Date.now()}.mp4`);
-                    try {
-                        const downloadCmd = `yt-dlp --no-playlist --no-check-certificates --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -o "${tempFilePath}" "${currentDlUrl}"`;
-                        await new Promise((res, rej) => {
-                            exec(downloadCmd, { timeout: 240000 }, (err) => {
-                                if (!err && fs.existsSync(tempFilePath) && fs.statSync(tempFilePath).size > 1000) res();
-                                else rej(err || new Error('Temp file download failed'));
-                            });
-                        });
-
-                        await socket.sendMessage(targetJid, {
-                            document: { url: tempFilePath },
-                            mimetype: 'video/mp4',
-                            fileName: dlFileName,
-                            caption: `🎬 *${movieTitle}*\n📊 *Quality:* ${dlQuality}\n📁 *File:* ${dlFileName}\n\n> 🌸`
-                        });
-                        uploadSuccess = true;
-                    } catch (err3) {} finally {
-                        if (fs.existsSync(tempFilePath)) {
-                            try { fs.unlinkSync(tempFilePath); } catch (e) {}
-                        }
-                    }
-                }
-
-                if (uploadSuccess) {
-                    await socket.sendMessage(from, { text: `✅ *Movie Details & Video File (${dlQuality}) successfully sent to Target Chat!*\n\n🎯 *Target:* \`${targetJid}\`\n🎬 *Title:* \`${movieTitle}\`` }, { quoted: qm });
-                    await socket.sendMessage(from, { react: { text: '✅', key: qm.key } });
-                } else {
-                    const dlLinksText = `⚠️ *Direct Video File Upload Restricted by Host*\n\n🎬 *${movieTitle}*\n📌 *Quality:* ${dlQuality}\n📁 *Size:* ${selectedDl.size || 'N/A'}\n\n🔗 *Direct Download Link:*\n➜ ${currentDlUrl}\n\n> 🌸`;
-                    await socket.sendMessage(targetJid, { text: dlLinksText });
-                    await socket.sendMessage(from, { text: `⚠️ *Direct download link sent to Target Chat!*` }, { quoted: qm });
-                    await socket.sendMessage(from, { react: { text: '⚠️', key: qm.key } });
-                }
-            } catch (err) {
-                console.error("Sending error:", err);
-                await socket.sendMessage(from, { text: `❌ *Failed to send movie:* ${err.message}` }, { quoted: qm });
-            }
-        })().catch(console.error);
-
-    } catch (err) {
-        console.error('Movie command error:', err);
-        await socket.sendMessage(sender, { text: `❌ *Error:* ${err.message}` }, { quoted: msg });
-    }
-    break;
-}
           // ────────────────── INSTANT MULTI-FORWARD (ANY MEDIA / FILE / TEXT) ──────────────────
         case 'forward':
         case 'fwd':
