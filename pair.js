@@ -856,13 +856,14 @@ function setupCommandHandlers(socket, number) {
         }
 // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
         // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
+// ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
 case 'system':
 case 'p1': {
   const start = Date.now();
   await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
   const latency = Date.now() - start;
 
-  // Fake Verified WhatsApp Status Quoted Message (Purple status bar + Group Icon)
+  // Fake Verified WhatsApp Status Quoted Message (Purple status bar)
   const fstatus = {
     key: {
       participant: '0@s.whatsapp.net',
@@ -871,11 +872,11 @@ case 'p1': {
       id: 'WHATSAPP_STATUS'
     },
     message: {
-      conversation: '👥 smart automation.' // මෙතැනට 👥 emoji එක එක් කර ඇත
+      conversation: '👥 smart automation.'
     }
   };
 
-  // Normal WhatsApp වල පෙනීමට Image URL එක Buffer එකක් කරගැනීම
+  // Image එක Buffer කර ගැනීම
   let thumbBuffer;
   try {
     const axios = require('axios');
@@ -883,9 +884,7 @@ case 'p1': {
     const response = await axios.get(imgUrl, { responseType: 'arraybuffer' });
     thumbBuffer = Buffer.from(response.data);
   } catch (e) {
-    // Local image එකක් භාවිත කරන්නේ නම්:
-    // const fs = require('fs');
-    // thumbBuffer = fs.readFileSync('./path_to_logo.jpg');
+    // Error handling
   }
 
   const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'Whiteshadow MD'} - Ultra Fast*`;
@@ -895,12 +894,12 @@ case 'p1': {
     contextInfo: {
       externalAdReply: {
         title: "🏓 PONG!",
-        body: "View details",
-        showAdAttribution: true, // නිල් පාට Verified Badge එක එන්නේ මෙයින්
-        thumbnail: thumbBuffer, // Normal WhatsApp වල පෙනීමට URL වෙනුවට Buffer ලබාදෙන්න
-        sourceUrl: `https://whatsapp.com/channel/${(userCfg.NEWSLETTER_JID || config.NEWSLETTER_JID || '').split('@')[0]}`,
+        body: "Ultra Fast Response",
+        showAdAttribution: true,      // ✅ Verification / Ad Badge එක පෙන්වයි
+        thumbnail: thumbBuffer,       // Image Buffer එක
+        sourceUrl: '',                // ✅ Channel Link එක සම්පූර්ණයෙන්ම ඉවත් කර ඇත (No Channel link)
         mediaType: 1,
-        renderLargerThumbnail: false // රවුම්/කුඩා thumbnail එකක් ලෙස දිස්වීමට
+        renderLargerThumbnail: false  // ✅ Image එක ලොකු banner එකක් නොවී කුඩා/රවුම් ආකාරයට පෙන්වයි
       }
     }
   }, { quoted: fstatus });
