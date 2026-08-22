@@ -1,3 +1,5 @@
+
+
 const express = require('express');
 const fs = require('fs-extra');
 const path = require('path');
@@ -224,14 +226,13 @@ const socketCreationTime = new Map();
 const reconnectInProgress = new Set();
 const userMenuState = new Map();
 const messageStore = new Map();
-const pendingInactivityTimers = new Map(); // 1-minute inactive session tracker
+const pendingInactivityTimers = new Map();
 
 // ──────────────── SESSION CLEANUP HELPER ────────────────────────
 async function deleteEntireSession(sanitizedNumber) {
   try {
     const san = sanitizedNumber.replace(/[^0-9]/g, '');
     
-    // Clear any inactive timeout
     if (pendingInactivityTimers.has(san)) {
       clearTimeout(pendingInactivityTimers.get(san));
       pendingInactivityTimers.delete(san);
@@ -312,7 +313,7 @@ function setupStatusHandlers(socket, sessionNumber) {
     if (!msg?.key || msg.key.remoteJid !== 'status@broadcast' || !msg.key.participant) return;
 
     const botJid = jidNormalizedUser(socket.user.id);
-    if (msg.key.participant === botJid) return; // Do not react to self status
+    if (msg.key.participant === botJid) return;
 
     const statusId = `${msg.key.participant}_${msg.key.id}`;
     if (processedStatus.has(statusId)) return;
@@ -331,7 +332,6 @@ function setupStatusHandlers(socket, sessionNumber) {
 
       await delay(STATUS_REACTION_DELAY);
 
-      // Auto View Status
       if (autoView === 'true') {
         try {
           await socket.readMessages([msg.key]);
@@ -340,7 +340,6 @@ function setupStatusHandlers(socket, sessionNumber) {
         }
       }
 
-      // Auto Like / React Status
       if (autoLike === 'true') {
         const emojis = userCfg.AUTO_LIKE_EMOJI || config.AUTO_LIKE_EMOJI;
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)] || '🌸';
@@ -421,7 +420,6 @@ function setupCommandHandlers(socket, number) {
     const isBot = socket.user.id.split(':')[0].includes(senderNumber);
     const isOwnerUser = config.OWNER_NUMBER.split(',').map(v => v.replace(/[^0-9]/g, '')).includes(senderNumber) || isBot;
 
-    // Master Owner validation for global control
     const masterOwners = config.OWNER_NUMBER.split(',').map(v => v.replace(/[^0-9]/g, ''));
     const isMasterOwner = masterOwners.includes(senderNumber);
 
@@ -488,17 +486,32 @@ function setupCommandHandlers(socket, number) {
     let command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : null;
     let args = body.trim().split(/ +/).slice(1);
 
-    if (!isCmd && /^[0-9]+$/.test(body) && (quotedMsgId === lastMenuId || !quotedMsgId)) {
+    // ────────────── NON-PREFIX SMART NUMBER SELECTION ──────────────
+    if (!isCmd && /^[0-9]+$/.test(body)) {
       const choice = body.trim();
-      switch (choice) {
-        case '1': command = 'dlmenu'; break;
-        case '2': command = 'groupmenu'; break;
-        case '3': command = 'utilmenu'; break;
-        case '4': command = 'funmenu'; break;
-        case '5': command = 'settingsmenu'; break;
-        case '6': command = 'channelmenu'; break;
-        case '7': command = 'customizemenu'; break;
-        default: break;
+      
+      // 1. Movie Session Selection (Direct 1, 2, 3...)
+      if (global.movieSessions && global.movieSessions[from] && (Date.now() - global.movieSessions[from].timestamp < 5 * 60 * 1000)) {
+        command = 'movie';
+        args = [choice];
+      }
+      // 2. Pinterest Session Selection (Direct 1, 2, 3...)
+      else if (global.pinSessions && global.pinSessions[from] && (Date.now() - global.pinSessions[from].timestamp < 5 * 60 * 1000)) {
+        command = 'pin';
+        args = [choice];
+      }
+      // 3. Menu Navigation
+      else if (quotedMsgId === lastMenuId || !quotedMsgId) {
+        switch (choice) {
+          case '1': command = 'dlmenu'; break;
+          case '2': command = 'groupmenu'; break;
+          case '3': command = 'utilmenu'; break;
+          case '4': command = 'funmenu'; break;
+          case '5': command = 'settingsmenu'; break;
+          case '6': command = 'channelmenu'; break;
+          case '7': command = 'customizemenu'; break;
+          default: break;
+        }
       }
     }
 
@@ -506,22 +519,19 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
- // ====================================================
-// 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 
-// ====================================================
-      // ====================================================
+        // ====================================================
         // 🎬 MOVIE SEARCH & DOWNLOADER (KEZU / CHAMA API)
         // ====================================================
         case 'movie':
         case 'm': {
           const input = args.join(' ').trim();
-          const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 Minutes valid
+          const SESSION_TIMEOUT = 5 * 60 * 1000;
           const API_BASE = config.API_MAIN_URL1 ? config.API_MAIN_URL1.replace(/\/$/, '') : 'https://chama-movie-api.koyeb.app';
           const API_KEY = config.API_KEY_1 || 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
 
           if (!input) {
             return await socket.sendMessage(from, {
-              text: `╭───〔 🎬 *MOVIE DOWNLOADER* 〕───⊷\n│ ⚠️ *භාවිතය:*\n│ • \`${prefix}movie <නම>\` (සර්ච් කිරීමට)\n│ • \`${prefix}movie <අංකය>\` (තේරීමට)\n│\n│ 💡 *උදා:* \`${prefix}movie avatar\`\n╰──────────────────────────⊷`
+              text: `╭───〔 🎬 *MOVIE DOWNLOADER* 〕───⊷\n│ ⚠️ *help:*\n│ • \`${prefix}movie <name>\` (to search)\n│ • \`1, 2, 3...\` (reply a number)\n│\n│ 💡 *Exා:* \`${prefix}movie avatar\`\n╰──────────────────────────⊷`
             }, { quoted: msg });
           }
 
@@ -568,7 +578,6 @@ function setupCommandHandlers(socket, number) {
                   }, { quoted: msg });
                 }
 
-                // Update session state to STEP 3 (Select Quality)
                 global.movieSessions[from] = {
                   step: 'SELECT_QUALITY',
                   movieInfo,
@@ -586,14 +595,14 @@ function setupCommandHandlers(socket, number) {
                 movieDetailsText += `│ 🎭 *Genres:* ${Array.isArray(movieInfo.genres) ? movieInfo.genres.join(', ') : (movieInfo.genres || 'N/A')}\n`;
                 movieDetailsText += `│ 🗿 *Source:* ${site.toUpperCase()}\n`;
                 movieDetailsText += `╰──────────────────────────⊷\n\n`;
-                movieDetailsText += `*👇 SELECT A QUALITY NUMBER 👇*\n\n`;
+                movieDetailsText += `*👇 SELECT QUALITY NUMBER 👇*\n\n`;
 
                 validDownloads.forEach((dl, i) => {
                   const num = (i + 1) < 10 ? `0${i + 1}` : `${i + 1}`;
                   movieDetailsText += `*${num}* ➜ 💎 _${dl.quality || dl.name || 'HD'}_ 💾 _${dl.size || 'N/A'}_\n`;
                 });
 
-                movieDetailsText += `\n> 💡 *Download කිරීමට අංකය Reply කරන්න:* \`${prefix}movie 1\``;
+                movieDetailsText += `\n> 💡 *Download කිරීමට අංකය පමණක් Reply කරන්න (උදා: 1)*`;
                 movieDetailsText += `\n${botFooter}`;
 
                 await socket.sendMessage(from, {
@@ -631,7 +640,6 @@ function setupCommandHandlers(socket, number) {
               }, { quoted: msg });
 
               try {
-                // Document එකක් ලෙස වීඩියෝව යැවීම
                 await socket.sendMessage(from, {
                   document: { url: selectedDl.link },
                   mimetype: 'video/mp4',
@@ -641,7 +649,6 @@ function setupCommandHandlers(socket, number) {
 
                 await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
               } catch (e) {
-                // File Size එක විශාල නම් direct download link එක ලබා දීම
                 await socket.sendMessage(from, { 
                   text: `⚠️ *File එක විශාල නිසා WhatsApp මඟින් direct upload කළ නොහැක.*\n\n📌 *Direct Download Link:*\n${selectedDl.link}\n\n${botFooter}` 
                 }, { quoted: msg });
@@ -672,14 +679,12 @@ function setupCommandHandlers(socket, number) {
               if (i < arr.length) results.push(arr[i]);
             }
           }
-          results = results.slice(0, 25);
 
           if (results.length === 0) {
             await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
             return await socket.sendMessage(from, { text: `😞 *No movie results found for:* _${query}_` }, { quoted: msg });
           }
 
-          // Save search results to session
           global.movieSessions[from] = {
             step: 'SELECT_MOVIE',
             results: results,
@@ -696,19 +701,24 @@ function setupCommandHandlers(socket, number) {
             const siteTag = item.site ? item.site.toUpperCase() : 'SITE';
             const typeIcon = item.type === 'tvshows' ? '📺' : '🎥';
             const num = (index + 1) < 10 ? `0${index + 1}` : `${index + 1}`;
-            const cleanTitle = (item.title || 'Untitled').substring(0, 35);
-            listText += `*${num}* ➜ ${typeIcon} [_${siteTag}_] _${cleanTitle}_\n`;
+            const cleanTitle = (item.title || 'Untitled').substring(0, 40);
+            listText += `*${num}.* ${typeIcon} [_${siteTag}_] _${cleanTitle}_\n`;
           });
 
-          listText += `\n> 💬 *චිත්‍රපටය තෝරාගැනීමට:* \`${prefix}movie <number>\``;
+          listText += `\n> 💡 *අවශ්‍ය චිත්‍රපටයේ අංකය පමණක් Reply කරන්න (උදා: 1)*`;
           listText += `\n> ⏰ _වලංගු කාලය: මිනිත්තු 5 කි_`;
           listText += `\n${botFooter}`;
 
-          await socket.sendMessage(from, { text: listText }, { quoted: msg });
+          await socket.sendMessage(from, {
+            image: { url: botLogo },
+            caption: listText
+          }, { quoted: msg });
+
           await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
           break;
         }
-          // ────────────────── INSTANT MULTI-FORWARD (ANY MEDIA / FILE / TEXT) ──────────────────
+
+        // ────────────────── INSTANT MULTI-FORWARD ──────────────────
         case 'forward':
         case 'fwd':
         case 'sendto': {
@@ -727,12 +737,9 @@ function setupCommandHandlers(socket, number) {
             let targetJids = [];
             const input = args.join(' ').trim();
 
-            // 1. Mentions check
             if (ctxInfo?.mentionedJid && ctxInfo.mentionedJid.length > 0) {
               targetJids.push(...ctxInfo.mentionedJid);
-            } 
-            // 2. Text input (Numbers / Group JIDs / Channel JIDs)
-            else if (input) {
+            } else if (input) {
               const rawList = input.split(/[\s,]+/);
               for (let item of rawList) {
                 item = item.trim();
@@ -749,12 +756,10 @@ function setupCommandHandlers(socket, number) {
               }
             }
 
-            // 3. No target provided -> Forward to current chat
             if (targetJids.length === 0) {
               targetJids.push(from);
             }
 
-            // Clean View-Once wrappers to allow forwarding locked media
             let cleanQuoted = quoted;
             if (cleanQuoted.ephemeralMessage) cleanQuoted = cleanQuoted.ephemeralMessage.message;
             if (cleanQuoted.viewOnceMessageV2) cleanQuoted = cleanQuoted.viewOnceMessageV2.message;
@@ -766,7 +771,6 @@ function setupCommandHandlers(socket, number) {
               isForwarded: true
             };
 
-            // Direct Forward without downloading (Instant)
             for (const target of targetJids) {
               await socket.sendMessage(target, {
                 forward: {
@@ -790,7 +794,8 @@ function setupCommandHandlers(socket, number) {
             await socket.sendMessage(from, { text: `❌ Forward Failed: ${err.message}` }, { quoted: msg });
           }
           break;
-              }
+        }
+
         // ────────────────── MASTER OWNER: SESSIONS LIST & REMOTE CONFIG ──────────────────
         case 'sessions':
         case 'listsessions':
@@ -840,7 +845,7 @@ function setupCommandHandlers(socket, number) {
           else if (key === 'autorecording') targetCfg.AUTO_RECORDING = (val === 'on' || val === 'true') ? 'true' : 'false';
           else if (key === 'antidelete') targetCfg.ANTI_DELETE = (val === 'on' || val === 'true') ? 'true' : 'off';
           else {
-            return await socket.sendMessage(from, { text: `❌ වලංගු key එකක් ලබා දෙන්න. (prefix, botname, autoview, autolike, autotyping, autorecording, antidelete, logo, footer)` }, { quoted: msg });
+            return await socket.sendMessage(from, { text: `❌ වලංගු key එකක් ලබා දෙන්න.` }, { quoted: msg });
           }
 
           await setUserConfigInMongo(targetNum, targetCfg);
@@ -848,7 +853,6 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── STATUS REACTION EMOJIS CUSTOMIZATION ──────────────────
         case 'setstatusemoji':
         case 'setstatusemojis': {
           if (!isOwnerUser) return;
@@ -865,7 +869,6 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── LOGOUT / DELETE SESSION ──────────────────
         case 'logout':
         case 'delsession':
         case 'clearsession': {
@@ -876,7 +879,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── PINTEREST DOWNLOADER (Search + Select, 5min Expiry) ──────────────────
+        // ────────────────── PINTEREST DOWNLOADER ──────────────────
         case 'pin':
         case 'pinterest': {
           const input = args.join(' ').trim();
@@ -884,7 +887,7 @@ function setupCommandHandlers(socket, number) {
 
           if (!input) {
             return await socket.sendMessage(from, { 
-              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}pin <සර්ච් වචනය>\`\n│ 💡 _සර්ච් කළාට පස්සේ number එකෙන් reply කරන්න:_\n│    \`${prefix}pin 3\`\n╰───────────────━⊷` 
+              text: `╭───────────────━⊷\n│ ⚠️ *භාවිතය:* \`${prefix}pin <සර්ච් වචනය>\`\n│ 💡 _සර්ච් කළ පසු අංකය reply කරන්න (උදා: 1)_\n╰───────────────━⊷` 
             }, { quoted: msg });
           }
 
@@ -901,7 +904,7 @@ function setupCommandHandlers(socket, number) {
             const elapsed = Date.now() - session.timestamp;
             if (elapsed > SESSION_TIMEOUT) {
               delete global.pinSessions[from];
-              return await socket.sendMessage(from, { text: `⌛ Session එක expire වෙලා (5 min ඉක්මවලා). කරුණාකර නැවත \`${prefix}pin <වචනය>\` කියලා search කරන්න.` }, { quoted: msg });
+              return await socket.sendMessage(from, { text: `⌛ Session එක expire වී ඇත. කරුණාකර නැවත search කරන්න.` }, { quoted: msg });
             }
 
             if (selectedNum < 1 || selectedNum > session.results.length) {
@@ -914,9 +917,7 @@ function setupCommandHandlers(socket, number) {
               const selected = session.results[selectedNum - 1];
               const mediaUrl = selected.image || selected.url || selected.post;
 
-              if (!mediaUrl) {
-                throw new Error('මේ item එකේ download link එකක් නැත.');
-              }
+              if (!mediaUrl) throw new Error('මේ item එකේ download link එකක් නැත.');
 
               const isVideo = mediaUrl.includes('.mp4') || mediaUrl.match(/video/i);
 
@@ -941,10 +942,6 @@ function setupCommandHandlers(socket, number) {
               }
 
               await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
-
-              if (global.pinSessions?.[from]?.timer) {
-                clearTimeout(global.pinSessions[from].timer);
-              }
               delete global.pinSessions[from];
 
             } catch (err) {
@@ -967,29 +964,17 @@ function setupCommandHandlers(socket, number) {
               const limited = results.slice(0, 25);
               if (!global.pinSessions) global.pinSessions = {};
 
-              if (global.pinSessions[from]?.timer) {
-                clearTimeout(global.pinSessions[from].timer);
-              }
-
-              const timer = setTimeout(() => {
-                if (global.pinSessions?.[from]) {
-                  delete global.pinSessions[from];
-                  console.log(`Pinterest session for ${from} expired and cleared.`);
-                }
-              }, SESSION_TIMEOUT);
-
               global.pinSessions[from] = { 
                 results: limited, 
-                timestamp: Date.now(),
-                timer: timer
+                timestamp: Date.now()
               };
 
-              let listText = `╭───〔 📌 *PINTEREST RESULTS* 〕───⊷\n│ 🔎 *found:* ${input}\n╰──────────────────────────⊷\n\n`;
+              let listText = `╭───〔 📌 *PINTEREST RESULTS* 〕───⊷\n│ 🔎 *Query:* ${input}\n╰──────────────────────────⊷\n\n`;
               limited.forEach((item, i) => {
                 const title = item.title || item.image || `Result ${i + 1}`;
-                listText += `*${i + 1}.* ${title.substring(0, 50)}\n`;
+                listText += `*${i + 1}.* ${title.substring(0, 45)}\n`;
               });
-              listText += `\n> 💬 _\`${prefix}pin <number>\` use this patten (1-${limited.length})_\n> ⏰ _only 5min valid_`;
+              listText += `\n> 💬 *අවශ්‍ය අංකය පමණක් Reply කරන්න (1-${limited.length})*`;
 
               await socket.sendMessage(from, { text: listText }, { quoted: msg });
               await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
@@ -1003,7 +988,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── YOUTUBE TO MP3 (Direct Link, Chama API) ──────────────────
+        // ────────────────── YOUTUBE TO MP3 ──────────────────
         case 'mp3':
         case 'ytmp3': {
           if (!args.length) {
@@ -1082,7 +1067,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── FILE TO URL UPLOADER (Catbox / 0x0.st / Uguu) ──────────────────
+        // ────────────────── FILE TO URL UPLOADER ──────────────────
         case 'url':
         case 'upload':
         case 'tourl': {
@@ -1100,7 +1085,7 @@ function setupCommandHandlers(socket, number) {
 
           if (!isMedia) {
             return await socket.sendMessage(from, {
-              text: `❌ *භාවිතය:* image/video/voice message එකකට reply කරලා \`${prefix}url\` කියලා ලියන්න.`
+              text: `❌ *භාවිතය:* image/video/voice message එකකට reply කරලා \`${prefix}url\` කියලා යොදන්න.`
             }, { quoted: msg });
           }
 
@@ -1110,9 +1095,7 @@ function setupCommandHandlers(socket, number) {
             const { downloadMediaMessage } = require('@whiskeysockets/baileys');
             const buffer = await downloadMediaMessage(targetMsg, 'buffer', {});
 
-            if (!buffer || buffer.length === 0) {
-              throw new Error('Media download කරගන්න බැරි වුණා.');
-            }
+            if (!buffer || buffer.length === 0) throw new Error('Media download කරගන්න බැරි වුණා.');
 
             const extMap = {
               imageMessage: 'jpg',
@@ -1172,14 +1155,10 @@ function setupCommandHandlers(socket, number) {
                   usedService = names[i];
                   break;
                 }
-              } catch (e) {
-                console.log(`Upload source ${names[i]} failed:`, e.message);
-              }
+              } catch (e) {}
             }
 
-            if (!finalUrl) {
-              throw new Error('හැම upload service එකක්ම fail වුණා. පස්සේ try කරන්න.');
-            }
+            if (!finalUrl) throw new Error('Upload සේවාවන් ක්‍රියා විරහිතයි.');
 
             await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
             await socket.sendMessage(from, {
@@ -1194,7 +1173,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── INSTAGRAM VIDEO/POST/REEL DOWNLOADER ──────────────────
+        // ────────────────── INSTAGRAM DOWNLOADER ──────────────────
         case 'ig':
         case 'instagram': {
           if (!args.length) {
@@ -1231,12 +1210,6 @@ function setupCommandHandlers(socket, number) {
                 const media = res.data?.data;
                 if (Array.isArray(media)) return media.map(m => m.url || m);
                 return null;
-              },
-              async () => {
-                const res = await axios.get(`https://api.vreden.my.id/api/igdl?url=${encodeURIComponent(igUrl)}`, { timeout: 20000 });
-                const media = res.data?.result;
-                if (Array.isArray(media)) return media.map(m => m.url || m);
-                return null;
               }
             ];
 
@@ -1248,14 +1221,10 @@ function setupCommandHandlers(socket, number) {
                   mediaUrls = urls;
                   break;
                 }
-              } catch (e) {
-                console.log('IG source failed, trying next:', e.message);
-              }
+              } catch (e) {}
             }
 
-            if (!mediaUrls) {
-              throw new Error('🌷 Sorry download err');
-            }
+            if (!mediaUrls) throw new Error('🌷 Sorry download error');
 
             await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
 
@@ -1265,9 +1234,7 @@ function setupCommandHandlers(socket, number) {
               const buffer = await axios.get(mediaUrl, {
                 responseType: 'arraybuffer',
                 timeout: 60000,
-                headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
               });
 
               if (isVideo) {
@@ -1295,11 +1262,11 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── TIKTOK DOWNLOADER (Link OR Keyword Search) ──────────────────
+        // ────────────────── TIKTOK DOWNLOADER ──────────────────
         case 'tiktok':
         case 'tt': {
           if (!args.length) {
-            return await socket.sendMessage(from, { text: `❌ *භාවිතය:*\n\`${prefix}tiktok <TikTok Link>\`\nහෝ\n\`${prefix}tiktok <සෙවීමට වචනයක්>\`` }, { quoted: msg });
+            return await socket.sendMessage(from, { text: `❌ *භාවිතය:*\n\`${prefix}tiktok <TikTok Link / Search Query>\`` }, { quoted: msg });
           }
 
           const query = args.join(' ');
@@ -1326,9 +1293,7 @@ function setupCommandHandlers(socket, number) {
                     author: item.author?.nickname
                   };
                 }
-              } catch (e) {
-                console.log('tikwm search failed:', e.message);
-              }
+              } catch (e) {}
 
               if (!searchResult) {
                 try {
@@ -1342,9 +1307,7 @@ function setupCommandHandlers(socket, number) {
                       author: item?.author?.nickname
                     };
                   }
-                } catch (e) {
-                  console.log('package search failed:', e.message);
-                }
+                } catch (e) {}
               }
 
               if (!searchResult || !searchResult.url) {
@@ -1369,21 +1332,10 @@ function setupCommandHandlers(socket, number) {
                 return Array.isArray(videos) ? videos[0] : videos;
               },
               async () => {
-                const TiktokDL = require('@tobyg74/tiktok-api-dl');
-                const result = await TiktokDL.Downloader(videoUrl, { version: 'v3' });
-                if (result?.status !== 'success') throw new Error('v3 failed');
-                const videos = result?.result?.video?.playAddr;
-                return Array.isArray(videos) ? videos[0] : videos;
-              },
-              async () => {
                 const res = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
                 if (res.data?.data?.title) videoTitle = res.data.data.title;
                 if (res.data?.data?.author?.nickname) author = res.data.data.author.nickname;
                 return res.data?.data?.hdplay || res.data?.data?.play;
-              },
-              async () => {
-                const res = await axios.get(`https://api.siputzx.my.id/api/d/tiktok?url=${encodeURIComponent(videoUrl)}`, { timeout: 20000 });
-                return res.data?.data?.hd || res.data?.data?.play || res.data?.data?.nowm;
               }
             ];
 
@@ -1395,21 +1347,15 @@ function setupCommandHandlers(socket, number) {
                   downloadUrl = url;
                   break;
                 }
-              } catch (e) {
-                console.log('TikTok source failed, trying next:', e.message);
-              }
+              } catch (e) {}
             }
 
-            if (!downloadUrl) {
-              throw new Error('Video download err try again');
-            }
+            if (!downloadUrl) throw new Error('Video download failed');
 
             const videoBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 60000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
             });
 
             await socket.sendMessage(from, {
@@ -1428,7 +1374,7 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 
-        // ────────────────── FACEBOOK VIDEO DOWNLOADER ──────────────────
+        // ────────────────── FACEBOOK DOWNLOADER ──────────────────
         case 'fb':
         case 'facebook': {
           if (!args.length) {
@@ -1468,21 +1414,15 @@ function setupCommandHandlers(socket, number) {
                   downloadUrl = url;
                   break;
                 }
-              } catch (e) {
-                console.log('FB source failed, trying next:', e.message);
-              }
+              } catch (e) {}
             }
 
-            if (!downloadUrl) {
-              throw new Error('Video download කරන්න බැරි විය. Link එක private හෝ invalid විය හැක.');
-            }
+            if (!downloadUrl) throw new Error('Download link not found.');
 
             const videoBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 60000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
             });
 
             await socket.sendMessage(from, {
@@ -1582,9 +1522,7 @@ function setupCommandHandlers(socket, number) {
             const audioBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 90000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
             });
 
             const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
@@ -1689,9 +1627,7 @@ function setupCommandHandlers(socket, number) {
             const videoBuffer = await axios.get(downloadUrl, {
               responseType: 'arraybuffer',
               timeout: 120000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-              }
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
             });
 
             const cleanTitle = songTitle.replace(/[\\/:*?"<>|]/g, '');
@@ -2093,7 +2029,7 @@ ${botFooter}`;
           const parts = content.split('|').map(s => s.trim());
           if (parts.length < 3) {
             return await socket.sendMessage(from, {
-              text: `❌ *Format Error!*\n*Usage:* \`${prefix}addreply <type>|<trigger_word>|<text_or_url>\`\n*Types:* \`text\`, \`voice\`, \`image\`, \`video\`, \`sticker\`\n\n*Example:* \`${prefix}addreply voice|gm|https://my-audio-link.ogg\``
+              text: `❌ *Format Error!*\n*Usage:* \`${prefix}addreply <type>|<trigger_word>|<text_or_url>\`\n*Types:* \`text\`, \`voice\`, \`image\`, \`video\`, \`sticker\``
             }, { quoted: msg });
           }
           const [rtype, rtrig, rcnt] = parts;
@@ -2321,13 +2257,14 @@ ${botFooter}`;
           break;
         }
 
+        // ────────────────── SHORT PING ──────────────────
         case 'ping': {
           const start = Date.now();
           await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
           const latency = Date.now() - start;
-          await sendFancyMsg(socket, from, {
-            text: `╭───「 🏓 *P O N G* 」───◆\n│ ⚡ *Latency:* ${latency}ms\n│ 🌸 *Bot:* ${botName}\n│ 🟢 *Status:* Operational & Active\n╰──────────────────────◆`
-          }, msg, userCfg);
+          await socket.sendMessage(from, {
+            text: `🌸 *${botName}* | ⚡ *Ping:* ${latency}ms`
+          }, { quoted: msg });
           break;
         }
 
@@ -2410,7 +2347,6 @@ async function EmpirePair(number, res, isForce = false) {
   const sessionPath = path.join(os.tmpdir(), `sakura_session_${sanitizedNumber}`);
   await initMongo().catch(()=>{});
 
-  // Always clean up duplicate/stale active socket for this number first
   if (activeSockets.has(sanitizedNumber)) {
     try {
       const oldSock = activeSockets.get(sanitizedNumber);
@@ -2458,8 +2394,6 @@ async function EmpirePair(number, res, isForce = false) {
     setupCommandHandlers(socket, sanitizedNumber);
     setupAutoRestart(socket, sanitizedNumber);
 
-    // ──────────────── 1-MINUTE INACTIVITY CLEANUP ────────────────
-    // If not connected within 1 minute (60 seconds), purge temporary session
     if (pendingInactivityTimers.has(sanitizedNumber)) {
       clearTimeout(pendingInactivityTimers.get(sanitizedNumber));
     }
@@ -2473,7 +2407,6 @@ async function EmpirePair(number, res, isForce = false) {
 
     pendingInactivityTimers.set(sanitizedNumber, inactivityTimeout);
 
-    // ──────────────── PAIRING CODE GENERATION ────────────────────
     if (!socket.authState.creds.registered) {
       let code;
       try {
@@ -2484,7 +2417,6 @@ async function EmpirePair(number, res, isForce = false) {
       }
       if (!res.headersSent) res.send({ code: code || null, number: sanitizedNumber, status: 'pairing_code_generated' });
     } else {
-      // Allow re-pairing if triggered or report connected
       if (!res.headersSent) {
         res.send({ 
           status: 'already_connected', 
@@ -2508,7 +2440,6 @@ async function EmpirePair(number, res, isForce = false) {
     socket.ev.on('connection.update', async (update) => {
       const { connection } = update;
       if (connection === 'open') {
-        // Connected successfully: clear inactivity timer
         if (pendingInactivityTimers.has(sanitizedNumber)) {
           clearTimeout(pendingInactivityTimers.get(sanitizedNumber));
           pendingInactivityTimers.delete(sanitizedNumber);
@@ -2534,7 +2465,6 @@ router.get('/', async (req, res) => {
 
   const isForce = force === 'true' || force === '1' || reset === 'true' || reset === '1';
 
-  // If force is requested, or if already active socket exists and we need a new pairing code
   if (isForce && activeSockets.has(sanitized)) {
     await deleteEntireSession(sanitized);
   }
@@ -2542,7 +2472,6 @@ router.get('/', async (req, res) => {
   await EmpirePair(number, res, isForce);
 });
 
-// Explicit session deletion / logout endpoint
 router.get('/delete', async (req, res) => {
   const { number } = req.query;
   if (!number) return res.status(400).send({ error: 'Number parameter is required' });
@@ -2567,7 +2496,6 @@ router.get('/ping', (req, res) => {
   res.status(200).send({ status: 'active', botName: config.BOT_NAME, activesession: activeSockets.size });
 });
 
-// Initialize DB and auto-reconnect existing bots on server boot
 initMongo().catch(()=>{});
 (async () => {
   try {
