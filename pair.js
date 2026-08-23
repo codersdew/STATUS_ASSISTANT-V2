@@ -548,6 +548,134 @@ function setupCommandHandlers(socket, number) {
 
     try {
       switch (command) {
+// ====================================================
+// 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 (#𝘗𝘙𝘖𝘍𝘐𝘟 ) 𝘈𝘐
+// ====================================================
+case 'jsend':
+case 'sendjid': {
+  const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+  const ctxInfo = msg.message?.extendedTextMessage?.contextInfo;
+
+  if (!quoted) {
+    return await socket.sendMessage(from, { 
+      text: `╭───────────────━⊷\n│ ⚠️ *Usage:* Reply to any message/media with:\n│ 🔹 \`${prefix}jsend <Target JID(s)>\`\n│\n│ 📌 *Examples:*\n│ • Group: \`${prefix}jsend 12036302482394@g.us\`\n│ • Channel: \`${prefix}jsend 12036302482394@newsletter\`\n│ • User: \`${prefix}jsend 94771234567@s.whatsapp.net\`\n│ • LID: \`${prefix}jsend 12345678901234@lid\`\n│\n│ 💡 _Separate multiple JIDs using commas (,)._\n╰───────────────━⊷` 
+    }, { quoted: msg });
+  }
+
+  const input = args.join(' ').trim();
+  if (!input && (!ctxInfo?.mentionedJid || ctxInfo.mentionedJid.length === 0)) {
+    return await socket.sendMessage(from, { 
+      text: `❌ Please provide a target JID!\nExample: \`${prefix}jsend 12036302482394@g.us\`` 
+    }, { quoted: msg });
+  }
+
+  await socket.sendMessage(from, { react: { text: '⚡', key: msg.key } });
+
+  try {
+    let targetJids = [];
+
+    // Extract mentioned JIDs if available
+    if (ctxInfo?.mentionedJid && ctxInfo.mentionedJid.length > 0) {
+      targetJids.push(...ctxInfo.mentionedJid);
+    }
+
+    // Parse and normalize input targets
+    if (input) {
+      const rawList = input.split(/[\s,]+/);
+      for (let item of rawList) {
+        let cleanItem = item.trim();
+        if (!cleanItem) continue;
+
+        // Convert legacy @us or @c.us to @s.whatsapp.net
+        if (cleanItem.endsWith('@us')) {
+          cleanItem = cleanItem.replace(/@us$/, '@s.whatsapp.net');
+        } else if (cleanItem.endsWith('@c.us')) {
+          cleanItem = cleanItem.replace(/@c.us$/, '@s.whatsapp.net');
+        }
+
+        // Validate standard JID formats
+        if (
+          cleanItem.endsWith('@s.whatsapp.net') ||
+          cleanItem.endsWith('@g.us') ||
+          cleanItem.endsWith('@newsletter') ||
+          cleanItem.endsWith('@lid')
+        ) {
+          targetJids.push(cleanItem);
+        } else {
+          // Auto-detect format if raw number/ID was passed
+          const cleanNum = cleanItem.replace(/[^0-9-]/g, '');
+          if (cleanNum.includes('-') || cleanNum.length > 15) {
+            targetJids.push(`${cleanNum}@g.us`);
+          } else if (cleanNum.length >= 7) {
+            targetJids.push(`${cleanNum}@s.whatsapp.net`);
+          }
+        }
+      }
+    }
+
+    // Remove duplicate targets
+    targetJids = [...new Set(targetJids)];
+
+    if (targetJids.length === 0) {
+      await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+      return await socket.sendMessage(from, { text: `❌ No valid JID found!` }, { quoted: msg });
+    }
+
+    // Unwrap nested message wrappers (ViewOnce, Ephemeral, Documents, etc.)
+    let cleanQuoted = quoted;
+    if (cleanQuoted.ephemeralMessage) cleanQuoted = cleanQuoted.ephemeralMessage.message;
+    if (cleanQuoted.viewOnceMessageV2) cleanQuoted = cleanQuoted.viewOnceMessageV2.message;
+    if (cleanQuoted.viewOnceMessage) cleanQuoted = cleanQuoted.viewOnceMessage.message;
+    if (cleanQuoted.documentWithCaptionMessage) cleanQuoted = cleanQuoted.documentWithCaptionMessage.message;
+
+    const fwdContext = {
+      ...(typeof getForwardedContext === 'function' ? getForwardedContext(userCfg) : {}),
+      forwardingScore: 9999,
+      isForwarded: true
+    };
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    // Send forward payload to all targets
+    for (const target of targetJids) {
+      try {
+        await socket.sendMessage(target, {
+          forward: {
+            key: {
+              remoteJid: from,
+              id: ctxInfo?.stanzaId || msg.key.id,
+              fromMe: !ctxInfo?.participant,
+              participant: ctxInfo?.participant || undefined
+            },
+            message: cleanQuoted
+          },
+          contextInfo: fwdContext
+        });
+        successCount++;
+      } catch (sendErr) {
+        console.error(`Failed to forward to ${target}:`, sendErr);
+        failedCount++;
+      }
+    }
+
+    // Success / Failure reactions
+    if (successCount > 0) {
+      await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+    } else {
+      await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+      await socket.sendMessage(from, { 
+        text: `❌ Forwarding failed for all target JIDs.` 
+      }, { quoted: msg });
+    }
+
+  } catch (err) {
+    console.error('JSend Error:', err);
+    await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+    await socket.sendMessage(from, { text: `❌ Error: ${err.message}` }, { quoted: msg });
+  }
+  break;
+}
           // ────────────────── RENAME DOCUMENT / FILE ──────────────────
         case 'rename':
         case 'rn':
