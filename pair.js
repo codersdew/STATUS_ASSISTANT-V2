@@ -550,6 +550,69 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
 // ====================================================
 // 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 (#𝘗𝘙𝘖𝘍𝘐𝘟 ) 𝘈𝘐
+case 'gjid':
+        case 'getjid':
+        case 'groupjid': {
+          await socket.sendMessage(from, { react: { text: '🔍', key: msg.key } });
+
+          try {
+            const input = args.join(' ').trim().toLowerCase();
+
+            // 1. Bot සිටින සියලුම Groups වල JIDs ලබා ගැනීමට (උදා: .gjid all)
+            if (input === 'all' || input === 'list') {
+              const getGroups = await socket.groupFetchAllParticipating();
+              const groups = Object.values(getGroups);
+
+              // strictly filter only @g.us (exclude @lid / others)
+              const validGroups = groups.filter(g => g.id && g.id.endsWith('@g.us') && !g.id.includes('@lid'));
+
+              if (validGroups.length === 0) {
+                await socket.sendMessage(from, { react: { text: '⚠️', key: msg.key } });
+                return await socket.sendMessage(from, { text: '⚠️ කිසිදු Group එකක් හමු නොවීය.' }, { quoted: msg });
+              }
+
+              let responseText = `╭───────────────━⊷\n│ 👥 *ALL GROUP JIDs (${validGroups.length})*\n╰───────────────━⊷\n\n`;
+
+              validGroups.forEach((g, index) => {
+                responseText += `🔹 *${index + 1}. ${g.subject}*\n`;
+                responseText += `   📍 *JID:* \`${g.id}\`\n\n`;
+              });
+
+              await socket.sendMessage(from, { text: responseText.trim() }, { quoted: msg });
+              await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+              break;
+            }
+
+            // 2. අදාළ Group එකේ JID එක පමණක් ලබා ගැනීමට (Group එක තුළදී)
+            if (from.endsWith('@g.us') && !from.includes('@lid')) {
+              let groupName = 'Group';
+              try {
+                const metadata = await socket.groupMetadata(from);
+                groupName = metadata.subject;
+              } catch (e) {
+                // Metadata ලබාගැනීමට නොහැකි වුවහොත් default නම යොදයි
+              }
+
+              const responseText = `╭───────────────━⊷\n│ 👥 *GROUP JID INFO*\n╰───────────────━⊷\n│ 🏷️ *නම:* ${groupName}\n│ 📍 *JID:* \`${from}\`\n╰───────────────━⊷\n\n💡 _සියලුම Groups වල JID ලබා ගැනීමට \`${prefix}gjid all\` භාවිතා කරන්න._`;
+
+              await socket.sendMessage(from, { text: responseText }, { quoted: msg });
+              await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+            } else {
+              // Inbox එකකදී .gjid ගැහුවොත්
+              await socket.sendMessage(from, { react: { text: '⚠️', key: msg.key } });
+              await socket.sendMessage(from, { 
+                text: `╭───────────────━⊷\n│ ⚠️ *මෙය Group එකක් නොවේ!*\n│\n│ 🔹 Group එකක JID එක ගැනීමට Group එක තුළ \`${prefix}gjid\` යොදන්න.\n│ 🔹 සියලුම Groups වල JID ගැනීමට \`${prefix}gjid all\` යොදන්න.\n╰───────────────━⊷` 
+              }, { quoted: msg });
+            }
+
+          } catch (err) {
+            console.error('GJID Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ JID ලබාගැනීම අසාර්ථක විය: ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
 // ====================================================
 case 'jsend':
 case 'sendjid': {
