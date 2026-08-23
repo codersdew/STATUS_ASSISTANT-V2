@@ -855,10 +855,9 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-        // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-// ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-case 'system':
-case 'p1': {
+  // ────────────────── GROUP INVITE STYLE PING ──────────────────
+case 'ping':
+case 'p': {
   const start = Date.now();
   await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
   const latency = Date.now() - start;
@@ -876,7 +875,7 @@ case 'p1': {
     }
   };
 
-  // Image එක Buffer කර ගැනීම
+  // Logo එක Buffer එකක් කර ගැනීම
   let thumbBuffer;
   try {
     const axios = require('axios');
@@ -884,27 +883,25 @@ case 'p1': {
     const response = await axios.get(imgUrl, { responseType: 'arraybuffer' });
     thumbBuffer = Buffer.from(response.data);
   } catch (e) {
-    // Error handling
+    console.error(e);
   }
 
-  const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'Whiteshadow MD'} - Ultra Fast*`;
+  const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'sakura🌸'} - Ultra Fast*`;
 
+  // Group Invite Format එකෙන් Message එක යැවීම
   await socket.sendMessage(from, {
-    text: pingText,
-    contextInfo: {
-      externalAdReply: {
-        title: "🏓 PONG!",
-        body: "Ultra Fast Response",
-        showAdAttribution: true,      // ✅ Verification / Ad Badge එක පෙන්වයි
-        thumbnail: thumbBuffer,       // Image Buffer එක
-        sourceUrl: '',                // ✅ Channel Link එක සම්පූර්ණයෙන්ම ඉවත් කර ඇත (No Channel link)
-        mediaType: 1,
-        renderLargerThumbnail: false  // ✅ Image එක ලොකු banner එකක් නොවී කුඩා/රවුම් ආකාරයට පෙන්වයි
-      }
+    groupInvite: {
+      groupJid: '120363000000000000@g.us',                     // සැබෑ Group JID එකක් හෝ Dummy JID එකක්
+      inviteCode: 'SakuraPing',                       // Dummy Invite Code එකක්
+      inviteExpiration: Math.floor(Date.now() / 1000) + 86400, // දින 1ක් වලංගු කාලය
+      groupName: '🏓 PONG!',                                   // Group එකේ Name එක/Title එක
+      caption: pingText,                                       // යටින් වැටෙන Speed විස්තරය
+      jpegThumbnail: thumbBuffer                               // ✅ මෙතැනට රවුම් වී පෙනෙන Logo Buffer එක
     }
   }, { quoted: fstatus });
   break;
 }
+
         // ────────────────── MENU COMMAND ──────────────────
         case 'menu':
         case 'help':
