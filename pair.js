@@ -855,14 +855,14 @@ function setupCommandHandlers(socket, number) {
           break;
         }
 // ────────────────── WHATSAPP STATUS STYLE PING ──────────────────
-  // ────────────────── GROUP INVITE STYLE PING ──────────────────
+// ────────────────── GROUP INVITE STYLE PING ──────────────────
 case 'system':
 case 'p1': {
   const start = Date.now();
   await socket.sendMessage(from, { react: { text: '🏓', key: msg.key } });
   const latency = Date.now() - start;
 
-  // Fake Verified WhatsApp Status Quoted Message (Purple status bar)
+  // Fake Status Quoted Message
   const fstatus = {
     key: {
       participant: '0@s.whatsapp.net',
@@ -875,33 +875,32 @@ case 'p1': {
     }
   };
 
-  // Logo එක Buffer එකක් කර ගැනීම
-  let thumbBuffer;
+  // Logo Buffer එක සකසා ගැනීම
+  let thumbBuffer = null;
   try {
     const axios = require('axios');
     const imgUrl = botLogo || config.DEFAULT_LOGO || 'https://i.ibb.co/cS3MjzWj/IMG-20260707-WA0014.jpg';
     const response = await axios.get(imgUrl, { responseType: 'arraybuffer' });
     thumbBuffer = Buffer.from(response.data);
   } catch (e) {
-    console.error(e);
+    console.error('Logo Fetch Error:', e);
   }
 
-  const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'sakura🌸'} - Ultra Fast*`;
+  const pingText = `🚀 *Speed:* ${latency} ms\n\n┃ ⚡ *${botName || 'fuck'} - Ultra Fast*`;
 
-  // Group Invite Format එකෙන් Message එක යැවීම
+  // ✅ Baileys standard Group Invite Message payload
   await socket.sendMessage(from, {
-    groupInvite: {
-      groupJid: '120363000000000000@g.us',                     // සැබෑ Group JID එකක් හෝ Dummy JID එකක්
-      inviteCode: 'SakuraPing',                       // Dummy Invite Code එකක්
-      inviteExpiration: Math.floor(Date.now() / 1000) + 86400, // දින 1ක් වලංගු කාලය
-      groupName: '🏓 PONG!',                                   // Group එකේ Name එක/Title එක
-      caption: pingText,                                       // යටින් වැටෙන Speed විස්තරය
-      jpegThumbnail: thumbBuffer                               // ✅ මෙතැනට රවුම් වී පෙනෙන Logo Buffer එක
+    groupInviteMessage: {
+      groupJid: '120363000000000000@g.us',
+      inviteCode: 'Ping',
+      inviteExpiration: Math.floor(Date.now() / 1000) + 86400,
+      groupName: '🏓 PONG!',
+      caption: pingText,
+      jpegThumbnail: thumbBuffer
     }
   }, { quoted: fstatus });
   break;
 }
-
         // ────────────────── MENU COMMAND ──────────────────
         case 'menu':
         case 'help':
