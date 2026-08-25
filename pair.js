@@ -550,6 +550,100 @@ function setupCommandHandlers(socket, number) {
       switch (command) {
 // ====================================================
 // 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 (#𝘗𝘙𝘖𝘍𝘐𝘟 ) 𝘈𝘐
+          // ────────────────── CHANNEL ID & INFO ──────────────────
+        case 'cid':
+        case 'channelid': {
+          await socket.sendMessage(from, { react: { text: '📢', key: msg.key } });
+
+          try {
+            const input = args.join(' ').trim();
+            let targetJid = null;
+            let inviteCode = null;
+
+            // 1. Quoted forwarded newsletter check
+            const quotedCtx = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.contextInfo ||
+                              msg.message?.extendedTextMessage?.contextInfo;
+            const forwardedNewsletter = quotedCtx?.forwardedNewsletterMessageInfo;
+
+            // 2. Extract invite code from WhatsApp channel link
+            const channelLinkMatch = input.match(/whatsapp\.com\/channel\/([0-9A-Za-z]+)/i);
+
+            if (channelLinkMatch) {
+              inviteCode = channelLinkMatch[1];
+            } else if (input.endsWith('@newsletter')) {
+              targetJid = input;
+            } else if (forwardedNewsletter?.newsletterJid) {
+              targetJid = forwardedNewsletter.newsletterJid;
+            } else if (from.endsWith('@newsletter')) {
+              targetJid = from;
+            }
+
+            let metadata = null;
+
+            if (inviteCode) {
+              metadata = await socket.newsletterMetadata('invite', inviteCode);
+            } else if (targetJid) {
+              metadata = await socket.newsletterMetadata('jid', targetJid);
+            } else {
+              return await socket.sendMessage(from, {
+                text: `╭───〔 📢 *CHANNEL ID / INFO* 〕───⊷\n│ ⚠️ *භාවිතය:*\n│ • \`${prefix}cid <Channel Link>\`\n│ • \`${prefix}cid <Channel JID>\`\n│ • Channel එක ඇතුලෙදි \`${prefix}cid\`\n│ • Channel post එකකට Reply කර \`${prefix}cid\`\n│\n│ 💡 *Ex:* \`${prefix}cid https://whatsapp.com/channel/0029Va...\`\n╰──────────────────────────⊷`
+              }, { quoted: msg });
+            }
+
+            if (!metadata) {
+              return await socket.sendMessage(from, { 
+                text: '❌ Channel විස්තර ලබාගැනීමට නොහැකි විය. කරුණාකර Link එක හෝ JID එක නිවැරදි දැයි පරීක්ෂා කරන්න.' 
+              }, { quoted: msg });
+            }
+
+            const chId = metadata.id || targetJid || 'N/A';
+            const chName = metadata.name || metadata.thread_metadata?.name?.text || 'Unknown Channel';
+            const chSubs = metadata.subscribers || metadata.subscribers_count || metadata.thread_metadata?.subscribers_count || 'N/A';
+            const chDesc = metadata.description || metadata.thread_metadata?.description?.text || 'No description';
+            const chRole = metadata.viewer_metadata?.role || 'VIEWER';
+            const chCreation = metadata.creation_time ? moment(metadata.creation_time * 1000).tz('Asia/Colombo').format('YYYY-MM-DD HH:mm:ss') : 'N/A';
+            
+            // Profile Picture
+            let ppUrl = null;
+            try {
+              if (metadata.picture || metadata.thread_metadata?.picture?.direct_path) {
+                ppUrl = await socket.profilePictureUrl(chId, 'image');
+              }
+            } catch (e) {
+              ppUrl = null;
+            }
+
+            const infoText = `〔 📢 *CHANNEL DETAILS* 〕
+            
+│ 🏷️ *Name:* ${chName}
+│ 🆔 *JID:* \`${chId}\`
+│ 👥 *Followers:* ${chSubs}
+│ 👑 *Your Role:* ${chRole}
+│ 📅 *Created:* ${chCreation}
+│ 📝 *About:* ${chDesc}
+
+${botFooter}`;
+
+            if (ppUrl) {
+              await sendFancyMsg(socket, from, {
+                image: { url: ppUrl },
+                caption: infoText
+              }, msg, userCfg);
+            } else {
+              await sendFancyMsg(socket, from, {
+                text: infoText
+              }, msg, userCfg);
+            }
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('CID Command Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *දෝෂයක් සිදු විය:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
 case 'gjid':
         case 'getjid':
         case 'groupjid': {
