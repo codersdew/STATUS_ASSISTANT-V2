@@ -918,7 +918,7 @@ case 'sendjid': {
         case 'm': {
           const input = args.join(' ').trim();
           const SESSION_TIMEOUT = 5 * 60 * 1000;
-          const API_BASE = config.API_MAIN_URL1 ? config.API_MAIN_URL1.replace(/\/$/, '') : 'https://chama-movie-api.koyeb.app';
+          const API_BASE = config.API_MAIN_URL1 ? config.API_MAIN_URL1.replace(/\/$/, '') : 'https://chama-movie-api-new.koyeb.app';
           const API_KEY = config.API_KEY_1 || 'chama_api_7f4ac9c10c749bcedbd4437a066009a2';
 
           if (!input) {
