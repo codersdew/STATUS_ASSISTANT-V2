@@ -549,6 +549,55 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
 // ====================================================
+          case 'lid': {
+  let target;
+
+  const mentioned = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid;
+  const quoted = msg.message?.extendedTextMessage?.contextInfo?.participant;
+  const bodyText = msg.message?.conversation || msg.message?.extendedTextMessage?.text || '';
+  const args = bodyText.trim().split(/\s+/).slice(1);
+  const query = args.join(' ');
+
+  if (mentioned && mentioned.length > 0) {
+    target = mentioned[0];
+  } else if (quoted) {
+    target = quoted;
+  } else if (query) {
+    const cleanNumber = query.replace(/[^0-9]/g, '');
+    if (cleanNumber) {
+      target = `${cleanNumber}@s.whatsapp.net`;
+    }
+  } else {
+    target = msg.key.participant || from;
+  }
+
+  if (!target) {
+    return await socket.sendMessage(from, { 
+      text: '❌ Please provide a number, mention (@user), or reply to a message.' 
+    }, { quoted: msg });
+  }
+
+  try {
+    const [result] = await socket.onWhatsApp(target);
+
+    if (!result || !result.exists) {
+      return await socket.sendMessage(from, { 
+        text: '❌ This number is not registered on WhatsApp.' 
+      }, { quoted: msg });
+    }
+
+    const lid = result.lid || 'LID not found.';
+    await socket.sendMessage(from, { 
+      text: `🆔 *LID:* \`${lid}\`` 
+    }, { quoted: msg });
+
+  } catch (error) {
+    await socket.sendMessage(from, { 
+      text: `❌ Error: ${error.message}` 
+    }, { quoted: msg });
+  }
+  break;
+          }
 // 𝘒𝘌𝘡𝘜 𝘕𝘌𝘞 𝘔𝘖𝘝𝘐𝘌 𝘉𝘖𝘛 𝘊𝘈𝘚𝘌 𝘊𝘖𝘓𝘓𝘌𝘊𝘛𝘐𝘖𝘕 (#𝘗𝘙𝘖𝘍𝘐𝘟 ) 𝘈𝘐
     
 case 'cine':
