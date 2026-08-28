@@ -549,6 +549,111 @@ function setupCommandHandlers(socket, number) {
     try {
       switch (command) {
 // ====================================================
+          // ────────────────── MUSIC DOWNLOADER (HEROKU API) ──────────────────
+        case 'music':
+        case 'audio': {
+          if (!args.length) {
+            return await socket.sendMessage(from, { 
+              text: `╭───〔 🎵 *MUSIC DOWNLOADER* 〕───⊷\n│ ⚠️ *Usage:* \`${prefix}music <Song Name / YouTube Link>\`\n│\n│ 💡 *Examples:*\n│ • \`${prefix}music sumudu sayane\`\n│ • \`${prefix}music aj leon\`\n│ • \`${prefix}music https://youtu.be/xxxx\`\n╰──────────────────────────⊷` 
+            }, { quoted: msg });
+          }
+
+          const query = args.join(' ');
+          const API_BASE = 'https://api-siteh-22e22e4cb068.herokuapp.com/api/ytmp3';
+          const API_KEY = 'lakiya_a48ffc8468c7d237a52ddc18d79c031285c63edc601fd84b738622596b2afb63';
+
+          await socket.sendMessage(from, { react: { text: '⏳', key: msg.key } });
+
+          try {
+            let videoUrl = query;
+            let songTitle = 'Unknown Music';
+            let thumbnailUrl = config.DEFAULT_LOGO;
+            let duration = '0:00';
+            let channelName = 'YouTube';
+
+            const isUrl = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\//i.test(query);
+
+            if (!isUrl) {
+              // Search via yt-search
+              const searchResults = await yts(query);
+              const videos = searchResults?.videos;
+
+              if (!videos || !videos.length) {
+                await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+                return await socket.sendMessage(from, { text: `❌ *No results found for:* _${query}_` }, { quoted: msg });
+              }
+
+              const vid = videos[0];
+              videoUrl = vid.url;
+              songTitle = vid.title;
+              thumbnailUrl = vid.thumbnail || thumbnailUrl;
+              duration = vid.timestamp || `${Math.floor(vid.seconds / 60)}:${String(vid.seconds % 60).padStart(2, '0')}`;
+              channelName = vid.author?.name || channelName;
+            }
+
+            const infoCard = 
+`╭───〔 🎵 *${(botName || 'MUSIC BOT').toUpperCase()}* 〕───⊷
+│ 📌 *Title:* ${songTitle}
+│ ⏱️ *Duration:* ${duration}
+│ 👤 *Channel:* ${channelName}
+╰──────────────────────────⊷
+> 🪻 _Downloading Audio... Please wait._
+${botFooter}`;
+
+            const infoMsg = await socket.sendMessage(from, {
+              image: { url: thumbnailUrl },
+              caption: infoCard
+            }, { quoted: msg });
+
+            await socket.sendMessage(from, { react: { text: '📥', key: msg.key } });
+
+            // Request to Heroku API
+            const res = await axios.get(API_BASE, {
+              params: {
+                url: videoUrl,
+                api_key: API_KEY
+              },
+              timeout: 60000
+            });
+
+            // Extract download link from API response
+            const apiData = res.data?.data || res.data?.result || res.data;
+            const downloadUrl = apiData?.download_url || apiData?.dl_url || apiData?.direct_url || apiData?.url || apiData?.downloadLink;
+            
+            if (apiData?.title) songTitle = apiData.title;
+
+            if (!downloadUrl || typeof downloadUrl !== 'string' || !downloadUrl.startsWith('http')) {
+              throw new Error(res.data?.message || 'Failed to retrieve download link from server.');
+            }
+
+            // Download audio buffer
+            const audioBuffer = await axios.get(downloadUrl, {
+              responseType: 'arraybuffer',
+              timeout: 90000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+              }
+            });
+
+            const cleanFileName = `${songTitle.replace(/[\\/:*?"<>|]/g, '')}.mp3`;
+
+            // Send Audio to WhatsApp
+            await socket.sendMessage(from, {
+              audio: Buffer.from(audioBuffer.data),
+              mimetype: 'audio/mpeg',
+              fileName: cleanFileName,
+              ptt: false
+            }, { quoted: infoMsg });
+
+            await socket.sendMessage(from, { react: { text: '✅', key: msg.key } });
+
+          } catch (err) {
+            console.error('Music Command Error:', err);
+            await socket.sendMessage(from, { react: { text: '❌', key: msg.key } });
+            await socket.sendMessage(from, { text: `❌ *Download Failed:* ${err.message}` }, { quoted: msg });
+          }
+          break;
+        }
           case 'lid': {
   let target;
 
